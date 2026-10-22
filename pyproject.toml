@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rbbench"
+version = "0.1.0"
+description = "Four neural PDE surrogates (CNextU-Net, TFNO, AViT, ConvLSTM) on The Well rayleigh_benard under fixed compute/data budgets"
+readme = "README.md"
+requires-python = ">=3.10"
+# Ranges only; exact pins live in requirements-common.txt (shared by Mac and HPC3)
+# and torch is installed per platform from requirements-{mac,cuda}.txt.
+dependencies = [
+    "torch>=2.8,<2.9",
+    "the_well",
+    "neuraloperator==0.3.0",
+    "timm>=1.0,<2",
+    "huggingface_hub",
+    "torch_harmonics>=0.6,<0.7",
+    "wandb>=0.21",
+    "einops>=0.8",
+    "h5py>=3.9",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "matplotlib>=3.8",
+    "pyyaml>=6",
+    "fsspec==2024.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff"]
+
+[project.scripts]
+rbbench = "rbbench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rbbench = ["vendor/openstl/*.txt", "vendor/openstl/LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "cuda: needs a CUDA device (run on HPC3)",
+    "realdata: needs the real rayleigh_benard dataset under DATA_ROOT",
+    "slow: full-size models at 512x128 on CPU (deselect with -m 'not slow')",
+]
+pythonpath = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["src/rbbench/vendor"]
+
+[tool.ruff.lint]
+extend-select = ["I"]

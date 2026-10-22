@@ -1,0 +1,5 @@
+# STRETCH (only after the main sweep): hold out entire (Ra, Pr) regimes from fitting.
+# Requires new training runs with subsets built by `rbbench make-subsets --holdout ...`;
+# filtering the existing test set is not a held-out-regime experiment.
+heldout:
+  regimes: []        # e.g. [[1.0e8, 1.0]] chosen before looking at any test result

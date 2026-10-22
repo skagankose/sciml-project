@@ -1,0 +1,14 @@
+# The Well TFNO wrapper -> neuraloperator 0.3.0 FNO with factorization="Tucker".
+# `full` matches the published benchmark: 16x16 modes, 4 Fourier layers, hidden 128.
+# Upstream leaves rank=1.0, implementation="factorized", no domain padding,
+# lifting/projection 256 (neuraloperator defaults). 19,276,556 parameters.
+full:
+  modes1: 16
+  modes2: 16
+  hidden_channels: 128
+  gradient_checkpointing: false
+tiny:
+  modes1: 8
+  modes2: 8
+  hidden_channels: 16
+  gradient_checkpointing: false

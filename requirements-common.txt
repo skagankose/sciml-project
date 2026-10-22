@@ -1,0 +1,26 @@
+# Exact pins shared by the Mac and HPC3. Install torch first from
+# requirements-mac.txt or requirements-cuda.txt, then this file.
+# Resolved on 2026-10-22 (macOS arm64, Python 3.13).
+torch==2.8.0
+the_well @ git+https://github.com/PolymathicAI/the_well.git@e63dec8ded515be864755eaf595d39fea409e335
+neuraloperator==0.3.0
+tensorly==0.10.0
+tensorly-torch==0.5.0
+configmypy==0.2.0
+opt_einsum==3.4.0
+torch-harmonics==0.6.3
+timm==1.0.30
+huggingface_hub==2.2.0
+safetensors==0.8.0
+wandb==0.31.0
+einops==0.8.2
+h5py==3.16.0
+numpy==2.3.5
+scipy==1.18.1
+pandas==3.1.0
+pyarrow==26.0.0
+matplotlib==3.11.2
+PyYAML==6.0.3
+fsspec==2024.10.0
+pytest==9.1.1
+ruff==0.17.2

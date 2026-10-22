@@ -1,0 +1,10 @@
+# Shared conda base for HPC3 (conda-forge only, to avoid Anaconda ToS prompts).
+# Python packages are pinned in requirements-common.txt and installed by
+# cluster/setup_env.sh after the platform's torch wheel.
+name: well-rb
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - git

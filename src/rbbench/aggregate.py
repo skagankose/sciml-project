@@ -1,0 +1,401 @@
+"""One command from copied run outputs to report tables and figures (runs on the Mac).
+
+Reads tasks/train.jsonl, each run's COMPLETE.json and evaluations/, and writes
+tables/{main_results,per_seed_results,resource_use,missing_runs}.csv and figures/*.{pdf,png}.
+Every number keeps its run_id, so it can be traced to commit, seed, manifest and raw file.
+"""
+
+from __future__ import annotations
+
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from rbbench import METRIC_VERSION, MODEL_NAMES
+from rbbench.data import FIELDS
+from rbbench.evaluate import failure_step, kaplan_meier
+from rbbench.manifests import read_json
+from rbbench.noise import sigma_key
+from rbbench.sweep import read_jsonl
+
+# Fixed model -> colour/marker (reference categorical slots 1-4, light mode), never by rank.
+STYLE = {
+    "cnext_unet": {"color": "#2a78d6", "marker": "o", "label": "CNextU-Net"},
+    "tfno": {"color": "#eb6834", "marker": "s", "label": "TFNO"},
+    "avit": {"color": "#1baf7a", "marker": "^", "label": "AViT"},
+    "convlstm": {"color": "#eda100", "marker": "D", "label": "ConvLSTM"},
+    "persistence": {"color": "#52514e", "marker": "", "label": "Persistence"},
+}
+INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
+
+
+def _load_run(row: dict, output_root: Path, labels: list[str]) -> tuple[list[dict], dict | None, list[str]]:
+    run_dir = output_root / "runs" / row["run_id"]
+    problems, metrics = [], []
+    complete = run_dir / "COMPLETE.json"
+    if not complete.exists():
+        return [], None, [f"{row['run_id']}: training not complete"]
+    comp = read_json(complete)
+    if not comp.get("budget_satisfied", False):
+        problems.append(f"{row['run_id']}: milestones forced by max_steps (budget not satisfied)")
+    for lab in labels:
+        marker = run_dir / "evaluations" / f"EVAL_COMPLETE_{lab}.json"
+        if not marker.exists():
+            problems.append(f"{row['run_id']}: evaluation {lab} missing")
+            continue
+        info = read_json(marker)
+        sigmas = {}
+        for path in sorted((run_dir / "evaluations").glob(f"*_{lab}.json")):
+            if path.name.startswith(("clean_", "noise_")):
+                d = read_json(path)
+                sigmas[sigma_key(d["sigma"])] = d
+        metrics.append({"row": row, "label": lab, "info": info, "by_sigma": sigmas, "run_dir": run_dir,
+                        "complete": comp})
+    return metrics, comp, problems
+
+
+def collect(tasks_path: Path, output_root: Path, labels=("2h", "6h")):
+    rows = read_jsonl(tasks_path)
+    loaded, problems = [], []
+    for row in rows:
+        metrics, _, probs = _load_run(row, output_root, list(labels))
+        loaded += metrics
+        problems += probs
+    versions = {m["info"]["metric_version"] for m in loaded}
+    cohorts = {m["info"]["cohort_sha256"] for m in loaded}
+    if len(versions) > 1 or (versions and versions != {METRIC_VERSION}):
+        raise RuntimeError(f"mixed metric versions {versions}; re-evaluate before aggregating")
+    if len(cohorts) > 1:
+        raise RuntimeError(f"runs were evaluated on different cohorts: {cohorts}")
+    return rows, loaded, problems
+
+
+def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
+    recs = []
+    for m in loaded:
+        r = m["row"]
+        key = {"run_id": r["run_id"], "model": r["model"], "fraction": r["fraction"], "seed": r["seed"],
+               "budget": m["label"]}
+        for skey, d in m["by_sigma"].items():
+            s = d["sigma"]
+            if "one_step" in d:
+                for name, v in d["one_step"].items():
+                    if name.startswith("vrmse"):
+                        recs.append({**key, "metric": f"one_step_{name}", "sigma": s, "step": 1, "value": v})
+            for step, v in d["rollout_vrmse_mean_at"].items():
+                recs.append({**key, "metric": "rollout_vrmse_mean", "sigma": s, "step": int(step), "value": v})
+            for thr, f in d["failure"].items():
+                med = f["km_median_step"]
+                recs.append({**key, "metric": f"km_median_failure_step_thr{thr}", "sigma": s, "step": None,
+                             "value": np.nan if med is None else med})
+                for step, v in f["survival_at"].items():
+                    recs.append({**key, "metric": f"survival_thr{thr}", "sigma": s, "step": int(step), "value": v})
+            for step, v in d.get("nusselt", {}).get("rel_err_mean_at", {}).items():
+                recs.append({**key, "metric": "nusselt_rel_err", "sigma": s, "step": int(step), "value": v})
+            for step, v in d.get("log_spectral_error_at", {}).items():
+                recs.append({**key, "metric": "log_spectral_error", "sigma": s, "step": int(step), "value": v})
+    return pd.DataFrame(recs)
+
+
+def summary_table(per_seed: pd.DataFrame) -> pd.DataFrame:
+    if per_seed.empty:
+        return per_seed
+    keys = ["model", "fraction", "budget", "metric", "sigma", "step"]
+    g = per_seed.groupby(keys, dropna=False)["value"]
+    out = g.agg(mean="mean", std="std", n_seeds="count").reset_index()
+    seeds = per_seed.groupby(keys, dropna=False).apply(
+        lambda d: ";".join(f"s{int(s)}={v:.6g}" for s, v in zip(d.seed, d.value)), include_groups=False
+    )
+    out["per_seed"] = seeds.values
+    return out
+
+
+def resource_table(loaded: list[dict]) -> pd.DataFrame:
+    recs = []
+    for m in loaded:
+        r, comp = m["row"], m["complete"]
+        ms = comp["milestones"].get(m["label"], {})
+        prov_path = m["run_dir"] / "provenance.json"
+        prov = read_json(prov_path) if prov_path.exists() else {}
+        clean = m["by_sigma"].get(sigma_key(0.0), {})
+        lat = clean.get("latency", {})
+        gpus = sorted({a.get("gpu", {}).get("name") or "none" for a in prov.get("attempts", [])})
+        recs.append({
+            "run_id": r["run_id"], "model": r["model"], "fraction": r["fraction"], "seed": r["seed"],
+            "budget": m["label"], "train_seconds": ms.get("train_seconds"),
+            "overshoot_seconds": ms.get("overshoot_seconds"), "optimizer_steps": ms.get("step"),
+            "samples_seen": ms.get("samples_seen"), "peak_train_mem_gb": ms.get("peak_mem_alloc_gb"),
+            "n_parameters": prov.get("n_parameters"), "attempts": comp.get("attempts"),
+            "val_overhead_s": comp.get("overhead_seconds", {}).get("val"),
+            "ckpt_overhead_s": comp.get("overhead_seconds", {}).get("ckpt"),
+            "infer_ms_per_frame": lat.get("ms_per_frame"), "rollout_ms": lat.get("ms_per_rollout"),
+            "infer_peak_mem_gb": lat.get("peak_mem_alloc_gb"), "gpus": ";".join(gpus),
+            "budget_satisfied": comp.get("budget_satisfied"),
+        })
+    return pd.DataFrame(recs)
+
+
+# --- figures ------------------------------------------------------------------------------
+
+def _style_axes(ax):
+    ax.grid(True, color=GRID, linewidth=0.6)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(MUTED)
+    ax.tick_params(colors=MUTED, labelsize=8)
+    ax.xaxis.label.set_color(INK)
+    ax.yaxis.label.set_color(INK)
+
+
+def _save(fig, figures_dir: Path, name: str) -> list[str]:
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for ext in ("pdf", "png"):
+        p = figures_dir / f"{name}.{ext}"
+        fig.savefig(p, dpi=200, bbox_inches="tight")
+        paths.append(str(p))
+    return paths
+
+
+def _models_present(df):
+    return [m for m in MODEL_NAMES if m in set(df.model)]
+
+
+def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFrame,
+                 figures_dir: Path, baseline: dict | None = None) -> list[str]:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import NullFormatter
+
+    written: list[str] = []
+    if summary.empty:
+        return written
+    models = _models_present(summary)
+    budgets = sorted(set(summary.budget))
+
+    # 1. one-step VRMSE vs data fraction, per budget, average and per field
+    names = ["one_step_vrmse_mean"] + [f"one_step_vrmse_{f}" for f in FIELDS]
+    fig, axes = plt.subplots(1, len(names), figsize=(3.2 * len(names), 3.0), sharey=False)
+    for ax, metric in zip(axes, names):
+        for m in models:
+            for b, ls in zip(budgets, ("--", "-", ":")):
+                d = summary[(summary.model == m) & (summary.metric == metric) & (summary.budget == b)]
+                d = d.sort_values("fraction")
+                if d.empty:
+                    continue
+                st = STYLE[m]
+                ax.errorbar(d.fraction * 100, d["mean"], yerr=d["std"].fillna(0), color=st["color"],
+                            marker=st["marker"], ms=5, lw=1.5, ls=ls, capsize=2,
+                            label=f"{st['label']} {b}")
+        ax.set_xscale("log")
+        ax.set_xticks([10, 30, 100], ["10", "30", "100"])
+        ax.set_xlabel("training trajectories (%)")
+        ax.set_title(metric.replace("one_step_vrmse_", "").replace("mean", "field mean"), fontsize=9, color=INK)
+        _style_axes(ax)
+    axes[0].set_ylabel("one-step test VRMSE")
+    axes[0].legend(fontsize=6, frameon=False, ncol=1)
+    fig.tight_layout()
+    written += _save(fig, figures_dir, "fig1_one_step_vrmse_vs_fraction")
+    plt.close(fig)
+
+    # 2. rollout VRMSE vs horizon (clean), one panel per budget, full data
+    full = max(summary.fraction)
+    fig, axes = plt.subplots(1, len(budgets), figsize=(4.2 * len(budgets), 3.2), sharey=True, squeeze=False)
+    for ax, b in zip(axes[0], budgets):
+        for m in models:
+            d = summary[(summary.model == m) & (summary.metric == "rollout_vrmse_mean") & (summary.budget == b)
+                        & (summary.sigma == 0) & (summary.fraction == full)].sort_values("step")
+            if d.empty:
+                continue
+            st = STYLE[m]
+            ax.plot(d.step, d["mean"], color=st["color"], marker=st["marker"], ms=5, lw=2, label=st["label"])
+            ax.fill_between(d.step, d["mean"] - d["std"].fillna(0), d["mean"] + d["std"].fillna(0),
+                            color=st["color"], alpha=0.15, lw=0)
+        if baseline:
+            curve = baseline.get("rollout_vrmse_mean_at", {})
+            if curve:
+                ks = sorted(int(k) for k in curve)
+                ax.plot(ks, [curve[str(k)] for k in ks], color=STYLE["persistence"]["color"], lw=1.2, ls=":",
+                        label="Persistence")
+        ax.set_title(f"{b} budget, {int(full * 100)}% data, clean", fontsize=9, color=INK)
+        ax.set_xlabel("rollout step")
+        _style_axes(ax)
+    axes[0][0].set_ylabel("test VRMSE (field mean)")
+    axes[0][0].legend(fontsize=7, frameon=False)
+    fig.tight_layout()
+    written += _save(fig, figures_dir, "fig2_rollout_vrmse_vs_step")
+    plt.close(fig)
+
+    # 3. survival (fraction of rollouts below threshold) vs step, recomputed from raw rollouts
+    thr_metrics = sorted({m for m in summary.metric if m.startswith("survival_thr")})
+    if thr_metrics:
+        thr = thr_metrics[0].replace("survival_thr", "")
+        fig, axes = plt.subplots(1, len(budgets), figsize=(4.2 * len(budgets), 3.2), sharey=True, squeeze=False)
+        for ax, b in zip(axes[0], budgets):
+            for m in models:
+                curves = []
+                for item in loaded:
+                    if item["row"]["model"] != m or item["label"] != b or item["row"]["fraction"] != full:
+                        continue
+                    roll = pd.read_parquet(item["run_dir"] / "evaluations" / f"rollout_{b}.parquet")
+                    roll = roll[roll.sigma == 0]
+                    piv = roll.pivot_table(index=["traj_id", "start"], columns="step", values="vrmse_mean")
+                    events = [failure_step(v.values, float(thr)) for _, v in piv.iterrows()]
+                    curves.append(kaplan_meier(events, piv.shape[1]))
+                if not curves:
+                    continue
+                c = np.mean(curves, axis=0)
+                st = STYLE[m]
+                ax.step(np.arange(0, len(c) + 1), np.r_[1.0, c], where="post", color=st["color"], lw=2,
+                        label=st["label"])
+            ax.set_ylim(-0.02, 1.02)
+            ax.set_title(f"{b}: rollouts with VRMSE <= {thr}", fontsize=9, color=INK)
+            ax.set_xlabel("rollout step")
+            _style_axes(ax)
+        axes[0][0].set_ylabel("surviving fraction (KM, seed mean)")
+        axes[0][0].legend(fontsize=7, frameon=False)
+        fig.tight_layout()
+        written += _save(fig, figures_dir, "fig3_failure_survival")
+        plt.close(fig)
+
+    # 4. noise degradation at a fixed step
+    steps = sorted(set(summary[summary.metric == "rollout_vrmse_mean"].step.dropna()))
+    if steps:
+        k = int(steps[min(2, len(steps) - 1)])
+        fig, axes = plt.subplots(1, len(budgets), figsize=(4.2 * len(budgets), 3.2), sharey=True, squeeze=False)
+        for ax, b in zip(axes[0], budgets):
+            for m in models:
+                d = summary[(summary.model == m) & (summary.metric == "rollout_vrmse_mean") & (summary.budget == b)
+                            & (summary.step == k) & (summary.fraction == full)].sort_values("sigma")
+                if d.empty:
+                    continue
+                st = STYLE[m]
+                ax.errorbar(d.sigma, d["mean"], yerr=d["std"].fillna(0), color=st["color"], marker=st["marker"],
+                            ms=5, lw=1.5, capsize=2, label=st["label"])
+            ax.set_title(f"{b}: VRMSE at step {k} vs initial noise", fontsize=9, color=INK)
+            ax.set_xlabel("sigma (normalised units, initial 4 frames)")
+            _style_axes(ax)
+        axes[0][0].set_ylabel("test VRMSE (field mean)")
+        axes[0][0].legend(fontsize=7, frameon=False)
+        fig.tight_layout()
+        written += _save(fig, figures_dir, "fig4_noise_degradation")
+        plt.close(fig)
+
+    # 5. Nusselt relative error by regime (clean, final budget, full data, last spectra step)
+    phys_frames = []
+    for item in loaded:
+        p = item["run_dir"] / "evaluations" / f"physics_{item['label']}.parquet"
+        if p.exists() and item["row"]["fraction"] == full and item["label"] == budgets[-1]:
+            df = pd.read_parquet(p)
+            df["model"] = item["row"]["model"]
+            phys_frames.append(df[df.sigma == 0])
+    if phys_frames:
+        phys = pd.concat(phys_frames)
+        last = phys.step.max()
+        d = phys[phys.step == last].groupby(["model", "rayleigh"])["nu_rel_err"].mean().reset_index()
+        fig, ax = plt.subplots(figsize=(5.0, 3.2))
+        for m in _models_present(d):
+            dm = d[d.model == m].sort_values("rayleigh")
+            st = STYLE[m]
+            ax.plot(dm.rayleigh, dm.nu_rel_err, color=st["color"], marker=st["marker"], ms=5, lw=2, label=st["label"])
+        ax.set_xscale("log")
+        ax.set_xlabel("Rayleigh number")
+        ax.set_ylabel(f"|Nu_pred - Nu_true| / Nu_true at step {int(last)}")
+        ax.set_title(f"{budgets[-1]}, {int(full * 100)}% data, clean (mean over Pr)", fontsize=9, color=INK)
+        _style_axes(ax)
+        ax.legend(fontsize=7, frameon=False)
+        fig.tight_layout()
+        written += _save(fig, figures_dir, "fig5_nusselt_rel_err_by_ra")
+        plt.close(fig)
+
+    # 6. horizontal KE spectra for one representative regime
+    spec_frames = []
+    for item in loaded:
+        p = item["run_dir"] / "evaluations" / f"spectra_{item['label']}.parquet"
+        if p.exists() and item["row"]["fraction"] == full and item["label"] == budgets[-1] and item["row"]["seed"] == 0:
+            df = pd.read_parquet(p)
+            df["model"] = item["row"]["model"]
+            spec_frames.append(df[df.sigma == 0])
+    if spec_frames:
+        spec = pd.concat(spec_frames)
+        regimes = sorted({(r, p) for r, p in zip(spec.rayleigh, spec.prandtl)})
+        ra, pr = regimes[len(regimes) // 2]
+        step = spec.step.max()
+        s = spec[(spec.rayleigh == ra) & (spec.prandtl == pr) & (spec.step == step) & (spec.k_index > 0)]
+        fig, ax = plt.subplots(figsize=(5.0, 3.4))
+        truth = s[s.source == "true"].groupby("k")["energy"].mean()
+        ax.loglog(truth.index, truth.values, color=INK, lw=2.2, label="reference")
+        for m in _models_present(s):
+            d = s[(s.model == m) & (s.source == "pred")].sort_values("k")
+            st = STYLE[m]
+            ax.loglog(d.k, d.energy, color=st["color"], lw=1.5, label=st["label"])
+        ax.xaxis.set_minor_formatter(NullFormatter())
+        ax.yaxis.set_minor_formatter(NullFormatter())
+        ax.set_xlabel("horizontal wavenumber k_x")
+        ax.set_ylabel("E(k_x)")
+        ax.set_title(f"Ra={ra:.0e}, Pr={pr:g}, step {int(step)}, seed 0", fontsize=9, color=INK)
+        _style_axes(ax)
+        ax.legend(fontsize=7, frameon=False)
+        fig.tight_layout()
+        written += _save(fig, figures_dir, "fig6_ke_spectra")
+        plt.close(fig)
+
+    # 7. resources: optimizer steps and inference latency (separate panels, one axis each)
+    if not resources.empty:
+        res = resources[resources.fraction == full]
+        cols = [("optimizer_steps", "optimizer steps"), ("samples_seen", "training samples"),
+                ("peak_train_mem_gb", "peak train memory (GB)"), ("infer_ms_per_frame", "inference ms / frame")]
+        fig, axes = plt.subplots(1, len(cols), figsize=(3.2 * len(cols), 3.0))
+        for ax, (col, title) in zip(axes, cols):
+            if res[col].dropna().empty:
+                ax.text(0.5, 0.5, "not measured\n(CUDA only)", ha="center", va="center",
+                        transform=ax.transAxes, color=MUTED, fontsize=8)
+            for j, b in enumerate(budgets):
+                for i, m in enumerate(_models_present(res)):
+                    v = res[(res.model == m) & (res.budget == b)][col].astype(float)
+                    if v.dropna().empty:
+                        continue
+                    st = STYLE[m]
+                    ax.bar(i + j * (len(MODEL_NAMES) + 1), v.mean(), yerr=v.std() if len(v) > 1 else None,
+                           color=st["color"], width=0.85, edgecolor="white", linewidth=1.5,
+                           label=st["label"] if j == 0 else None)
+            ax.set_xticks([1.5 + j * (len(MODEL_NAMES) + 1) for j in range(len(budgets))], budgets)
+            ax.set_title(title, fontsize=9, color=INK)
+            _style_axes(ax)
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", ncol=len(labels), fontsize=7, frameon=False,
+                   bbox_to_anchor=(0.5, 1.06))
+        fig.tight_layout()
+        written += _save(fig, figures_dir, "fig7_resources")
+        plt.close(fig)
+    return written
+
+
+def aggregate(tasks_path: Path, output_root: Path, tables_dir: Path, figures_dir: Path,
+              labels=("2h", "6h"), baseline_dir: Path | None = None) -> dict:
+    rows, loaded, problems = collect(tasks_path, output_root, labels)
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    per_seed = per_seed_table(loaded)
+    summary = summary_table(per_seed)
+    resources = resource_table(loaded)
+    per_seed.to_csv(tables_dir / "per_seed_results.csv", index=False)
+    summary.to_csv(tables_dir / "main_results.csv", index=False)
+    resources.to_csv(tables_dir / "resource_use.csv", index=False)
+    pd.DataFrame({"problem": problems}).to_csv(tables_dir / "missing_runs.csv", index=False)
+    baseline = None
+    if baseline_dir and (baseline_dir / "clean_na.json").exists():
+        baseline = read_json(baseline_dir / "clean_na.json")
+        if baseline["metric_version"] != METRIC_VERSION:
+            raise RuntimeError("baseline evaluated with a different metric version")
+    for p in problems:
+        warnings.warn(p)
+    figures = make_figures(summary, loaded, resources, figures_dir, baseline)
+    expected = len(rows) * len(labels)
+    return {"tasks": len(rows), "expected_evaluations": expected, "found_evaluations": len(loaded),
+            "problems": problems, "figures": figures}

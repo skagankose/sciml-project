@@ -1,0 +1,12 @@
+# A100 micro-pilot (Phase F/G): same protocol, budgets shortened so that both
+# milestone checkpoints, resume and validation are exercised in minutes.
+train:
+  budgets_seconds:
+    2h: 120
+    6h: 360
+  resume_every_seconds: 60
+  val_every_seconds: 60
+  val_windows: 16
+  log_every_steps: 10
+eval:
+  rollout_steps: 30

@@ -1,0 +1,8 @@
+Vendored verbatim (no modifications) from OpenSTL, Apache License 2.0 (see LICENSE).
+repository: https://github.com/chengtan9907/OpenSTL
+commit: eecf8a3078f0a178dbc7b28723da20f94ce36985
+path: openstl/modules/convlstm_modules.py
+git_blob: a560fc64ff18de3ea45c20888ee5d7f749a0cce6
+sha256: 4a545b9fe104716636183665bee01bdd4ec63f7eb65152906d2f5df6518940c6
+reason: importing the openstl package pulls video/vision dependencies unrelated to this cell;
+        tests/test_vendor.py checks that this file still has the sha256 above.

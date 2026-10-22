@@ -1,0 +1,23 @@
+# Mac smoke runs on the synthetic fixture (tiny models, a few steps, CPU).
+task:
+  spatial_resolution: [64, 32]
+data:
+  num_workers: 0
+  pin_memory: false
+schedule:
+  warmup_steps: 2
+train:
+  batch_size: 2
+  budgets_seconds:
+    2h: 1.0e9
+    6h: 2.0e9
+  val_windows: 4
+  log_every_steps: 1
+eval:
+  rollout_steps: 6
+  report_steps: [1, 3, 6]
+  rollout_starts: [0, 10]
+  spectra_steps: [1, 6]
+  batch_size: 4
+  latency_warmup: 1
+  latency_iters: 2

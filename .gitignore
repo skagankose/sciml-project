@@ -1,0 +1,22 @@
+# Large or machine-specific artifacts
+data/
+outputs/
+logs/
+*.hdf5
+*.h5
+*.pt
+*.pt.tmp
+*.tmp
+wandb/
+
+# Environments and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store

@@ -1,0 +1,4 @@
+# HPC3 (Linux x86-64, NVIDIA). cu128 wheels include sm_80 (A100) and bundle
+# their own CUDA runtime, so no `module load cuda` is needed.
+--index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0

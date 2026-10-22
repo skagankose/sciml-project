@@ -1,0 +1,2 @@
+# macOS (Apple Silicon): the default PyPI wheel has the MPS backend.
+torch==2.8.0

@@ -1,0 +1,15 @@
+# The Well UNetConvNext (the_well.benchmark.models.UNetConvNext).
+# `full` matches the published benchmark: init dim 42, 2 blocks/stage, 4 up/down stages,
+# 1 bottleneck block, 7x7 depthwise kernels. 18,575,344 parameters at 512x128.
+full:
+  stages: 4
+  blocks_per_stage: 2
+  blocks_at_neck: 1
+  init_features: 42
+  gradient_checkpointing: false
+tiny:
+  stages: 4
+  blocks_per_stage: 1
+  blocks_at_neck: 1
+  init_features: 8
+  gradient_checkpointing: false

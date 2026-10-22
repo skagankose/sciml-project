@@ -1,0 +1,16 @@
+# OpenSTL ConvLSTMCell (vendored verbatim) inside a thin encoder / 4-frame unroll / decoder.
+# `full` follows OpenSTL's reference ConvLSTM config (configs/mmnist/ConvLSTM.py):
+# 4 layers x 128 hidden, 5x5 filters, stride 1, 4x4 space-to-depth patches, no layer norm.
+# Hidden and cell states are zero-initialised inside every forward call.
+full:
+  patch_size: 4
+  num_hidden: [128, 128, 128, 128]
+  filter_size: 5
+  encoder_channels: 128
+  decoder_channels: 128
+tiny:
+  patch_size: 4
+  num_hidden: [16, 16]
+  filter_size: 3
+  encoder_channels: 16
+  decoder_channels: 16

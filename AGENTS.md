@@ -38,3 +38,6 @@ starts and the primary threshold.
   smoke pass on CPU, and all four tiny models also run on MPS. Measured full-size parameter counts:
   18.58M / 19.28M / 14.69M / 13.34M (ConvLSTM effective; 16.74M allocated). Remote dataset sizes confirmed by
   HTTP HEAD. Next: Phase C on HPC3.
+* 2026-10-22 (later): Abstract decisions. The 2 h results are checkpoints of the 6 h runs (216 GPU-h of
+  training). Normalization uses the shared train-split `stats.yaml`. Models are parameter-matched: AViT
+  hidden 384→432 (18.57M), ConvLSTM width 128→152 (18.79M trainable).

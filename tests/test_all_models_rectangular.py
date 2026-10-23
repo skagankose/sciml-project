@@ -28,11 +28,18 @@ def test_rejects_wrong_history_length(name):
 @pytest.mark.slow
 @pytest.mark.parametrize("name", MODEL_NAMES)
 def test_full_size_forward_512x128(name):
-    """Full-size models at the real resolution (CPU, batch 1); A100 memory is checked in Phase G."""
+    """Full-size models at the real resolution (CPU, batch 1); A100 memory is checked in Phase G.
+
+    Parameter counts are matched across families (docs/decisions.md D3): every model has
+    18.5-19.3M parameters that receive gradients.
+    """
+    from rbbench.models.factory import count_parameters_used
+
     cfg = load_config(name, "main", "full")
     model = build_model(name, cfg["model"]["args"], (512, 128), seed=0)
+    x = torch.randn(1, 4, 512, 128, 4)
     with torch.no_grad():
-        y = model(torch.randn(1, 4, 512, 128, 4))
+        y = model(x)
     assert y.shape == (1, 512, 128, 4)
-    n = sum(p.numel() for p in model.parameters())
-    assert 12e6 < n < 21e6, n
+    n = count_parameters_used(model, x)
+    assert 18.5e6 < n < 19.3e6, n

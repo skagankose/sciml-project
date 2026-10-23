@@ -26,10 +26,11 @@ All four models are trained from random initialisation and none uses pretrained 
 |---|---|---|
 | convolutional | CNextU-Net (The Well) | 18.6M |
 | spectral | TFNO, Tucker-factorised (The Well → neuraloperator 0.3.0) | 19.3M |
-| attention | AViT, axial (The Well) | 14.7M |
-| recurrent | ConvLSTM: OpenSTL cell, 4-frame unroll, states reset per prediction | 13.3M effective |
+| attention | AViT, axial (The Well), widened 384 → 432 | 18.6M |
+| recurrent | ConvLSTM: OpenSTL cell, 4-frame unroll, states reset per prediction, widened 128 → 152 | 18.8M trainable |
 
-Exact configurations are in `docs/upstream_audit.md`.
+AViT and ConvLSTM are widened from their reference configurations so that all four families have
+matched trainable parameter counts (18.6–19.3M). Exact configurations are in `docs/upstream_audit.md`.
 
 ## Training
 

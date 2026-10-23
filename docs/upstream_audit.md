@@ -50,17 +50,23 @@ rollout equals upstream's formatter-based rollout loop (bitwise on CPU for the t
 |---|---|---|---|---|---|
 | CNextU-Net | `the_well.benchmark.models.UNetConvNext` | `stages=4, blocks_per_stage=2, blocks_at_neck=1, init_features=42` (published RB config; 7×7 depthwise kernels) | channels-first | 18,575,344 | 18,573,454 |
 | TFNO | `the_well.benchmark.models.TFNO` → `neuralop.models.TFNO` (FNO with `factorization="Tucker"`) | `modes1=modes2=16, hidden_channels=128`; neuralop defaults: 4 layers, `rank=1.0`, `implementation="factorized"`, lifting/projection 256, no domain padding, `fft_norm="forward"` | channels-first | 19,276,556 | 19,276,556 |
-| AViT | `the_well.benchmark.models.AViT` | `hidden_dim=384, num_heads=6, processor_blocks=8` (Well config; blocks = class default), patch 16 hard-coded → 32×8 tokens | channels-last | 14,689,792 | 14,689,792 |
-| ConvLSTM | `rbbench.models.convlstm.ConvLSTMForecaster` around OpenSTL `ConvLSTMCell` | OpenSTL reference config: 4 layers × 128 hidden, 5×5 filters, stride 1, 4×4 space-to-depth patches, `layer_norm=False`; plus 3×3 conv encoder (64→128) and 3×3+1×1 decoder | sequence | 16,744,768 | 13,336,896 |
+| AViT | `the_well.benchmark.models.AViT` | `hidden_dim=432, num_heads=6, processor_blocks=8` (Well config 384 widened, see below; blocks = class default), patch 16 hard-coded → 32×8 tokens | channels-last | 18,568,512 | 18,568,512 |
+| ConvLSTM | `rbbench.models.convlstm.ConvLSTMForecaster` around OpenSTL `ConvLSTMCell` | OpenSTL reference config (4 layers, 5×5 filters, stride 1, 4×4 space-to-depth patches, `layer_norm=False`) with hidden width 152 instead of 128; 3×3 conv encoder (64→152) and 3×3+1×1 decoder | sequence | 23,594,416 | 18,788,784 |
 
-All four are inside or near the 15–20M target, so no model was resized and no deviation is needed.
+**Parameter matching (deviation from the reference configs, decided before training).** CNextU-Net and
+TFNO keep their published RB configs. At reference width AViT has 14.69M parameters (hidden 384) and
+ConvLSTM 13.34M trainable (hidden 128), so both are widened within their family to match:
+AViT hidden 384 → 432 (head dimension 72; `hidden_dim/4` still divisible by 12) and ConvLSTM hidden,
+encoder and decoder width 128 → 152. Trainable parameters are then 18.57M / 19.28M / 18.57M / 18.79M
+(CNextU-Net / TFNO / AViT / ConvLSTM), asserted by `tests/test_all_models_rectangular.py`. Matching
+parameters does not match FLOPs or throughput; both are measured in Phase G.
 
 Upstream quirks recorded, not changed:
 
 * **CNextU-Net**: the channels-first `LayerNorm` multiplies by `weight` but never adds `bias`, so 1,890 bias
   parameters receive no gradient.
 * **OpenSTL `ConvLSTMCell`**: allocates `conv_o` and `conv_last` that `forward` never uses (3.41M parameters,
-  no gradient). We report both counts; the effective size is 13.3M.
+  no gradient). We report both counts; the effective size is 18.8M (13.3M at the reference width 128).
 * **AViT**: needs each spatial size divisible by 16, and `hidden_dim/4` divisible by 12 (GroupNorm groups).
   Its absolute positional embedding is sized from `spatial_resolution`, so 512×128 and 64×32 give different
   parameter shapes. Smoke tests use the `tiny` sizes at 64×32 and 128×32.

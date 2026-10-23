@@ -11,8 +11,13 @@ checkpointing, rollout bookkeeping and physics diagnostics.
 **D2 — Pins.** The Well `e63dec8`, neuraloperator 0.3.0, OpenSTL cell vendored at `eecf8a3`, torch 2.8.0,
 Python 3.13 on both machines. See `docs/upstream_audit.md`.
 
-**D3 — Model sizes.** Published Well configs for CNextU-Net (18.6M), TFNO (19.3M) and AViT (14.7M); OpenSTL's
-reference ConvLSTM config (13.3M receiving gradients, 16.7M allocated). No resizing needed.
+**D3 — Model sizes: matched parameter counts.** CNextU-Net (18.57M) and TFNO (19.28M) use their published
+Well RB configs. AViT is widened from hidden 384 (14.69M) to 432 (18.57M) and ConvLSTM from width 128
+(13.34M trainable) to 152 (18.79M trainable, 23.59M allocated because OpenSTL's cell holds unused layers), so all
+four families have 18.6–19.3M trainable parameters. Owner's decision (2026-10-22), made before any training,
+so that capacity is comparable across families. Equal parameters do not mean equal compute per update; Phase G
+records step time, memory and (where computable) FLOPs, and under a fixed time budget the update counts are
+reported.
 
 **D4 — Normalization.** Upstream `stats.yaml` (train-split statistics shipped with the dataset), z-score, the
 same frozen statistics for every subset and model. Recomputing statistics per subset would make inputs differ

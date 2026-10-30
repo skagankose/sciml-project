@@ -15,7 +15,7 @@ Layout on HPC3:
 
 Free space needed on `/pub/$USER` (1 TB quota):
 * 367 GB of data;
-* about 0.25 GB per checkpoint × 3 per run × 36 runs ≈ 27 GB;
+* about 0.25 GB per checkpoint × 3 per run × 12 core runs ≈ 9 GB;
 * evaluation outputs;
 * the environment, about 6 GB.
 
@@ -79,39 +79,54 @@ Then freeze the rollout starts on validation (decisions D15/D16):
 2. Generate the cohort: `python -m rbbench make-cohort --out tasks/eval_cohort.json`.
 3. Pull the generated manifests back with `bash cluster/pull.sh --tasks`, commit them, and push.
 
+## 3b. Pipeline check with released checkpoints **[gate: owner approval of GPU time]**
+
+This needs only the `valid` and `test` splits. Evaluate The Well's released CNextU-Net and TFNO RB checkpoints
+on our data path and compare their one-step VRMSE with the published values (decisions D20). The evaluation
+command is not written yet (`docs/abstract_alignment.md` F1). Report a mismatch to the owner before training
+anything.
+
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 
 ```bash
-sbatch cluster/slurm/profile_a100.sbatch         # batch 1,4,8,16 x fp32/bf16 x 4 models + upstream comparison
+sbatch cluster/slurm/profile_a100.sbatch         # batch 1,4,8,16 x fp32/bf16 x 4 models (ConvLSTM only matters for the extension) + upstream comparison
 python -m rbbench make-sweep --experiment pilot --fractions 0.1 --seeds 0 --out tasks/pilot.jsonl  # on the Mac
 sbatch cluster/slurm/pilot_a100.sbatch           # kill/resume/skip + evaluation per model, short budgets
 ```
 
 Report to the owner:
-* `outputs/pilots/feasibility.csv`: steps/s, peak GB and estimated steps in 2 h / 6 h;
+* `outputs/pilots/feasibility.csv`: steps/s, peak GB and estimated steps per budget (its columns are still
+  named for the earlier 2 h / 6 h budgets);
 * the pilot logs;
 * resume and skip behaviour.
 
 Then freeze batch size, learning rate and precision (decisions D6–D8) and record them in `docs/decisions.md`.
 
-## 5. Main sweep **[gate: explicit owner approval; 36 jobs × ~7 h]**
+## 5. Main sweep **[gate: explicit owner approval; 12 core jobs × ~4.5 h]**
+
+Before this step the code must use the 1 h / 4 h budgets and the 12-run defaults (`docs/abstract_alignment.md`
+F2–F3). Until then, pass the core grid explicitly:
 
 ```bash
-python -m rbbench make-sweep --experiment main --out tasks/train.jsonl    # on the Mac, commit, push
-mkdir -p logs && sbatch cluster/slurm/train_a100.sbatch                  # array 0-35%1, free-gpu, A100
+# on the Mac, then commit and push:
+python -m rbbench make-sweep --experiment main --models cnext_unet tfno avit \
+    --fractions 0.1 1.0 --seeds 0 1 --out tasks/train.jsonl              # 12 rows
+mkdir -p logs && sbatch --array=0-11%1 cluster/slurm/train_a100.sbatch   # free-gpu, A100
 ```
+
+Extensions (a third seed, 30% data, ConvLSTM) are separate manifests and need their own approval.
 
 * Watch it with `squeue -u $USER`, `sacct -j <id> --format=JobID,State,Elapsed,MaxRSS` and `seff <id>`. Do
   not poll the queue in a loop.
 * Exit code 3 means the job was preempted or hit its time limit with state saved. Resubmit the same array:
   finished tasks skip and the rest resume.
-* The paid `gpu` partition (34 SU/GPU-hour, ≥ 7,344 SU for the sweep) requires
+* The paid `gpu` partition (34 SU/GPU-hour, ≥ 1,632 SU for the core sweep) requires
   `sbatch -p gpu -A <lab>_gpu …` and the owner's permission.
 
 ## 6. Evaluation and results
 
 ```bash
-sbatch --array=0-35%2 cluster/slurm/eval_a100.sbatch
+sbatch --array=0-11%2 cluster/slurm/eval_a100.sbatch
 sbatch --array=0 --export=ALL,BASELINE=1 cluster/slurm/eval_a100.sbatch   # persistence
 # Mac:
 HPC3_USER=<UCInetID> bash cluster/pull.sh        # outputs without checkpoints

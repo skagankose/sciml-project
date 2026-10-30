@@ -1,29 +1,42 @@
 # well-rb-four-families
 
-This project compares four neural PDE surrogates, all trained from scratch, on The Well's `rayleigh_benard`
-dataset (512×128, 4 fields). The four models are CNextU-Net (convolutional), TFNO (spectral), AViT (attention)
-and ConvLSTM (recurrent).
+This project compares three neural PDE surrogates, all trained from scratch, on The Well's `rayleigh_benard`
+dataset (512×128, 4 fields). The three models are CNextU-Net (convolutional), TFNO (spectral) and AViT
+(attention). A fourth, recurrent family (ConvLSTM) is implemented as an extension.
 
-The comparison is run under fixed compute and data budgets:
-* **Budgets:** checkpoints at 2 h and 6 h of training on one A100.
-* **Data:** nested 10/30/100% subsets of the training trajectories.
-* **Seeds:** 3 per configuration.
+The core study is run under fixed compute and data budgets:
+* **Budgets:** one 4 h training run on one A100 per configuration, with checkpoints at 1 h and 4 h.
+* **Data:** nested 10% and 100% subsets of the training trajectories.
+* **Seeds:** 2 per configuration, which gives 3 × 2 × 2 = 12 runs.
+* **Pipeline check:** before training, The Well's released CNextU-Net and TFNO checkpoints are evaluated and
+  compared with their published VRMSE.
 
 The evaluation covers:
 * one-step and rollout VRMSE;
 * failure horizons;
-* robustness to noisy initial observations;
-* Nusselt numbers;
 * horizontal kinetic-energy spectra;
-* resource use.
+* resource use;
+* Nusselt numbers, only if the dataset audit passes.
 
-This is a graduate project for an ML-for-Science class. The final report is due 2026-12-11.
+Extensions, if time and compute allow, in priority order:
+1. input-noise robustness (evaluation only);
+2. a third seed;
+3. a 30% data fraction;
+4. ConvLSTM.
+
+This is a graduate project for an ML-for-Science class. The check-in is on 2026-11-12 and the final report is
+due 2026-12-11.
+
+The study design follows the final project abstract (2026-10-30). The code defaults still implement the earlier
+plan: 4 models, 10/30/100% data, 3 seeds, 2 h/6 h budgets and noise in every evaluation. The code changes still
+to make are listed in `docs/abstract_alignment.md`.
 
 * Development and smoke tests run on the Mac, and all reported runs run on UCI HPC3. The step-by-step
   cluster workflow is in `cluster/README.md`.
 * The protocol and its open decisions are in `docs/methodology.md` and `docs/decisions.md`.
 * The pinned upstream code and model configurations are in `docs/upstream_audit.md`.
 * The output layout is in `docs/results_schema.md`.
+* Where the final abstract differs from the code, and what is deferred, is in `docs/abstract_alignment.md`.
 * Status and the gates between phases are in `AGENTS.md`.
 
 ## Setup (Mac)
@@ -65,7 +78,7 @@ The `smoke` command runs the real pipeline end to end on tiny models:
 | `inspect-dataset` | dataset audit JSON; gates the physics diagnostics |
 | `make-subsets`, `make-cohort`, `make-sweep` | frozen manifests in `tasks/` |
 | `train`, `train-task` | one run (explicit or by task index); resumable, budgeted |
-| `eval-task`, `eval-baseline` | evaluate 2h/6h checkpoints / persistence |
+| `eval-task`, `eval-baseline` | evaluate the milestone checkpoints / persistence |
 | `profile` | A100 throughput, memory and latency (`outputs/pilots/feasibility.csv`) |
 | `aggregate` | `tables/` and `figures/` from copied outputs (runs on the Mac) |
 | `verify-download`, `check-gpu`, `fixture`, `smoke` | infrastructure |
@@ -89,5 +102,6 @@ docs/      methodology, decisions, upstream audit, results schema
 ## Reference numbers (not targets)
 
 On `rayleigh_benard`, The Well's 12 h H100 benchmark reports a test one-step VRMSE of 0.6699 for CNextU-Net
-and 0.6566 for TFNO. There are no published Well RB numbers for AViT or ConvLSTM. This project's budgets are 2 h
-and 6 h on an A100, so its numbers are not expected to match.
+and 0.6566 for TFNO. There are no published Well RB numbers for AViT or ConvLSTM. This project's budgets are 1 h
+and 4 h on an A100, so its trained models are not expected to match. The released checkpoints themselves should
+match; that is the pipeline check.

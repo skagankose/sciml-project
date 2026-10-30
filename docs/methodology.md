@@ -1,7 +1,8 @@
 # Methodology
 
-This is the draft methods section for the report. Values marked *(pending)* are filled in from the pilot and
-the dataset audit.
+This is the draft methods section for the report. It follows the final project abstract (2026-10-30). Values
+marked *(pending)* are filled in from the pilot and the dataset audit. Where the code still runs the earlier
+plan, `docs/abstract_alignment.md` lists the change.
 
 ## Task
 
@@ -13,61 +14,79 @@ rollout of that one-step model.
 
 ## Data
 
-* The official train/valid/test splits are unchanged. The 10%, 30% and 100% training subsets are nested,
-  stratified by (Ra, Pr), and fixed in `tasks/subset_*.json`. Every model and seed uses the same subsets.
+* The official train/valid/test splits are unchanged. The 10% and 100% training subsets are nested, stratified
+  by (Ra, Pr), and fixed in `tasks/subset_*.json`. Every model and seed uses the same subsets. The 30% subset
+  is generated from the same permutation, so it nests between them if the extension runs.
 * All 196 windows of each selected trajectory are used.
 * Z-score normalization uses the dataset's shipped training statistics, frozen for every run.
 
 ## Models
 
-All four models are trained from random initialisation and none uses pretrained weights.
+All models are trained from random initialisation; none is trained from pretrained weights.
 
-| Family | Model | Parameters |
-|---|---|---|
-| convolutional | CNextU-Net (The Well) | 18.6M |
-| spectral | TFNO, Tucker-factorised (The Well → neuraloperator 0.3.0) | 19.3M |
-| attention | AViT, axial (The Well), widened 384 → 432 | 18.6M |
-| recurrent | ConvLSTM: OpenSTL cell, 4-frame unroll, states reset per prediction, widened 128 → 152 | 18.8M trainable |
+| Family | Model | Parameters | Role |
+|---|---|---|---|
+| convolutional | CNextU-Net (The Well) | 18.6M | core |
+| spectral | TFNO, Tucker-factorised (The Well → neuraloperator 0.3.0) | 19.3M | core |
+| attention | AViT, axial (The Well), widened 384 → 432 | 18.6M | core |
+| recurrent | ConvLSTM: OpenSTL cell, 4-frame unroll, states reset per prediction, widened 128 → 152 | 18.8M trainable | extension |
 
-AViT and ConvLSTM are widened from their reference configurations so that all four families have
-matched trainable parameter counts (18.6–19.3M). Exact configurations are in `docs/upstream_audit.md`.
+AViT (and ConvLSTM, if it runs) is widened from its reference configuration so that all families have matched
+trainable parameter counts (18.6–19.3M). Exact configurations are in `docs/upstream_audit.md`.
+
+## Pipeline check
+
+Before any training, The Well's released checkpoints `polymathic-ai/UNetConvNext-rayleigh_benard` and
+`polymathic-ai/TFNO-rayleigh_benard` are evaluated with this project's data path and metric. Their
+configurations match ours. Their one-step VRMSE should match the published values: CNextU-Net 0.4807 (valid) /
+0.6699 (test), TFNO 0.8568 / 0.6566. These checkpoints are only evaluated, never trained from (AGENTS.md
+rule 3).
 
 ## Training
 
 * The objective, optimizer, normalization, batch size and schedule are the same for every model; see
   `docs/decisions.md` D5–D8.
-* Each (model, fraction, seed) run trains for 6 h of measured training-loop time on one A100 80 GB. Checkpoints
-  are taken at the first step at/after 2 h and at/after 6 h of that same run.
-* The grid is 4 models × 3 fractions × 3 seeds = 36 runs, which gives 72 checkpoints.
+* An equal-budget learning-rate search on validation data precedes training. Its procedure is deferred (D7).
+* Each (model, fraction, seed) run trains for 4 h of measured training-loop time on one A100 80 GB. Checkpoints
+  are taken at the first step at/after 1 h and at/after 4 h of that same run.
+* The core grid is 3 models × 2 fractions × 2 seeds = 12 runs, which gives 24 checkpoints.
+* Extensions, if time and compute allow, in priority order:
+  1. input-noise robustness (evaluation only);
+  2. a third seed;
+  3. a 30% data fraction;
+  4. ConvLSTM.
 * The seed controls initialisation and data order.
 * Update counts differ between models at equal time, and they are reported as part of the efficiency
   comparison.
+* Backup plan: if storage, queue time or pilot timings show the plan is too costly, the data size is reduced
+  for all models equally, with fewer trajectories or downsampled fields (D21).
 
 ## Evaluation
 
 The same frozen cohort is used for every checkpoint: all test trajectories, with rollout starts frozen on
 validation *(pending)*.
 
-* **One-step VRMSE.** The pinned upstream implementation, in physical units, per field and field-averaged,
-  averaged over every test window with equal weight per window.
+* **One-step VRMSE.** The pinned upstream implementation (RMSE divided by the target field's standard
+  deviation), in physical units, per field and field-averaged, averaged over every test window with equal
+  weight per window.
 * **Rollout VRMSE.** Reported at steps 1, 3, 6, 12, 20 and 30.
 * **Failure horizon.** The first step where field-mean VRMSE exceeds the threshold (1.0 and 2.0, with 5.0 as a
   sensitivity check). Rollouts that never cross are right-censored, and the results are reported as
   Kaplan–Meier survival curves and median horizons.
-* **Robustness.** Gaussian noise σ ∈ {0.01, 0.05, 0.1, 0.2} (normalised units) is added to the 4 observed frames
-  only. The draws are identical across models.
-* **Nusselt number.** Volume form ⟨u_y b − κ∂_y b⟩/(κΔb/L_y) on predicted and reference frames, using Chebyshev
-  derivatives and quadrature. The reference is checked against the wall-gradient Nusselt number before use.
 * **Horizontal kinetic-energy spectrum.** A 1-D FFT in x, averaged over y with Chebyshev quadrature
   (Parseval-checked). We report the mean |log10 E_pred − log10 E_true| over non-empty bins with k > 0.
 * **Efficiency.** Training steps and samples, train time, peak CUDA memory, batch-1 inference latency per
-  frame and per 30-step rollout, and Slurm GPU-hours.
+  frame and per 30-step rollout, and GPU-hours.
 * **Persistence.** x_{t+1} = x_t is reported as a diagnostic reference.
+* **Robustness (extension).** Gaussian noise σ ∈ {0.01, 0.05, 0.1, 0.2} (normalised units) is added to the 4
+  observed frames of clean-trained models. The draws are identical across models.
+* **Nusselt number (optional).** Reported only if the dataset audit passes. It uses the volume form
+  ⟨u_y b − κ∂_y b⟩/(κΔb/L_y) on predicted and reference frames, with Chebyshev derivatives and quadrature, and
+  the reference is checked against the wall-gradient Nusselt number.
 
 ## Reporting
 
-* For every model × fraction × budget we report the mean ± standard deviation over 3 seeds, together with the
-  individual seeds.
+* For every model × fraction × budget we report the mean over seeds together with every individual seed value.
 * Missing or diverged runs are listed rather than dropped silently.
 * Every number traces back to a `run_id` and to that run's `provenance.json`: commit, environment, GPU, Slurm
   job, manifest hashes and seed.

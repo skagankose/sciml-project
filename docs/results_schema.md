@@ -9,14 +9,14 @@ outputs/
     resolved_config.yaml                # full config; its hash is in the task row
     provenance.json                     # per attempt: git commit/dirty, packages, GPU, Slurm ids, host
     train_metrics.csv                   # event rows: start|resume|train|val|milestone_*|preempted|failed
-    checkpoint_2h.pt, checkpoint_6h.pt  # full state at the milestone step
+    checkpoint_<label>.pt               # full state at the milestone step; label = budget name (1h, 4h)
     last_resume.pt                      # latest full state (preemption)
     COMPLETE.json                       # training finished; checkpoint sha256, milestones, overhead
     FAILED.json                         # only if training diverged
     evaluations/
-      EVAL_COMPLETE_<label>.json        # label = 2h | 6h; cohort hash, metric version, checkpoint sha
+      EVAL_COMPLETE_<label>.json        # label = 1h | 4h; cohort hash, metric version, checkpoint sha
       clean_<label>.json                # one-step + rollout + failure + Nusselt + spectra + latency summary
-      noise_<sigma>_<label>.json        # the same for each sigma > 0 (no one-step)
+      noise_<sigma>_<label>.json        # noise extension only: the same for each sigma > 0 (no one-step)
       one_step_<label>.parquet          # per test window
       rollout_<label>.parquet           # per trajectory x start x sigma x step
       physics_<label>.parquet           # Nusselt (volume, wall) and log-spectral error per rollout step

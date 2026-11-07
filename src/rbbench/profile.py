@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from rbbench.data import FieldWindows, ResumableRandomSampler, make_well_dataset
-from rbbench.device import autocast_context, synchronize
+from rbbench.device import autocast_context, check_precision, synchronize
 from rbbench.evaluate import measure_latency, model_predictor
 from rbbench.manifests import atomic_torch_save
 from rbbench.models.factory import count_parameters, count_parameters_used, model_from_config
@@ -45,6 +45,7 @@ def profile_model(cfg: dict, device: torch.device, dataset_dir: Path, batch_size
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(device)
     try:
+        check_precision(name, precision)
         ds = make_well_dataset(dataset_dir, "train", cfg["task"]["n_steps_input"], 1)
         windows = FieldWindows(ds, range(len(ds)))
         loader = DataLoader(windows, batch_size=batch_size, sampler=ResumableRandomSampler(len(windows), 0),

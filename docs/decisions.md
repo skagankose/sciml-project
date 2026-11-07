@@ -49,6 +49,13 @@ recorded. No test-set tuning.
 
 **D8 — Precision (PENDING).** fp32 by default. bf16 autocast only for models whose A100 pilot shows finite,
 matching validation loss; TFNO stays fp32 unless bf16 FFTs are shown to work. Recorded per model.
+* *TFNO is fp32 only (A100 check, 2026-11-07).* Under bf16 autocast, neuralop's `SpectralConv` fails in
+  `torch.fft.rfftn` with "Unsupported dtype BFloat16" (torch 2.8). The Well's trainer keeps AMP off for the
+  same reason (`training.py:108`, "bfloat not supported in FFT"), so its published TFNO numbers are fp32.
+  `train` and `profile` refuse bf16 for TFNO (`device.FP32_ONLY_MODELS`), and
+  `tests/test_cuda.py::test_bf16_fft_still_unsupported` flags a torch version that adds bf16 FFTs.
+* CNextU-Net, AViT and ConvLSTM pass a full-size bf16 step and 30-step rollout on the A100. Whether to use
+  bf16 for them, and so give the models different precisions, is still open.
 
 **D9 — Budget clock.** Per optimizer step, from requesting the batch to the synchronised end of
 `optimizer.step()`. Excludes startup, worker spawn, validation and checkpoint writes; those are logged

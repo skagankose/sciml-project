@@ -20,7 +20,7 @@ Rules:
 |---|---|---|
 | A Mac bootstrap | tests + synthetic smoke for all 4 models without data | **passed 2026-10-22** (90 passed, 9 CUDA skipped) |
 | B Upstream audit | shapes, parameter counts, random init, gradients; `docs/upstream_audit.md` | **passed 2026-10-22** (Mac CPU; 512×128 forward on CPU) |
-| C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | env built 2026-11-07 (`env/hpc3-*` committed); A100 check submitted, result pending |
+| C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | env built 2026-11-07 (`env/hpc3-*` committed). First A100 check: 98/99, only TFNO under bf16 failed (no bf16 FFT; now fp32 only, D8). Rerun pending |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download submitted 2026-11-07 (valid, test, then train) |
 | D2 Pipeline check | The Well's released CNextU-Net and TFNO checkpoints reproduce their published one-step VRMSE on our data path (within 5%) | `eval-released` + `released_a100.sbatch` done and tested offline; checkpoints verified on the Mac; needs verified valid/test; **owner approval before GPU time** |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | code + tests done; real manifests not generated |
@@ -61,3 +61,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     models bitwise-equal to upstream; scored with the same one-step code as our runs.
   * GPU-hours: per-attempt and per-evaluation-pass wall times, summed in `tables/gpu_hours.csv`.
   * `pull.sh --env` no longer also pulls `outputs/`. 100 tests pass; smoke passes.
+  * First A100 check (job 59077767): 98 of 99 tests passed, including all four full-size models in fp32 and
+    CNextU-Net, AViT and ConvLSTM in bf16. TFNO under bf16 fails in `torch.fft.rfftn` ("Unsupported dtype
+    BFloat16"), as The Well's trainer notes. TFNO is now fp32 only: `train` and `profile` refuse bf16 for
+    it, and a CUDA test pins the finding (D8). The first download job was preempted after 28 min; it resumes
+    on resubmit.

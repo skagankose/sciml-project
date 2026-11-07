@@ -37,7 +37,7 @@ from rbbench.data import (
     make_well_dataset,
     window_indices,
 )
-from rbbench.device import autocast_context, synchronize
+from rbbench.device import autocast_context, check_precision, synchronize
 from rbbench.manifests import (
     atomic_torch_save,
     atomic_write_json,
@@ -273,6 +273,7 @@ def train_run(
     Statuses: "complete", "already_complete", "preempted" (state saved; rerun to resume).
     `stop_after_steps` and `step_callback` are test hooks that simulate preemption.
     """
+    check_precision(cfg["model"]["name"], cfg["train"]["precision"])
     attempt_t0 = time.time()
     paths = RunPaths(Path(run_dir))
     paths.root.mkdir(parents=True, exist_ok=True)

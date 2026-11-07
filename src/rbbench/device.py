@@ -41,6 +41,19 @@ def synchronize(device: torch.device) -> None:
         torch.mps.synchronize()
 
 
+# Models built on torch.fft cannot run under bf16 autocast: torch 2.8 has no bfloat16 FFT
+# ("RuntimeError: Unsupported dtype BFloat16" in neuralop's SpectralConv on the A100, 2026-11-07).
+# The Well's trainer keeps AMP off for the same reason (the_well/benchmark/trainer/training.py:108).
+FP32_ONLY_MODELS = frozenset({"tfno"})
+
+
+def check_precision(model_name: str, precision: str) -> None:
+    """Refuse a precision the model cannot run before any GPU time is spent (decisions D8)."""
+    if precision == "bf16" and model_name in FP32_ONLY_MODELS:
+        raise ValueError(f"{model_name} cannot run under bf16 autocast (torch.fft has no bfloat16 support); "
+                         "use train.precision=fp32 (decisions D8)")
+
+
 def autocast_context(device: torch.device, precision: str):
     """bf16 autocast on CUDA when requested; full precision otherwise."""
     if precision == "bf16":

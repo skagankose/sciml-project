@@ -1,4 +1,5 @@
-# Primary sweep: 4 models x {10,30,100}% x seeds {0,1,2}; one 6 h run each,
-# checkpoints at the first optimizer step at/after 2 h and 6 h of training time.
+# Main sweep: one 4 h run per task, checkpoints at the first optimizer step at/after 1 h and
+# 4 h of training time. The core grid (cnext_unet, tfno, avit x 10/100% x seeds 0,1) is passed
+# to make-sweep explicitly (cluster/README.md step 5).
 # Inherits everything from common.yaml. Freeze PENDING values there before use.
 {}

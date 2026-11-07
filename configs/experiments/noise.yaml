@@ -1,0 +1,6 @@
+# Noise-robustness extension (evaluation only): re-evaluate the trained checkpoints with
+# identical Gaussian noise on the 4 observed frames. Build its own cohort and use it for every
+# run, since aggregation never mixes cohorts:
+#   python -m rbbench make-cohort --experiment noise --out tasks/eval_cohort_noise.json
+eval:
+  noise_sigmas: [0.0, 0.01, 0.05, 0.10, 0.20]

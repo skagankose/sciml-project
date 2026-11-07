@@ -1,7 +1,7 @@
 """One command from copied run outputs to report tables and figures (runs on the Mac).
 
-Reads tasks/train.jsonl, each run's COMPLETE.json and evaluations/, and writes
-tables/{main_results,per_seed_results,resource_use,missing_runs}.csv and figures/*.{pdf,png}.
+Reads tasks/train.jsonl, each run's COMPLETE.json, provenance.json and evaluations/, and writes
+tables/{main_results,per_seed_results,resource_use,gpu_hours,missing_runs}.csv and figures/*.{pdf,png}.
 Every number keeps its run_id, so it can be traced to commit, seed, manifest and raw file.
 """
 
@@ -56,11 +56,23 @@ def _load_run(row: dict, output_root: Path, labels: list[str]) -> tuple[list[dic
     return metrics, comp, problems
 
 
-def collect(tasks_path: Path, output_root: Path, labels=("2h", "6h")):
+def row_labels(row: dict) -> list[str]:
+    """Milestone labels of one task, from the exact config the task trains with."""
+    from rbbench.config import budget_labels
+    from rbbench.sweep import task_config
+
+    cfg = task_config(row["model"], row["experiment"], row["size"], row["subset_manifest"], row.get("overrides"))
+    return budget_labels(cfg)
+
+
+def collect(tasks_path: Path, output_root: Path, labels=None):
+    """Load every task's evaluations; `labels` defaults to each task's own milestones."""
     rows = read_jsonl(tasks_path)
-    loaded, problems = [], []
+    loaded, problems, expected = [], [], 0
     for row in rows:
-        metrics, _, probs = _load_run(row, output_root, list(labels))
+        want = list(labels) if labels else row_labels(row)
+        expected += len(want)
+        metrics, _, probs = _load_run(row, output_root, want)
         loaded += metrics
         problems += probs
     versions = {m["info"]["metric_version"] for m in loaded}
@@ -69,7 +81,7 @@ def collect(tasks_path: Path, output_root: Path, labels=("2h", "6h")):
         raise RuntimeError(f"mixed metric versions {versions}; re-evaluate before aggregating")
     if len(cohorts) > 1:
         raise RuntimeError(f"runs were evaluated on different cohorts: {cohorts}")
-    return rows, loaded, problems
+    return rows, loaded, problems, expected
 
 
 def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
@@ -135,6 +147,56 @@ def resource_table(loaded: list[dict]) -> pd.DataFrame:
             "budget_satisfied": comp.get("budget_satisfied"),
         })
     return pd.DataFrame(recs)
+
+
+def gpu_hours_table(rows: list[dict], output_root: Path) -> pd.DataFrame:
+    """Wall and GPU hours per run, plus a TOTAL row (one GPU per job).
+
+    Training: each attempt's wall time from train_run start to exit (provenance.json). An
+    attempt killed without closing falls back to its last train_metrics.csv row, a lower
+    bound, and is counted in `unclosed_attempts`. Evaluation: the wall time of each evaluation
+    pass (EVAL_COMPLETE markers), counted once even when a pass covered several milestones.
+    Neither includes queue time or the job's environment setup; `sacct` has Slurm's own figure.
+    """
+    recs = []
+    for row in rows:
+        run_dir = output_root / "runs" / row["run_id"]
+        prov_path = run_dir / "provenance.json"
+        if not prov_path.exists():
+            continue
+        attempts = read_json(prov_path).get("attempts", [])
+        logged = {}
+        if (run_dir / "train_metrics.csv").exists():
+            log = pd.read_csv(run_dir / "train_metrics.csv", usecols=["attempt", "wall_seconds"])
+            logged = log.groupby("attempt")["wall_seconds"].max().to_dict()
+        train_wall = train_gpu = 0.0
+        unclosed = 0
+        for a in attempts:
+            wall = a.get("wall_seconds")
+            if wall is None:
+                unclosed += 1
+                wall = float(logged.get(a.get("attempt"), 0.0))
+            train_wall += wall
+            train_gpu += wall if str(a.get("device", "")).startswith("cuda") else 0.0
+        passes = {}
+        for marker in sorted((run_dir / "evaluations").glob("EVAL_COMPLETE_*.json")):
+            p = read_json(marker).get("pass")
+            if p:
+                passes[(tuple(p["labels"]), p["wall_seconds"])] = p
+        eval_wall = sum(p["wall_seconds"] for p in passes.values())
+        eval_gpu = sum(p["wall_seconds"] for p in passes.values() if p["device"].startswith("cuda"))
+        recs.append({
+            "run_id": row["run_id"], "model": row["model"], "fraction": row["fraction"], "seed": row["seed"],
+            "attempts": len(attempts), "unclosed_attempts": unclosed,
+            "train_wall_hours": train_wall / 3600, "train_gpu_hours": train_gpu / 3600,
+            "eval_passes": len(passes), "eval_wall_hours": eval_wall / 3600, "eval_gpu_hours": eval_gpu / 3600,
+        })
+    df = pd.DataFrame(recs)
+    if df.empty:
+        return df
+    total = {c: df[c].sum() for c in df.columns if c.endswith("_hours") or c in ("attempts", "unclosed_attempts",
+                                                                                  "eval_passes")}
+    return pd.concat([df, pd.DataFrame([{"run_id": "TOTAL", **total}])], ignore_index=True)
 
 
 # --- figures ------------------------------------------------------------------------------
@@ -264,9 +326,9 @@ def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFr
         written += _save(fig, figures_dir, "fig3_failure_survival")
         plt.close(fig)
 
-    # 4. noise degradation at a fixed step
+    # 4. noise degradation at a fixed step (only when noise levels were evaluated)
     steps = sorted(set(summary[summary.metric == "rollout_vrmse_mean"].step.dropna()))
-    if steps:
+    if steps and summary.sigma.nunique() > 1:
         k = int(steps[min(2, len(steps) - 1)])
         fig, axes = plt.subplots(1, len(budgets), figsize=(4.2 * len(budgets), 3.2), sharey=True, squeeze=False)
         for ax, b in zip(axes[0], budgets):
@@ -378,15 +440,17 @@ def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFr
 
 
 def aggregate(tasks_path: Path, output_root: Path, tables_dir: Path, figures_dir: Path,
-              labels=("2h", "6h"), baseline_dir: Path | None = None) -> dict:
-    rows, loaded, problems = collect(tasks_path, output_root, labels)
+              labels=None, baseline_dir: Path | None = None) -> dict:
+    rows, loaded, problems, expected = collect(tasks_path, output_root, labels)
     tables_dir.mkdir(parents=True, exist_ok=True)
     per_seed = per_seed_table(loaded)
     summary = summary_table(per_seed)
     resources = resource_table(loaded)
+    gpu_hours = gpu_hours_table(rows, output_root)
     per_seed.to_csv(tables_dir / "per_seed_results.csv", index=False)
     summary.to_csv(tables_dir / "main_results.csv", index=False)
     resources.to_csv(tables_dir / "resource_use.csv", index=False)
+    gpu_hours.to_csv(tables_dir / "gpu_hours.csv", index=False)
     pd.DataFrame({"problem": problems}).to_csv(tables_dir / "missing_runs.csv", index=False)
     baseline = None
     if baseline_dir and (baseline_dir / "clean_na.json").exists():
@@ -396,6 +460,8 @@ def aggregate(tasks_path: Path, output_root: Path, tables_dir: Path, figures_dir
     for p in problems:
         warnings.warn(p)
     figures = make_figures(summary, loaded, resources, figures_dir, baseline)
-    expected = len(rows) * len(labels)
+    totals = gpu_hours[gpu_hours.run_id == "TOTAL"].iloc[0] if not gpu_hours.empty else {}
     return {"tasks": len(rows), "expected_evaluations": expected, "found_evaluations": len(loaded),
+            "train_gpu_hours": float(totals.get("train_gpu_hours", 0.0)),
+            "eval_gpu_hours": float(totals.get("eval_gpu_hours", 0.0)),
             "problems": problems, "figures": figures}

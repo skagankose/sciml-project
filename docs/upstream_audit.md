@@ -72,8 +72,25 @@ Upstream quirks recorded, not changed:
   parameter shapes. Smoke tests use the `tiny` sizes at 64×32 and 128×32.
 * **TFNO**: The Well notes that bf16 autocast is unsupported for FFTs. A bf16 run must be checked on the A100
   (Phase G) before it is used; fp32 is the default.
-* `the_well.benchmark.models.common.BaseModel` inherits `PyTorchModelHubMixin` (`from_pretrained`). This
-  project never calls it (`tests/test_backward.py` scans the source).
+* `the_well.benchmark.models.common.BaseModel` inherits `PyTorchModelHubMixin` (`from_pretrained`). No model
+  is ever trained from it. Only `rbbench/released.py` downloads weights, for the pipeline check below, and
+  `tests/test_backward.py` enforces that.
+
+## Released checkpoints (pipeline check, decisions D20)
+
+Checked on the Mac on 2026-11-07 (weights only; no dataset):
+
+| Model | Repository | Revision | `model.safetensors` sha256 | Size |
+|---|---|---|---|---|
+| CNextU-Net | `polymathic-ai/UNetConvNext-rayleigh_benard` | `c5fa0f7a50aca21b65fed95e0f7e8d1097eb2b8b` | `4d02a86e…ceafbd` | 74.3 MB |
+| TFNO | `polymathic-ai/TFNO-rayleigh_benard` | `7d351350eaf68caba1eac1e545cd6661251dd1fd` | `19ff9046…05484a` | 77.1 MB |
+
+* Each repository holds `config.json` and `model.safetensors` only.
+* Both `config.json` files equal our `full` configs. TFNO's adds `modes3: 16`, which the pinned `TFNO` uses
+  only for 3-D data.
+* The weights load strictly into our adapters' `net` (no missing or unexpected keys), and the loaded models
+  match upstream `from_pretrained` bitwise on a random 512×128 input.
+* The Hugging Face cache names these files by Xet hashes, not SHA-256, so `released.py` pins the SHA-256 itself.
 
 ## Metric
 

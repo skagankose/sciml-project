@@ -9,8 +9,8 @@ schedule:
 train:
   batch_size: 2
   budgets_seconds:
-    2h: 1.0e9
-    6h: 2.0e9
+    1h: 1.0e9
+    4h: 2.0e9
   val_windows: 4
   log_every_steps: 1
 eval:
@@ -18,6 +18,7 @@ eval:
   report_steps: [1, 3, 6]
   rollout_starts: [0, 10]
   spectra_steps: [1, 6]
+  noise_sigmas: [0.0, 0.05]          # keeps the noise code path exercised on every push
   batch_size: 4
   latency_warmup: 1
   latency_iters: 2

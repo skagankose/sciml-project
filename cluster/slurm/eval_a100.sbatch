@@ -1,7 +1,7 @@
 #!/bin/bash
-# Evaluate the 2h and 6h checkpoints of each finished training task (separate from the
-# training clock). Needs tasks/eval_cohort.json and outputs/audit/dataset_audit.json.
-#   sbatch --array=0-35%2 cluster/slurm/eval_a100.sbatch
+# Evaluate the milestone checkpoints (1h and 4h) of each finished training task, separate from
+# the training clock. Needs tasks/eval_cohort.json and outputs/audit/dataset_audit.json.
+#   sbatch --array=0-11%2 cluster/slurm/eval_a100.sbatch
 # Persistence baseline once:  sbatch --array=0 --export=ALL,BASELINE=1 cluster/slurm/eval_a100.sbatch
 #SBATCH --job-name=rb4-eval
 #SBATCH --partition=free-gpu
@@ -23,4 +23,4 @@ if [ -n "${BASELINE:-}" ]; then
     exec python -m rbbench eval-baseline --device cuda --cohort tasks/eval_cohort.json --audit "$AUDIT"
 fi
 exec python -m rbbench eval-task --manifest "$MANIFEST" --task-index "$SLURM_ARRAY_TASK_ID" \
-    --device cuda --labels 2h 6h --cohort tasks/eval_cohort.json --audit "$AUDIT" --skip-if-complete
+    --device cuda --cohort "${COHORT:-tasks/eval_cohort.json}" --audit "$AUDIT" --skip-if-complete

@@ -39,8 +39,9 @@ trainable parameter counts (18.6–19.3M). Exact configurations are in `docs/ups
 Before any training, The Well's released checkpoints `polymathic-ai/UNetConvNext-rayleigh_benard` and
 `polymathic-ai/TFNO-rayleigh_benard` are evaluated with this project's data path and metric. Their
 configurations match ours. Their one-step VRMSE should match the published values: CNextU-Net 0.4807 (valid) /
-0.6699 (test), TFNO 0.8568 / 0.6566. These checkpoints are only evaluated, never trained from (AGENTS.md
-rule 3).
+0.6699 (test), TFNO 0.8568 / 0.6566. The check passes when every model and split is within 5% of the published
+value. The checkpoints are pinned to a revision and file hash, scored with the same per-window code as our own
+runs, and only evaluated, never trained from (AGENTS.md rule 3; decisions D20).
 
 ## Training
 
@@ -76,7 +77,8 @@ validation *(pending)*.
 * **Horizontal kinetic-energy spectrum.** A 1-D FFT in x, averaged over y with Chebyshev quadrature
   (Parseval-checked). We report the mean |log10 E_pred − log10 E_true| over non-empty bins with k > 0.
 * **Efficiency.** Training steps and samples, train time, peak CUDA memory, batch-1 inference latency per
-  frame and per 30-step rollout, and GPU-hours.
+  frame and per 30-step rollout, and GPU-hours: the measured wall time of every training attempt and
+  evaluation pass on one GPU, per run and in total (decisions D22).
 * **Persistence.** x_{t+1} = x_t is reported as a diagnostic reference.
 * **Robustness (extension).** Gaussian noise σ ∈ {0.01, 0.05, 0.1, 0.2} (normalised units) is added to the 4
   observed frames of clean-trained models. The draws are identical across models.

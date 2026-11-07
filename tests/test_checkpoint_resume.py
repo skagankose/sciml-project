@@ -7,7 +7,7 @@ from helpers import FakeClock
 
 from rbbench.train import train_run
 
-OVERRIDES = ["train.budgets_seconds={2h: 3.0, 6h: 5.0}", "train.val_every_seconds=1.0e9",
+OVERRIDES = ["train.budgets_seconds={1h: 3.0, 4h: 5.0}", "train.val_every_seconds=1.0e9",
              "train.resume_every_seconds=1.0e9", "schedule.warmup_steps=3", "train.batch_size=4"]
 
 
@@ -29,7 +29,7 @@ def test_interrupted_equals_uninterrupted(dataset_dir, tiny_cfg, tmp_path):
     assert mid["step"] == 7 and mid["state"]["position"] == 28  # sampler position persisted
     r2 = train_run(cfg, tmp_path / "b", dataset_dir, 1, dev, clock=FakeClock(0.5))
     assert r2["status"] == "complete"
-    a, b = _weights(tmp_path / "a" / "checkpoint_6h.pt"), _weights(tmp_path / "b" / "checkpoint_6h.pt")
+    a, b = _weights(tmp_path / "a" / "checkpoint_4h.pt"), _weights(tmp_path / "b" / "checkpoint_4h.pt")
     assert a["step"] == b["step"] == 10
     assert _same(a["model"], b["model"])  # bitwise on CPU
     oa, ob = a["optimizer"]["state"], b["optimizer"]["state"]
@@ -40,12 +40,12 @@ def test_interrupted_equals_uninterrupted(dataset_dir, tiny_cfg, tmp_path):
 def test_full_state_saved(dataset_dir, tiny_cfg, tmp_path):
     cfg = tiny_cfg("tfno", *OVERRIDES)
     train_run(cfg, tmp_path / "r", dataset_dir, 0, torch.device("cpu"), clock=FakeClock(0.5))
-    ck = _weights(tmp_path / "r" / "checkpoint_2h.pt")
+    ck = _weights(tmp_path / "r" / "checkpoint_1h.pt")
     for key in ("model", "optimizer", "scheduler", "scaler", "rng", "state", "config_sha256", "seed"):
         assert key in ck
     assert {"python", "numpy", "torch"} <= set(ck["rng"])
     assert {"epoch", "position", "train_seconds", "milestones", "attempt"} <= set(ck["state"])
-    assert ck["milestone"] == "2h"
+    assert ck["milestone"] == "1h"
 
 
 def test_sigusr1_checkpoints_and_exits(dataset_dir, tiny_cfg, tmp_path):
@@ -66,7 +66,7 @@ def test_sigusr1_checkpoints_and_exits(dataset_dir, tiny_cfg, tmp_path):
 def test_overfit_small_set_loss_decreases(dataset_dir, tiny_cfg, tmp_path):
     from rbbench.data import list_trajectories
 
-    cfg = tiny_cfg("cnext_unet", "train.budgets_seconds={2h: 20.0, 6h: 40.0}", "optim.lr=3.0e-3",
+    cfg = tiny_cfg("cnext_unet", "train.budgets_seconds={1h: 20.0, 4h: 40.0}", "optim.lr=3.0e-3",
                    "schedule.name=constant", "train.val_every_seconds=1.0e9", "train.log_every_steps=1")
     one = [list_trajectories(dataset_dir, "train")[0].id]
     train_run(cfg, tmp_path / "r", dataset_dir, 0, torch.device("cpu"), subset_ids=one, clock=FakeClock(0.5))

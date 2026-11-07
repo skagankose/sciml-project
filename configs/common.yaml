@@ -37,9 +37,10 @@ train:
   grad_clip_norm: null              # upstream does not clip
   deterministic: false
   # Cumulative training-loop seconds (data loading + forward + backward + optimizer).
+  # Labels name the checkpoints (checkpoint_1h.pt, ...); overrides replace this mapping whole.
   budgets_seconds:
-    2h: 7200
-    6h: 21600
+    1h: 3600
+    4h: 14400
   resume_every_seconds: 900         # wall seconds between last_resume.pt writes
   val_every_seconds: 1800           # training seconds between short validations
   val_windows: 64                   # fixed, evenly spaced validation windows
@@ -51,7 +52,7 @@ eval:
   report_steps: [1, 3, 6, 12, 20, 30]
   rollout_starts: [20, 80, 140]     # PENDING: freeze from validation before reporting
   thresholds: [1.0, 2.0, 5.0]       # VRMSE failure thresholds; primary chosen on validation
-  noise_sigmas: [0.0, 0.01, 0.05, 0.10, 0.20]
+  noise_sigmas: [0.0]               # core study: clean only; the noise extension uses experiments/noise.yaml
   noise_seed: 0
   one_step_window_stride: 1         # 1 = every window of every test trajectory
   spectra_steps: [1, 10, 30]

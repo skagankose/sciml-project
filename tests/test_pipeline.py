@@ -19,9 +19,14 @@ def test_smoke_all_models(tmp_path):
     )
     for run in (tmp_path / "outputs" / "runs").glob("*/*/*/*"):
         assert (run / "COMPLETE.json").exists()
-        assert (run / "evaluations" / "EVAL_COMPLETE_6h.json").exists()
+        assert (run / "evaluations" / "EVAL_COMPLETE_4h.json").exists()
         prov = read_json(run / "provenance.json")
         assert prov["attempts"][0]["git"] and prov["n_parameters"] > 0
+        assert prov["attempts"][0]["end_status"] == "trained" and prov["attempts"][0]["wall_seconds"] > 0
+        assert read_json(run / "evaluations" / "EVAL_COMPLETE_1h.json")["pass"]["labels"] == ["1h", "4h"]
+    gpu_hours = pd.read_csv(tmp_path / "tables" / "gpu_hours.csv")
+    assert len(gpu_hours) == 5 and gpu_hours.run_id.iloc[-1] == "TOTAL"
+    assert (gpu_hours.train_wall_hours > 0).all() and (gpu_hours.train_gpu_hours == 0).all()  # CPU only
     assert len(list((tmp_path / "figures").glob("*.pdf"))) == 7
 
 

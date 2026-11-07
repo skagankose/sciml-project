@@ -21,7 +21,8 @@ matches.
 
 ## Needs owner approval
 
-**F1 — Evaluating The Well's released checkpoints conflicts with the no-pretrained-weights rule.**
+**F1 — Evaluating The Well's released checkpoints conflicts with the no-pretrained-weights rule.** **Done
+2026-11-07:** `rbbench eval-released` and `cluster/slurm/released_a100.sbatch` (decisions D20).
 * *Abstract:* "we first evaluate The Well's released CNextU-Net and TFNO checkpoints and compare with their
   published VRMSE"; this is also the Nov 12 milestone.
 * *Code:* AGENTS.md rule 3 says "Never use pretrained weights", and
@@ -56,7 +57,8 @@ matches.
   * Still generate the subset manifests for 10, 30 and 100%. Subsets are prefixes of one seeded permutation,
     so S10 ⊂ S30 ⊂ S100 stays true when 30% is added later.
 
-**F3 — Budgets 1 h and 4 h, not 2 h and 6 h.**
+**F3 — Budgets 1 h and 4 h, not 2 h and 6 h.** **Done 2026-11-07:** labels come from the config everywhere,
+and `train_a100.sbatch` allows 5 h.
 * *Code:*
   * `common.yaml` has `budgets_seconds: {2h: 7200, 6h: 21600}`. The cosine schedule ends at the last budget,
     so it must become 4 h.
@@ -72,7 +74,8 @@ matches.
   * Set the training time limit to about 5 h. That covers 4 h of training plus validation, checkpoints and
     startup, and keeps resume on preemption.
 
-**F4 — Noise robustness is an extension; evaluation runs it every time.**
+**F4 — Noise robustness is an extension; evaluation runs it every time.** **Done 2026-11-07:** core evaluation
+is clean only; `configs/experiments/noise.yaml` holds the extension (decisions D17).
 * *Code:* `eval.noise_sigmas: [0.0, 0.01, 0.05, 0.10, 0.20]` makes each rollout run five times (four noisy
   copies plus the clean one).
 * *Fix:*
@@ -95,7 +98,7 @@ matches.
   * Budget: keep the whole search to a few GPU-hours, e.g. 3 models × 3 rates × 20 min ≈ 3 GPU-h. It
     shares the ≈20 GPU-h of overhead with profiling, the released-checkpoint check and evaluation.
 
-**F6 — GPU-hours are not computed** (carried over).
+**F6 — GPU-hours are not computed** (carried over). **Done 2026-11-07:** `tables/gpu_hours.csv` (decisions D22).
 * *Abstract:* "We also report GPU-hours, inference latency, and peak GPU memory."
 * *Code:* `tables/resource_use.csv` has training seconds, overheads, steps, latency and peak memory, but no
   allocated GPU-hours. Evaluation jobs record no cost.
@@ -158,12 +161,12 @@ say where the code still differs:
 ## Checklist
 
 - [x] F1 owner approval (rule 3 amended)
-- [ ] F1 `eval-released` command and test exception
-- [ ] F2 12-run core sweep defaults
-- [ ] F3 1 h / 4 h budgets
-- [ ] F4 noise off in the core evaluation
+- [x] F1 `eval-released` command and test exception (2026-11-07)
+- [ ] F2 12-run core sweep defaults (the runbook passes the grid explicitly meanwhile)
+- [x] F3 1 h / 4 h budgets (2026-11-07)
+- [x] F4 noise off in the core evaluation (2026-11-07)
 - [ ] F5 learning-rate search, shared or per model (deferred; revisit before the sweep)
-- [ ] F6 GPU-hours
+- [x] F6 GPU-hours (2026-11-07; `tables/gpu_hours.csv`, decisions D22)
 - [ ] F7 downsampling (deferred; only if the backup is triggered)
 - [x] F8 dataset size (dropped)
 - [x] F9 docs

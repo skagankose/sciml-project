@@ -31,25 +31,39 @@ git add -A && git commit -m "..."
 HPC3_USER=<UCInetID> bash cluster/push.sh        # VPN + DUO; uses the hpc3-xfer host
 ```
 
+The transfer host `hpc3-xfer` accepts only `rsync`/`scp`. Run commands such as `ls`, `mkdir` or `df` through
+`ssh hpc3`. Submit every `sbatch` from the project folder: the job scripts use paths relative to it.
+
 ## 1. Environment (once)
 
 ```bash
 ssh hpc3
-srun -c 4 -p free --mem=16G --time=02:00:00 --pty /bin/bash -i
 cd /pub/$USER/projects/well-rb-four-families
-bash cluster/setup_env.sh                        # torch 2.8.0+cu128 and the shared pins; writes env/hpc3-*
-exit
-mkdir -p logs && sbatch cluster/slurm/check.sbatch   # A100: tests incl. CUDA tests at 512x128, smoke on CUDA
+mkdir -p logs && sbatch cluster/slurm/setup_cpu.sbatch   # free CPU node, ~30 min; writes env/hpc3-*
+tail -f $(ls -t logs/rb4-setup-*.out | head -1)          # ends with "done; commit env/hpc3-*"
+sbatch cluster/slurm/check.sbatch                        # A100: tests incl. CUDA tests at 512x128, smoke on CUDA
 ```
 
-The check job must print `CHECK PASSED` on an A100. Look at its log; `sbatch` accepting the job proves
-nothing. Then pull the environment snapshot and commit it on the Mac:
-`bash cluster/pull.sh --env && git add env/ && git commit`.
+The install runs as a batch job because interactive `srun` sessions were too slow to use. `archs []` in its
+output is normal on a CPU node. The check job must print `CHECK PASSED` on an A100. Look at its log; `sbatch`
+accepting the job proves nothing. Then pull the environment snapshot and commit it on the Mac:
+`HPC3_USER=<UCInetID> bash cluster/pull.sh --env && git add env/ && git commit`.
+
+If the install fails with `ChecksumMismatchError` and "actual sha256 e3b0c442…" (the hash of an empty file),
+conda's downloads into `/pub` came back empty. `setup_env.sh` now keeps conda's package cache on the node's
+local disk, which fixed this on 2026-11-07. Each failed or stopped install also leaves `*.partial` files that
+break the next attempt. Remove them, and any half-built env, before resubmitting:
+
+```bash
+module load miniconda3/24.9.2 && source ~/.mycondainit-24.9.2
+rm -fv /pub/$USER/conda/pkgs/*.partial
+conda env remove -n well-rb -y
+```
 
 ## 2. Data (once; CPU only)
 
 ```bash
-sbatch cluster/slurm/download_cpu.sbatch         # preemptible; resubmit to resume
+sbatch --export=ALL,SPLITS="valid test train" cluster/slurm/download_cpu.sbatch   # preemptible; resubmit to resume
 # or interactively on a free CPU node:  source cluster/env.sh && bash scripts/download_rb.sh valid test train
 ```
 
@@ -81,10 +95,18 @@ Then freeze the rollout starts on validation (decisions D15/D16):
 
 ## 3b. Pipeline check with released checkpoints **[gate: owner approval of GPU time]**
 
-This needs only the `valid` and `test` splits. Evaluate The Well's released CNextU-Net and TFNO RB checkpoints
-on our data path and compare their one-step VRMSE with the published values (decisions D20). The evaluation
-command is not written yet (`docs/abstract_alignment.md` F1). Report a mismatch to the owner before training
-anything.
+This needs only verified `valid` and `test` splits; it does not need the audit or the cohort. It evaluates
+The Well's released CNextU-Net and TFNO RB checkpoints on our data path and compares their one-step VRMSE with
+the published values (decisions D20):
+
+```bash
+mkdir -p logs && sbatch cluster/slurm/released_a100.sbatch    # ~30-60 min on one GPU
+tail -n 12 $(ls -t logs/rb4-released-*.out | head -1)
+```
+
+The log lists each model and split with our VRMSE, the published value and the difference, and ends with
+`PIPELINE CHECK PASSED` (all within 5%) or `PIPELINE CHECK: MISMATCH`. Details are in
+`outputs/baselines/released/released_check.json`. Report a mismatch to the owner before training anything.
 
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 
@@ -95,8 +117,8 @@ sbatch cluster/slurm/pilot_a100.sbatch           # kill/resume/skip + evaluation
 ```
 
 Report to the owner:
-* `outputs/pilots/feasibility.csv`: steps/s, peak GB and estimated steps per budget (its columns are still
-  named for the earlier 2 h / 6 h budgets);
+* `outputs/pilots/feasibility.csv`: steps/s, peak GB and estimated steps for the first (1 h) and final (4 h)
+  budget (`est_steps_first`, `est_steps_final`);
 * the pilot logs;
 * resume and skip behaviour.
 
@@ -104,8 +126,8 @@ Then freeze batch size, learning rate and precision (decisions D6–D8) and reco
 
 ## 5. Main sweep **[gate: explicit owner approval; 12 core jobs × ~4.5 h]**
 
-Before this step the code must use the 1 h / 4 h budgets and the 12-run defaults (`docs/abstract_alignment.md`
-F2–F3). Until then, pass the core grid explicitly:
+`make-sweep` still defaults to the earlier grid (`docs/abstract_alignment.md` F2), so pass the core grid
+explicitly:
 
 ```bash
 # on the Mac, then commit and push:
@@ -132,6 +154,10 @@ sbatch --array=0 --export=ALL,BASELINE=1 cluster/slurm/eval_a100.sbatch   # pers
 HPC3_USER=<UCInetID> bash cluster/pull.sh        # outputs without checkpoints
 python -m rbbench aggregate                      # tables/ and figures/
 ```
+
+`eval-task` evaluates every milestone of a run (1 h and 4 h) in one pass. The core evaluation is clean only
+(`eval.noise_sigmas: [0.0]`). `tables/gpu_hours.csv` sums the measured training attempts and evaluation passes
+per run and in total (decisions D22); compare its TOTAL row with `sacct` for the billed time.
 
 Keep the checkpoints on HPC3 until the figures are final. Copy anything irreplaceable to CRSP or the Mac,
 because `/pub` is not backed up.

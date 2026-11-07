@@ -67,6 +67,13 @@ def run_train_task(row: dict, root: Path, output_root: Path, dataset_dir: Path, 
                      resume=resume, skip_if_complete=skip_if_complete)
 
 
+def run_labels(run_dir: Path) -> list[str]:
+    """Milestone labels of a run, from its resolved config (e.g. ["1h", "4h"])."""
+    from rbbench.config import budget_labels, yaml_load
+
+    return budget_labels(yaml_load((run_dir / "resolved_config.yaml").read_text()))
+
+
 def load_run_model(run_dir: Path, label: str, device):
     import torch
 
@@ -80,14 +87,16 @@ def load_run_model(run_dir: Path, label: str, device):
     return cfg, model.to(device), ckpt
 
 
-def run_eval_task(row: dict, output_root: Path, dataset_dir: Path, device, labels: list[str],
+def run_eval_task(row: dict, output_root: Path, dataset_dir: Path, device, labels: list[str] | None,
                   cohort_path: Path, audit_path: Path | None, max_trajectories: int | None = None) -> dict:
+    """Evaluate the milestone checkpoints `labels` of one run (default: all of its milestones)."""
     from rbbench.evaluate import evaluate, model_predictor
     from rbbench.manifests import sha256_file
 
     run_dir = output_root / "runs" / row["run_id"]
     if not (run_dir / "COMPLETE.json").exists():
         raise RuntimeError(f"{run_dir} has not finished training")
+    labels = labels or run_labels(run_dir)
     predictors, cfg, meta = {}, None, {"run_id": row["run_id"], "checkpoints": {}}
     for label in labels:
         cfg, model, ckpt = load_run_model(run_dir, label, device)
@@ -221,11 +230,14 @@ def cmd_eval_task(args):
     from rbbench.sweep import get_task
 
     row = get_task(Path(args.manifest), args.task_index)
-    eval_dir = _output_root(args) / "runs" / row["run_id"] / "evaluations"
-    if args.skip_if_complete and all((eval_dir / f"EVAL_COMPLETE_{lab}.json").exists() for lab in args.labels):
+    run_dir = _output_root(args) / "runs" / row["run_id"]
+    labels = args.labels or (run_labels(run_dir) if (run_dir / "resolved_config.yaml").exists() else [])
+    if args.skip_if_complete and labels and all(
+        (run_dir / "evaluations" / f"EVAL_COMPLETE_{lab}.json").exists() for lab in labels
+    ):
         print(f"{row['run_id']}: evaluation already complete")
         return 0
-    res = run_eval_task(row, _output_root(args), _dataset_dir(args), _device(args.device), args.labels,
+    res = run_eval_task(row, _output_root(args), _dataset_dir(args), _device(args.device), labels or None,
                         Path(args.cohort), Path(args.audit) if args.audit else None, args.max_trajectories)
     for lab, s in res.items():
         print(lab, json.dumps(s["by_sigma"]["0"].get("one_step"), indent=None))
@@ -238,6 +250,60 @@ def cmd_eval_baseline(args):
     res = run_baseline(cfg, _output_root(args), _dataset_dir(args), _device(args.device), Path(args.cohort),
                        Path(args.audit) if args.audit else None, args.max_trajectories)
     print(json.dumps(res["na"]["by_sigma"]["0"].get("one_step")))
+
+
+def cmd_eval_released(args):
+    """Pipeline check (gate D2): The Well's released checkpoints, one-step VRMSE on our data path."""
+    from rbbench import METRIC_VERSION
+    from rbbench.config import load_config
+    from rbbench.data import FIELDS
+    from rbbench.evaluate import evaluate_one_step, model_predictor
+    from rbbench.manifests import provenance
+    from rbbench.released import PUBLISHED_VRMSE, fetch, load_released
+
+    device = _device(args.device)
+    dataset_dir = _dataset_dir(args)
+    unverified = [s for s in args.splits if not (dataset_dir / f"rbbench_complete_{s}.json").exists()]
+    if unverified and not args.allow_unverified_data:
+        sys.exit(f"splits {unverified} are not verified downloads (no rbbench_complete_<split>.json)")
+    out = _output_root(args) / "baselines" / "released"
+    predictors, checkpoints, cfg = {}, {}, None
+    for name in args.models:
+        cfg = load_config(name, args.experiment, args.size, args.override)
+        fetched = fetch(name)
+        predictors[name] = model_predictor(load_released(name, cfg, fetched).to(device), device, "fp32")
+        checkpoints[name] = {k: fetched[k] for k in ("repo_id", "revision", "sha256")}
+    complete = args.max_trajectories is None
+    results, passed = {}, True
+    for split in args.splits:
+        tables = evaluate_one_step(predictors, dataset_dir, split, cfg["task"]["n_steps_input"], cfg["eval"],
+                                   device, args.max_trajectories)
+        for name, df in tables.items():
+            (out / name).mkdir(parents=True, exist_ok=True)
+            df.to_parquet(out / name / f"one_step_{split}.parquet", index=False)
+            ours, published = float(df["vrmse_mean"].mean()), PUBLISHED_VRMSE[name][split]
+            rel = (ours - published) / published
+            within = abs(rel) <= args.tolerance
+            passed &= within
+            results.setdefault(name, {})[split] = {
+                "vrmse_mean": ours, **{f"vrmse_{f}": float(df[f"vrmse_{f}"].mean()) for f in FIELDS},
+                "n_windows": len(df), "n_trajectories": int(df.traj_id.nunique()),
+                "published_vrmse_mean": published, "relative_difference": rel, "within_tolerance": within,
+            }
+            print(f"{name:11s} {split:5s} VRMSE {ours:.4f}  published {published:.4f}  difference {100 * rel:+.1f}%  "
+                  f"{'ok' if within else 'MISMATCH'}  ({len(df)} windows)")
+    verdict = passed if complete else None
+    atomic_write_json(out / "released_check.json", {
+        "passed": verdict, "tolerance": args.tolerance, "complete_splits": complete,
+        "max_trajectories": args.max_trajectories, "checkpoints": checkpoints, "results": results,
+        "metric_version": METRIC_VERSION, "provenance": provenance({"device": str(device)}),
+    })
+    if not complete:
+        print(f"partial run (--max-trajectories {args.max_trajectories}): not a pipeline check")
+    else:
+        print("PIPELINE CHECK PASSED" if passed else "PIPELINE CHECK: MISMATCH")
+    print(f"wrote {out / 'released_check.json'}")
+    return 1 if verdict is False else 0
 
 
 def cmd_profile(args):
@@ -255,7 +321,7 @@ def cmd_profile(args):
             row = profile_model(cfg, device, _dataset_dir(args), args.batch_size, args.steps, args.warmup, precision)
             rows.append(row)
             print(f"{model:12s} {precision}: {row['status']} step={row.get('step_s', float('nan')):.4f}s "
-                  f"peak={row.get('peak_alloc_gb')} GB est_steps_6h={row.get('est_steps_6h')} {row['error']}")
+                  f"peak={row.get('peak_alloc_gb')} GB est_steps_final={row.get('est_steps_final')} {row['error']}")
     write_rows(rows, Path(args.out))
     print(f"appended {len(rows)} rows to {args.out}")
 
@@ -263,7 +329,7 @@ def cmd_profile(args):
 def cmd_aggregate(args):
     from rbbench.aggregate import aggregate
 
-    out = aggregate(Path(args.tasks), _output_root(args), Path(args.tables), Path(args.figures), tuple(args.labels),
+    out = aggregate(Path(args.tasks), _output_root(args), Path(args.tables), Path(args.figures), args.labels,
                     baseline_dir=_output_root(args) / "baselines" / "persistence" / "evaluations")
     print(json.dumps({k: v for k, v in out.items() if k != "figures"}, indent=2))
     print(f"{len(out['figures'])} figure files")
@@ -302,7 +368,7 @@ def cmd_smoke(args):
     import torch
 
     from rbbench.audit import audit_dataset
-    from rbbench.config import load_config
+    from rbbench.config import budget_labels, load_config
     from rbbench.data import full_trajectory_dataset, list_trajectories
     from rbbench.evaluate import make_cohort
     from rbbench.models.factory import count_parameters
@@ -332,16 +398,18 @@ def cmd_smoke(args):
                       [f"train.max_steps={args.steps}", grid_override], repo_root=work)
     write_jsonl(rows, tasks / "train.jsonl")
     out_root = work / "outputs"
+    labels = budget_labels(cfg0)
+    final = labels[-1]
     print(f"workdir {work}  device {device}  torch {torch.__version__}  physics audit passed: "
           f"{audit['physics_checks']['passed']}")
     for row in rows:
         res = run_train_task(row, work, out_root, dataset_dir, device, allow_dirty=True)
-        ev = run_eval_task(row, out_root, dataset_dir, device, ["2h", "6h"], tasks / "eval_cohort.json",
+        ev = run_eval_task(row, out_root, dataset_dir, device, labels, tasks / "eval_cohort.json",
                            work / "audit.json", max_trajectories=2)
-        cfg, model, _ = load_run_model(out_root / "runs" / row["run_id"], "6h", torch.device("cpu"))
-        one = ev["6h"]["by_sigma"]["0"]["one_step"]
+        cfg, model, _ = load_run_model(out_root / "runs" / row["run_id"], final, torch.device("cpu"))
+        one = ev[final]["by_sigma"]["0"]["one_step"]
         print(f"  {row['model']:11s} seed={row['seed']} params={count_parameters(model):>9,} "
-              f"status={res['status']} steps={res.get('final_step')} one-step VRMSE(6h ckpt)={one['vrmse_mean']:.3f}")
+              f"status={res['status']} steps={res.get('final_step')} one-step VRMSE({final} ckpt)={one['vrmse_mean']:.3f}")
     run_baseline(cfg0, out_root, dataset_dir, device, tasks / "eval_cohort.json", work / "audit.json", 2)
     from rbbench.aggregate import aggregate
 
@@ -442,11 +510,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--allow-dirty", action="store_true", help="pilots only")
     sp.set_defaults(func=cmd_train_task)
 
-    sp = sub.add_parser("eval-task", help="evaluate the 2h/6h checkpoints of one task")
+    sp = sub.add_parser("eval-task", help="evaluate the milestone checkpoints of one task")
     common(sp, out=True, device=True, exp=False)
     sp.add_argument("--manifest", required=True)
     sp.add_argument("--task-index", type=int, required=True)
-    sp.add_argument("--labels", nargs="+", default=["2h", "6h"])
+    sp.add_argument("--labels", nargs="+", help="milestones to evaluate (default: all in the run's config)")
     sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)
@@ -459,6 +527,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)
     sp.set_defaults(func=cmd_eval_baseline)
+
+    sp = sub.add_parser("eval-released",
+                        help="pipeline check: The Well's released CNextU-Net/TFNO checkpoints on our data path")
+    common(sp, out=True, device=True)
+    sp.add_argument("--models", nargs="+", default=["cnext_unet", "tfno"], choices=["cnext_unet", "tfno"])
+    sp.add_argument("--splits", nargs="+", default=["valid", "test"], choices=["valid", "test"])
+    sp.add_argument("--size", default="full", choices=["full", "tiny"], help="tiny is for tests only")
+    sp.add_argument("--override", action="append", default=[])
+    sp.add_argument("--tolerance", type=float, default=0.05, help="max relative difference from the published VRMSE")
+    sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a pipeline check")
+    sp.add_argument("--allow-unverified-data", action="store_true")
+    sp.set_defaults(func=cmd_eval_released)
 
     sp = sub.add_parser("profile", help="throughput/memory/latency per model (A100 feasibility)")
     common(sp, device=True)
@@ -478,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--tasks", default=str(REPO_ROOT / "tasks" / "train.jsonl"))
     sp.add_argument("--tables", default=str(REPO_ROOT / "tables"))
     sp.add_argument("--figures", default=str(REPO_ROOT / "figures"))
-    sp.add_argument("--labels", nargs="+", default=["2h", "6h"])
+    sp.add_argument("--labels", nargs="+", help="milestones to aggregate (default: all in each task's config)")
     sp.set_defaults(func=cmd_aggregate)
 
     sp = sub.add_parser("verify-download", help="check a downloaded split against the registry")

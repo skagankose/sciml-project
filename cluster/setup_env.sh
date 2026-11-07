@@ -1,8 +1,8 @@
 #!/bin/bash
 # Create the `well-rb` conda env on HPC3 and record exactly what was installed.
-# Run on a CPU compute node from the repo root (RCIC: installs fail on login nodes):
-#   srun -c 4 -p free --mem=16G --time=02:00:00 --pty /bin/bash -i
-#   cd /pub/$USER/projects/well-rb-four-families && bash cluster/setup_env.sh
+# Run on a CPU compute node from the repo root (RCIC: installs fail on login nodes), as a
+# batch job (interactive sessions were too slow to use):
+#   cd /pub/$USER/projects/well-rb-four-families && mkdir -p logs && sbatch cluster/slurm/setup_cpu.sbatch
 # Assumes the one-time conda setup from the HPC3 guide (envs/pkgs dirs on /pub,
 # ~/.mycondainit-24.9.2) is done.
 set -eo pipefail
@@ -11,6 +11,12 @@ CONDA_MODULE=${CONDA_MODULE:-miniconda3/24.9.2}
 CONDA_INIT=${CONDA_INIT:-$HOME/.mycondainit-24.9.2}
 ENV_NAME=${ENV_NAME:-well-rb}
 export PIP_CACHE_DIR=/pub/$USER/.cache/pip
+# conda's package cache on node-local disk. With the cache on /pub, conda's own downloads came
+# back empty (ChecksumMismatchError, actual sha256 e3b0c442..., the empty-file hash) and every
+# failed run left *.partial files that broke the next one (2026-11-07). The env itself still
+# lands in /pub/$USER/conda/envs.
+export CONDA_PKGS_DIRS=${CONDA_PKGS_DIRS:-${TMPDIR:-/tmp}/conda-pkgs-${SLURM_JOB_ID:-$$}}
+mkdir -p "$CONDA_PKGS_DIRS"
 
 module load "$CONDA_MODULE"
 # shellcheck disable=SC1090

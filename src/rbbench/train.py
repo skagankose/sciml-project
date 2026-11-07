@@ -3,9 +3,11 @@
 Budget accounting: `train_seconds` sums, per optimizer step, the wall time from requesting
 the batch to the end of the (synchronised) optimizer step. Startup, validation and
 checkpoint writes fall outside these intervals and are logged separately. A milestone
-checkpoint (e.g. 2h, 6h) is written after the first optimizer step whose cumulative
+checkpoint (e.g. 1h, 4h) is written after the first optimizer step whose cumulative
 `train_seconds` reaches the milestone; the actual value and the overshoot are recorded.
 The timer, optimizer, scheduler, RNG and sampler position all persist across resumes.
+Each attempt also records its wall time in provenance.json, which aggregation sums into
+GPU-hours.
 """
 
 from __future__ import annotations
@@ -271,6 +273,7 @@ def train_run(
     Statuses: "complete", "already_complete", "preempted" (state saved; rerun to resume).
     `stop_after_steps` and `step_callback` are test hooks that simulate preemption.
     """
+    attempt_t0 = time.time()
     paths = RunPaths(Path(run_dir))
     paths.root.mkdir(parents=True, exist_ok=True)
     dataset_dir = Path(dataset_dir)
@@ -392,6 +395,7 @@ def train_run(
     last_resume_wall = time.time()
     last_val_seconds = state["val_history"][-1]["train_seconds"] if state["val_history"] else 0.0
     loss_value = float("nan")
+    status = "error"
     model.train()
     try:
         with PreemptionSignal() as preempt:
@@ -466,19 +470,30 @@ def train_run(
                     save(paths.last_resume)
                     last_resume_wall = time.time()
                 if stop_now:
+                    status = "preempted"
                     note = f"signal {preempt.received}" if preempt.received else "stop_after_steps"
                     log.write(event="preempted", step=state["step"], train_seconds=state["train_seconds"], note=note)
                     return {"status": "preempted", "step": state["step"], "train_seconds": state["train_seconds"],
                             "run_dir": str(paths.root), "reason": note}
+        status = "trained"
     except TrainingDiverged as err:
+        status = "failed"
         atomic_write_json(paths.failed, {"reason": str(err), "state": {k: state[k] for k in ("step", "train_seconds")},
                                          "time_utc": now_utc()})
         log.write(event="failed", step=state["step"], train_seconds=state["train_seconds"], note=str(err))
         raise
     finally:
         log.close()
+        _close_attempt(paths, status, attempt_t0)
 
     return finalize_run(paths, model, state, cfg_sha, seed, run_meta)
+
+
+def _close_attempt(paths: RunPaths, status: str, t0: float) -> None:
+    """Record this attempt's wall time from train_run start to exit (GPU-hours in aggregation)."""
+    prov = read_json(paths.provenance)
+    prov["attempts"][-1].update(wall_seconds=round(time.time() - t0, 3), end_status=status, ended_utc=now_utc())
+    atomic_write_json(paths.provenance, prov)
 
 
 def finalize_run(paths: RunPaths, model, state: dict, cfg_sha: str, seed: int, run_meta: dict) -> dict:

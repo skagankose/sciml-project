@@ -22,7 +22,7 @@ def test_kaplan_meier_with_censoring():
 
 def test_summary_mean_std_and_seed_listing():
     df = pd.DataFrame({
-        "model": ["tfno"] * 3, "fraction": [0.1] * 3, "budget": ["2h"] * 3, "metric": ["m"] * 3,
+        "model": ["tfno"] * 3, "fraction": [0.1] * 3, "budget": ["1h"] * 3, "metric": ["m"] * 3,
         "sigma": [0.0] * 3, "step": [1] * 3, "seed": [0, 1, 2], "value": [1.0, 2.0, 3.0], "run_id": ["a", "b", "c"],
     })
     out = summary_table(df)
@@ -34,7 +34,7 @@ def test_summary_mean_std_and_seed_listing():
 
 def test_missing_seed_is_visible():
     df = pd.DataFrame({
-        "model": ["avit"] * 2, "fraction": [1.0] * 2, "budget": ["6h"] * 2, "metric": ["m"] * 2,
+        "model": ["avit"] * 2, "fraction": [1.0] * 2, "budget": ["4h"] * 2, "metric": ["m"] * 2,
         "sigma": [0.0] * 2, "step": [1] * 2, "seed": [0, 2], "value": [1.0, 1.5], "run_id": ["a", "c"],
     })
     assert summary_table(df).iloc[0]["n_seeds"] == 2

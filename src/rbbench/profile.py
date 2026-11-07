@@ -24,7 +24,7 @@ from rbbench.rollout import rollout
 COLUMNS = (
     "model", "device", "gpu_name", "precision", "batch_size", "grid", "n_params", "n_params_used",
     "status", "error", "steps_timed", "step_s", "data_s", "forward_s", "backward_s", "optimizer_s",
-    "samples_per_s", "est_steps_2h", "est_steps_6h", "est_samples_6h", "peak_alloc_gb",
+    "samples_per_s", "budgets", "est_steps_first", "est_steps_final", "est_samples_final", "peak_alloc_gb",
     "peak_reserved_gb", "gpu_util_pct", "infer_ms_per_frame", "rollout30_ms", "rollout_finite",
     "ckpt_save_s", "ckpt_mb",
 )
@@ -84,12 +84,14 @@ def profile_model(cfg: dict, device: torch.device, dataset_dir: Path, batch_size
                     timings[k] += b - a
                 total += t4 - t0
         step_s = total / steps
+        budgets = sorted((float(v), k) for k, v in cfg["train"]["budgets_seconds"].items())
         row.update(
             steps_timed=steps, step_s=step_s, data_s=timings["data"] / steps,
             forward_s=timings["forward"] / steps, backward_s=timings["backward"] / steps,
             optimizer_s=timings["optimizer"] / steps, samples_per_s=batch_size / step_s,
-            est_steps_2h=int(7200 / step_s), est_steps_6h=int(21600 / step_s),
-            est_samples_6h=int(21600 / step_s) * batch_size,
+            budgets=";".join(f"{k}={v:g}s" for v, k in budgets),
+            est_steps_first=int(budgets[0][0] / step_s), est_steps_final=int(budgets[-1][0] / step_s),
+            est_samples_final=int(budgets[-1][0] / step_s) * batch_size,
         )
         if device.type == "cuda":
             row["peak_alloc_gb"] = torch.cuda.max_memory_allocated(device) / 1e9

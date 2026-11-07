@@ -38,12 +38,21 @@ def test_random_init_depends_only_on_seed(name):
     assert any(not torch.equal(a[k], c[k]) for k in a if a[k].is_floating_point() and a[k].numel() > 1)
 
 
-def test_no_pretrained_weight_loading_in_source():
-    """Weights are only ever loaded from this project's own checkpoints."""
+def test_pretrained_weights_only_in_the_pipeline_check():
+    """Rule 3: nothing trains from pretrained weights. Only rbbench/released.py may download
+    them (to evaluate The Well's released checkpoints), and only the CLI may import it."""
+    released = SRC / "released.py"
     for path in SRC.rglob("*.py"):
         if "vendor" in path.parts:
             continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr in ("from_pretrained", "hf_hub_download"):
-                raise AssertionError(f"{path}: uses {node.attr}")
+            names = []
+            if isinstance(node, ast.Attribute):
+                names = [node.attr]
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [a.name for a in node.names]
+            if {"from_pretrained", "hf_hub_download", "snapshot_download"} & set(names) and path != released:
+                raise AssertionError(f"{path}: downloads pretrained weights ({names})")
+            if isinstance(node, ast.ImportFrom) and node.module == "rbbench.released" and path.name != "cli.py":
+                raise AssertionError(f"{path}: imports rbbench.released")

@@ -14,6 +14,9 @@ from rbbench import MODEL_NAMES
 from rbbench.manifests import REPO_ROOT, sha256_json
 
 CONFIG_DIR = REPO_ROOT / "configs"
+# Mappings replaced whole when overridden, never merged: merging budgets would leave the
+# milestones of both files (e.g. 1h/4h plus a pilot's own labels).
+ATOMIC_KEYS = frozenset({"budgets_seconds"})
 
 
 class _Loader(yaml.SafeLoader):
@@ -46,7 +49,7 @@ def load_yaml(path: str | os.PathLike) -> dict:
 def deep_merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)
     for key, value in override.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
+        if isinstance(value, dict) and isinstance(out.get(key), dict) and key not in ATOMIC_KEYS:
             out[key] = deep_merge(out[key], value)
         else:
             out[key] = copy.deepcopy(value)
@@ -84,6 +87,11 @@ def load_config(
     for text in overrides or []:
         cfg = deep_merge(cfg, parse_override(text))
     return cfg
+
+
+def budget_labels(cfg: dict) -> list[str]:
+    """Milestone labels (e.g. ["1h", "4h"]) in order of their training-time budget."""
+    return [label for _, label in sorted((float(s), label) for label, s in cfg["train"]["budgets_seconds"].items())]
 
 
 def config_hash(cfg: dict) -> str:

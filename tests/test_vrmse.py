@@ -24,7 +24,8 @@ def test_known_values():
 
 
 def test_differs_from_nrmse_and_rmse():
-    true = torch.randn(1, 16, 8, 1) + 5.0  # large mean: NRMSE << VRMSE
+    g = torch.Generator().manual_seed(0)
+    true = 2.0 * torch.randn(1, 16, 8, 1, generator=g) + 20.0  # large mean: NRMSE << VRMSE; std 2: VRMSE ~ RMSE/2
     pred = true + 0.1
     v = vrmse(pred, true).item()
     nrmse = (0.1**2 / (true**2).mean()).sqrt().item()

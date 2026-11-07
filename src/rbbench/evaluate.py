@@ -7,6 +7,8 @@ Each test trajectory is read once (upstream loader, normalised) and used for:
   * Nusselt numbers at every rollout step and horizontal KE spectra at selected steps,
     in physical units, only if the dataset audit passed its physics checks.
 Several checkpoints of one run can share the pass, so the data is read once.
+`evaluate_one_step` runs the same one-step code on any split without a rollout cohort; the
+released-checkpoint pipeline check uses it.
 """
 
 from __future__ import annotations
@@ -122,6 +124,27 @@ def measure_latency(predict: Predictor, window: torch.Tensor, device: torch.devi
     return out
 
 
+def _physical(norm, t: torch.Tensor) -> torch.Tensor:
+    return norm.denormalize_flattened(t.float(), "variable")
+
+
+def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tensor, base: dict, n_in: int,
+                  stride: int, batch_size: int, device: torch.device, norm) -> list[dict]:
+    """VRMSE (physical units) of every `stride`-th one-step window of one normalised trajectory."""
+    rows = []
+    starts = list(range(0, traj.shape[0] - n_in, stride))
+    for i in range(0, len(starts), batch_size):
+        chunk = starts[i:i + batch_size]
+        x = torch.stack([traj[s:s + n_in] for s in chunk]).to(device)
+        pred = _physical(norm, predict(x).cpu())
+        true = torch.stack([traj_phys[s + n_in] for s in chunk])
+        v = vrmse(pred, true).numpy()
+        for s, vals in zip(chunk, v):
+            rows.append({**base, "start": s, **{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, vals)},
+                         "vrmse_mean": float(vals.mean())})
+    return rows
+
+
 def failure_step(curve: np.ndarray, threshold: float) -> int | None:
     """First 1-based step whose VRMSE exceeds `threshold`; None if never (right-censored)."""
     above = np.nonzero(np.asarray(curve) > threshold)[0]
@@ -162,6 +185,7 @@ def evaluate(
     max_trajectories: int | None = None,
 ) -> dict[str, dict]:
     """Evaluate each labelled predictor on the same data and write per-label outputs."""
+    t_pass = time.time()
     check_cohort(cohort)
     ecfg, pcfg = cfg["eval"], cfg["physics"]
     n_in = cfg["task"]["n_steps_input"]
@@ -193,7 +217,7 @@ def evaluate(
     latency_window = None
 
     def phys(t: torch.Tensor) -> torch.Tensor:
-        return norm.denormalize_flattened(t.float(), "variable")
+        return _physical(norm, t)
 
     for entry in entries:
         ref = refs[entry["id"]]
@@ -201,23 +225,12 @@ def evaluate(
         traj_phys = phys(traj)
         kappa = float(physics.kappa_from(ref.rayleigh, ref.prandtl))
         base = {"traj_id": ref.id, "rayleigh": ref.rayleigh, "prandtl": ref.prandtl}
-        starts = list(range(0, n_total - n_in, stride))
         if latency_window is None:
             latency_window = traj[None, :n_in]
 
         # one-step windows
         for lab, predict in predictors.items():
-            for i in range(0, len(starts), bs):
-                chunk = starts[i:i + bs]
-                x = torch.stack([traj[s:s + n_in] for s in chunk]).to(device)
-                pred = phys(predict(x).cpu())
-                true = torch.stack([traj_phys[s + n_in] for s in chunk])
-                v = vrmse(pred, true).numpy()
-                for s, vals in zip(chunk, v):
-                    rows[lab]["one_step"].append(
-                        {**base, "start": s, **{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, vals)},
-                         "vrmse_mean": float(vals.mean())}
-                    )
+            rows[lab]["one_step"] += one_step_rows(predict, traj, traj_phys, base, n_in, stride, bs, device, norm)
 
         # rollouts (all sigmas batched together; identical noise for every predictor)
         reference_physics: dict[int, dict] = {}
@@ -288,8 +301,37 @@ def evaluate(
         for s in sigmas:
             name = "clean" if s == 0 else f"noise_{sigma_key(s)}"
             atomic_write_json(out_dir / f"{name}_{lab}.json", summaries[lab]["by_sigma"][sigma_key(s)])
+    # Markers last, each with the wall time of the whole pass it shared with the other labels
+    # (aggregation counts it once per run as evaluation GPU-hours).
+    pass_info = {"wall_seconds": round(time.time() - t_pass, 3), "labels": list(predictors), "device": str(device)}
+    for lab in predictors:
+        summaries[lab]["pass"] = pass_info
         atomic_write_json(out_dir / f"EVAL_COMPLETE_{lab}.json", {k: v for k, v in summaries[lab].items() if k != "by_sigma"})
     return summaries
+
+
+def evaluate_one_step(
+    predictors: dict[str, Predictor],
+    dataset_dir: Path,
+    split: str,
+    n_steps_input: int,
+    eval_cfg: dict,
+    device: torch.device,
+    max_trajectories: int | None = None,
+) -> dict[str, pd.DataFrame]:
+    """One-step VRMSE of every window of one split for each predictor, reading the data once."""
+    fd, _ = full_trajectory_dataset(dataset_dir, split, n_steps_input)
+    refs = list_trajectories(dataset_dir, split)
+    refs = refs[:max_trajectories] if max_trajectories else refs
+    rows: dict[str, list[dict]] = {lab: [] for lab in predictors}
+    for ref in refs:
+        traj = load_trajectory(fd, ref, dataset_dir)
+        traj_phys = _physical(fd.norm, traj)
+        base = {"traj_id": ref.id, "rayleigh": ref.rayleigh, "prandtl": ref.prandtl}
+        for lab, predict in predictors.items():
+            rows[lab] += one_step_rows(predict, traj, traj_phys, base, n_steps_input,
+                                       eval_cfg["one_step_window_stride"], eval_cfg["batch_size"], device, fd.norm)
+    return {lab: pd.DataFrame(r) for lab, r in rows.items()}
 
 
 def summarize(lab, tables, ecfg, sigmas, horizon, latency, cohort, cfg, physics_note, meta) -> dict:

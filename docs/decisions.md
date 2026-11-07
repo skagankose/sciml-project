@@ -33,9 +33,10 @@ upstream) on all parameters, no gradient clipping (as upstream).
 then cosine decay over *cumulative training seconds* towards the final 4 h milestone. The total step count is
 unknown in advance, so a step-based cosine cannot end exactly at 4 h. Decaying on time makes the 4 h
 checkpoint the end of the schedule; the 1 h checkpoint is an intermediate state of the same schedule, not a
-separately tuned 1 h run. (Budgets were 2 h/6 h before the final abstract; the config still has those
-values until the code change in `docs/abstract_alignment.md` F3.) The rate depends only on (step, train_seconds), so resume is exact. The pilot
-compares this with a constant rate on validation only.
+separately tuned 1 h run. (Budgets were 2 h/6 h before the final abstract.) The rate depends only on
+(step, train_seconds), so resume is exact. The pilot compares this with a constant rate on validation only.
+The budgets live in `train.budgets_seconds` (`1h: 3600, 4h: 14400`); their labels name the checkpoints and
+evaluations everywhere, and an override replaces the whole mapping rather than merging into it.
 
 **D7 — Learning rate and batch size (PENDING).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on
@@ -85,9 +86,11 @@ is generated once and never changed (its hash is checked).
 are right-censored, summarised with Kaplan–Meier survival and median. Thresholds 1.0 / 2.0 (primary) with 5.0
 as sensitivity; the primary is chosen on validation (PENDING).
 
-**D17 — Noise (extension, evaluation only).** The core evaluation uses σ = 0 only. The extension re-evaluates
-the same checkpoints with σ ∈ {0.01, 0.05, 0.10, 0.20} in normalised units, added once to the 4 observed frames
-only. Each (trajectory, start, σ, seed, field) draw comes from a stable hash, so it is identical for all models,
+**D17 — Noise (extension, evaluation only).** The core evaluation uses σ = 0 only (`eval.noise_sigmas: [0.0]`).
+The extension re-evaluates the same checkpoints with σ ∈ {0.01, 0.05, 0.10, 0.20} in normalised units, added
+once to the 4 observed frames only. It uses `configs/experiments/noise.yaml` and its own frozen cohort
+(`make-cohort --experiment noise --out tasks/eval_cohort_noise.json`), and every run is re-evaluated with it,
+because aggregation never mixes cohorts; σ = 0 is part of that pass, so clean results are recomputed alongside. Each (trajectory, start, σ, seed, field) draw comes from a stable hash, so it is identical for all models,
 batch sizes and worker counts. Grid points lying exactly on a wall are left unperturbed; with Chebyshev-Gauss
 nodes there are none (to confirm from the audit).
 
@@ -112,8 +115,17 @@ evaluation, never to train from. Checked 2026-10-30:
 * The pinned benchmark data config sets `use_normalization: True` with no type, which falls back to
   `ZScoreNormalization` on the shipped `stats.yaml`. That is the same normalization as D4.
 
-A mismatch would point to a problem in our data path or metric. The evaluation command and its narrow exception
-to the `from_pretrained` guard in `tests/test_backward.py` are not written yet.
+A mismatch would point to a problem in our data path or metric. Implemented 2026-11-07:
+* `rbbench/released.py` is the only module allowed to download pretrained weights, and only the CLI imports it
+  (`tests/test_backward.py`). Each checkpoint is pinned to a revision and the SHA-256 of its weights
+  (CNextU-Net `c5fa0f7`, TFNO `7d35135`), which also catches an empty or truncated download.
+* The weights load strictly into our own `full` models. On the Mac (2026-11-07) both loaded with no missing or
+  unexpected keys, and matched upstream `from_pretrained` bitwise on a random input.
+* `rbbench eval-released` scores them with the same per-window code as our runs (`evaluate.one_step_rows`,
+  tested equal), on every window of `valid` and `test`, and refuses unverified splits.
+* The check passes when every model and split is within 5% of the published value (`--tolerance`). This is a
+  judgement: the published runs used their own evaluation loop and an H100, so small differences are expected,
+  while a broken normalization, field order or metric would be far off.
 
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.
@@ -121,3 +133,13 @@ data size is reduced for all models equally.
 * Downsampled fields is **deferred by the owner (2026-10-30)** and not implemented. x can be strided. A y
   stride leaves a non-Chebyshev grid, which invalidates the y operators and Nusselt but not VRMSE or the
   x-only spectra. AViT needs both sizes divisible by 16.
+
+**D22 — GPU-hours accounting.** Every job uses one GPU, so GPU-hours are measured wall hours on CUDA:
+* training: each attempt records its wall time from `train_run` start to exit, and how it ended, in
+  `provenance.json`. An attempt killed before it could record (e.g. SIGKILL) falls back to its last
+  `train_metrics.csv` row, a lower bound, and is counted in `unclosed_attempts`;
+* evaluation: each `EVAL_COMPLETE_<label>.json` records the wall time of its pass, counted once per pass.
+
+`rbbench aggregate` writes them per run and in total to `tables/gpu_hours.csv`. Queue time and the ~1 min of
+environment setup per job are not included; `sacct` reports Slurm's billed time for comparison. Profiling, the
+pipeline check and the learning-rate search are not runs in the task file, so they are read from `sacct`.

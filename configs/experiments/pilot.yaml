@@ -2,8 +2,8 @@
 # milestone checkpoints, resume and validation are exercised in minutes.
 train:
   budgets_seconds:
-    2h: 120
-    6h: 360
+    1h: 90
+    4h: 360
   resume_every_seconds: 60
   val_every_seconds: 60
   val_windows: 16

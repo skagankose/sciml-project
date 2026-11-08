@@ -12,6 +12,11 @@ vertically, on a 512 (x, uniform) × 128 (y, Chebyshev) grid. There are 200 snap
 frames of buoyancy, pressure, u_x and u_y and predicts the next frame. Longer horizons come from autoregressive
 rollout of that one-step model.
 
+The values lie on Chebyshev-Gauss nodes in y, but the files store a uniform placeholder for the y coordinates.
+We identified the nodes from the data: with Gauss nodes, the boundary conditions hold to ~1e-9 (D18). The
+diagnostics that need coordinates (spectra and Nusselt) use those nodes. The models and VRMSE see the
+128 rows as an image and use no coordinates.
+
 ## Data
 
 * The official train/valid/test splits are unchanged. The 10% and 100% training subsets are nested, stratified

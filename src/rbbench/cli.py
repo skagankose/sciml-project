@@ -150,7 +150,9 @@ def cmd_inspect(args):
     atomic_write_json(args.out, report)
     pc = report["physics_checks"]
     print(json.dumps({k: report["splits"][k].get("n_trajectories") for k in report["splits"]}))
-    print(f"y grid: {pc['y_grid']['best']}  physics checks passed: {pc['passed']}  failures: {pc['failures']}")
+    stored = pc["y_grid"]["best"] + (f" ({pc['stored_y_status']})" if "stored_y_status" in pc else "")
+    print(f"y grid: stored {stored}, used {pc['y_grid_used']}  physics checks passed: {pc['passed']}  "
+          f"failures: {pc['failures']}")
     print(f"wrote {args.out}")
 
 

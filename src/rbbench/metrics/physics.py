@@ -27,6 +27,36 @@ def _lobatto(n):
     return -np.cos(np.pi * np.arange(n) / (n - 1))
 
 
+Y_FAMILIES = {"gauss": _gauss, "lobatto": _lobatto}
+
+
+def y_nodes(y_stored: np.ndarray, cfg_physics: dict) -> np.ndarray:
+    """The y coordinates the field values actually sit on (decisions D18).
+
+    `y_grid: auto` trusts the file's `dimensions/y`. `gauss` or `lobatto` generates that Chebyshev family on
+    [0, Ly] instead: rayleigh_benard stores a placeholder linspace(0, 1, 128) in `dimensions/y`, although its
+    values are on Chebyshev-Gauss nodes (scripts/probe_y_grid.py on the real data, 2026-11-07).
+    """
+    y_stored = np.asarray(y_stored, np.float64)
+    family = cfg_physics.get("y_grid", "auto")
+    if family == "auto":
+        return y_stored
+    if family not in Y_FAMILIES:
+        raise ValueError(f"physics.y_grid must be auto, gauss or lobatto, not {family!r}")
+    return cfg_physics["Ly"] * (Y_FAMILIES[family](y_stored.size) + 1) / 2
+
+
+def stored_y_status(y_stored: np.ndarray, cfg_physics: dict, tol: float) -> str:
+    """How the file's y relates to the configured family: "matches", "placeholder" (uniform on [0, Ly]) or
+    "unexpected". Only "unexpected" is a problem when the family is set explicitly."""
+    y_stored = np.asarray(y_stored, np.float64)
+    if np.abs(y_stored - y_nodes(y_stored, cfg_physics)).max() <= tol:
+        return "matches"
+    if np.abs(y_stored - np.linspace(0.0, cfg_physics["Ly"], y_stored.size)).max() <= tol:
+        return "placeholder"
+    return "unexpected"
+
+
 def classify_y_grid(y: np.ndarray, a: float = 0.0, b: float | None = None) -> dict:
     """Compare y to Chebyshev-Gauss, Chebyshev-Lobatto and uniform grids on [a, b].
 

@@ -63,7 +63,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
     dataset_dir = Path(args.data_root) / "datasets" / "rayleigh_benard"
-    cfg_physics = load_config("cnext_unet", "main", "full")["physics"]
+    # "auto": the checks must use the trial nodes passed below, not the configured family.
+    cfg_physics = {**load_config("cnext_unet", "main", "full")["physics"], "y_grid": "auto"}
 
     with h5py.File(split_files(dataset_dir, "train")[0], "r") as h:
         x = np.asarray(h["dimensions/x"][...], np.float64)

@@ -73,13 +73,15 @@ def read_grid(dataset_dir: Path, split: str = "test") -> tuple[np.ndarray, np.nd
         return np.asarray(h["dimensions/x"][...], np.float64), np.asarray(h["dimensions/y"][...], np.float64)
 
 
-def physics_status(audit_path: Path | None) -> tuple[bool, str]:
+def physics_status(audit_path: Path | None, y_grid: str = "auto") -> tuple[bool, str]:
     if audit_path is None or not Path(audit_path).exists():
         return False, f"no dataset audit at {audit_path}; physics diagnostics skipped"
     audit = read_json(audit_path)
     checks = audit.get("physics_checks", {})
     if not checks.get("passed"):
         return False, f"dataset audit physics checks did not pass: {checks.get('failures')}"
+    if y_grid != "auto" and checks.get("y_grid_used") != y_grid:
+        return False, f"dataset audit checked y grid {checks.get('y_grid_used')!r}, evaluation uses {y_grid!r}"
     return True, "audit passed"
 
 
@@ -203,8 +205,9 @@ def evaluate(
     refs = {r.id: r for r in list_trajectories(dataset_dir, "test")}
     entries = cohort["trajectories"][:max_trajectories] if max_trajectories else cohort["trajectories"]
 
-    do_physics, physics_note = physics_status(audit_path)
-    x_grid, y_grid = read_grid(dataset_dir)
+    do_physics, physics_note = physics_status(audit_path, pcfg.get("y_grid", "auto"))
+    x_grid, y_stored = read_grid(dataset_dir)
+    y_grid = physics.y_nodes(y_stored, pcfg)  # the stored y is a placeholder for rayleigh_benard (D18)
     ops = physics.ChebyshevY(y_grid, 0.0, pcfg["Ly"]) if do_physics else None
     keep_y = wall_rows(y_grid, 0.0, pcfg["Ly"])
     delta_b = pcfg["b_bottom"] - pcfg["b_top"]

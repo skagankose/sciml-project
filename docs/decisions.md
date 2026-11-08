@@ -99,7 +99,8 @@ once to the 4 observed frames only. It uses `configs/experiments/noise.yaml` and
 (`make-cohort --experiment noise --out tasks/eval_cohort_noise.json`), and every run is re-evaluated with it,
 because aggregation never mixes cohorts; σ = 0 is part of that pass, so clean results are recomputed alongside. Each (trajectory, start, σ, seed, field) draw comes from a stable hash, so it is identical for all models,
 batch sizes and worker counts. Grid points lying exactly on a wall are left unperturbed; with Chebyshev-Gauss
-nodes there are none (to confirm from the audit).
+nodes there are none (confirmed 2026-11-07, D18). The files' placeholder y would have put rows 0 and 127 on the
+walls, so the noise uses the generated nodes.
 
 **D18 — Physics diagnostics.** Chebyshev interpolation through the y nodes gives the spectral-accuracy
 derivatives, wall values and exact quadrature (Dedalus discretisation). Nu (volume) = ⟨u_y b − κ ∂_y b⟩ /
@@ -107,6 +108,13 @@ derivatives, wall values and exact quadrature (Dedalus discretisation). Nu (volu
 computes physics only if the dataset audit passes: wall values of b and u, conductive part ≡ 1, Parseval,
 and volume vs wall Nu on late-time reference data (median relative difference ≤ 10%). Spectra use an FFT in x
 only; y is never treated as periodic.
+* *The y nodes (2026-11-07).* The files' `dimensions/y` is a placeholder `linspace(0, 1, 128)`. The values are
+  on Chebyshev-Gauss nodes: with those nodes every audit check passes to ~1e-9, while Lobatto fails, and the
+  near-wall rows resolve the boundary layer as only Gauss clustering can (`docs/upstream_audit.md`).
+  `physics.y_grid: gauss` generates the nodes on [0, Ly] for the audit, spectra, Nusselt and the noise wall
+  mask (`metrics.physics.y_nodes`). The audit still records the stored y. It fails if the stored y is neither
+  the configured nodes nor the uniform placeholder. Evaluation computes physics only if the audit checked the
+  same family.
 
 **D19 — Concurrency.** Slurm array `%1` (one A100 at a time). 12 core runs × ~4.5 h ≈ 2.3 days sequential on
 `free-gpu` if there is no queueing or preemption; the six 10% runs alone take ≈ 27 h. Raising concurrency or

@@ -66,7 +66,9 @@ physics:
   Ly: 1.0
   b_bottom: 1.0                     # b(y=0) = Ly
   b_top: 0.0
-  y_grid: auto                      # auto | gauss | lobatto (Chebyshev node family)
+  # The values are on Chebyshev-Gauss nodes, but the files' dimensions/y is a placeholder
+  # linspace(0, 1, 128); gauss generates the real nodes (scripts/probe_y_grid.py, decisions D18).
+  y_grid: gauss                     # auto (trust dimensions/y) | gauss | lobatto
 
 sweep:
   seeds: [0, 1, 2]

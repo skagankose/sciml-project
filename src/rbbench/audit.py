@@ -72,16 +72,24 @@ def physics_checks(dataset_dir: Path, cfg_physics: dict, x: np.ndarray, y: np.nd
                    samples_per_regime: int, tol: dict) -> dict:
     """Checks on reference (ground-truth) train trajectories."""
     failures, results = [], {}
-    grid = physics.classify_y_grid(y)
+    family = cfg_physics.get("y_grid", "auto")
+    grid = physics.classify_y_grid(y)  # the file's stored coordinates
     best = grid["best"]
     results["y_grid"] = grid
-    lo, hi = grid["candidates"][best]["interval"]
-    if best not in ("gauss", "lobatto") or grid["candidates"][best]["max_abs_dev"] > tol["grid"]:
-        failures.append(f"y grid is not Chebyshev within {tol['grid']} (best fit {best})")
-    if abs(lo - 0.0) > tol["grid"] or abs(hi - cfg_physics["Ly"]) > tol["grid"]:
-        failures.append(f"y interval [{lo}, {hi}] != [0, {cfg_physics['Ly']}]")
-    if cfg_physics.get("y_grid", "auto") not in ("auto", best):
-        failures.append(f"config y_grid={cfg_physics['y_grid']} but data looks {best}")
+    if family == "auto":
+        results["y_grid_used"] = best
+        lo, hi = grid["candidates"][best]["interval"]
+        if best not in ("gauss", "lobatto") or grid["candidates"][best]["max_abs_dev"] > tol["grid"]:
+            failures.append(f"y grid is not Chebyshev within {tol['grid']} (best fit {best})")
+        if abs(lo - 0.0) > tol["grid"] or abs(hi - cfg_physics["Ly"]) > tol["grid"]:
+            failures.append(f"y interval [{lo}, {hi}] != [0, {cfg_physics['Ly']}]")
+    else:
+        # The family is set in the config (D18); the checks below test it on the values themselves.
+        results["y_grid_used"] = family
+        results["stored_y_status"] = physics.stored_y_status(y, cfg_physics, tol["grid"])
+        if results["stored_y_status"] == "unexpected":
+            failures.append(f"stored y is neither the {family} nodes nor the uniform placeholder on [0, Ly]")
+    y = physics.y_nodes(y, cfg_physics)
     dx = np.diff(x)
     results["x"] = {"n": len(x), "dx_min": float(dx.min()), "dx_max": float(dx.max()),
                     "Lx_from_spacing": float(dx.mean() * len(x)), "x0": float(x[0])}

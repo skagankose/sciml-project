@@ -31,6 +31,16 @@ behaviour identical to the published benchmark. It is also the cu128 version use
 * Sample layout `input_fields [T_in, X, Y, F]`, `output_fields [T_out, X, Y, F]`; X = `dimensions/x` (512,
   horizontal, periodic), Y = `dimensions/y` (128, wall-bounded). Field order is t0 fields then t1 components:
   `buoyancy, pressure, velocity_x, velocity_y` (asserted at load time).
+* **`dimensions/y` is a placeholder (real data, 2026-11-07).** The files store `linspace(0, 1, 128)`. The README
+  at `e63dec8` says the data are "Sampled at Chebyshev nodes along the y axis". `scripts/probe_y_grid.py` shows
+  the values sit on Chebyshev-Gauss nodes (walls excluded):
+  * on those nodes, the wall values reconstruct to b = 1 / 0 within 6e-10, u at the walls is 9e-8 of the rms,
+    and the conductive Nusselt part is 1 within 3e-9; Lobatto nodes fail three checks;
+  * at Ra = 1e10 the thermal boundary layer spans ~5 rows, which fits Gauss clustering (a uniform grid would
+    put it within about one row), and row 0 has b = 0.993, not the wall value.
+
+  Physics, spectra and noise therefore use generated Gauss nodes (`physics.y_grid: gauss`, decisions D18).
+  Training and VRMSE do not use coordinates.
 * Window index → (file, trajectory, t0) as in `WellDataset._load_one_sample`; `file_index_offsets[0]` is stored
   as `-1` upstream, handled in `rbbench.data.trajectory_window_range` and tested against direct h5py reads.
 * Normalization: `ZScoreNormalization` from `<dataset>/stats.yaml` (upstream training statistics), applied

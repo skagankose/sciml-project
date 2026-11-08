@@ -22,7 +22,7 @@ Rules:
 | B Upstream audit | shapes, parameter counts, random init, gradients; `docs/upstream_audit.md` | **passed 2026-10-22** (Mac CPU; 512×128 forward on CPU) |
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
-| D2 Pipeline check | The Well's released CNextU-Net and TFNO checkpoints reproduce their published one-step VRMSE on our data path (within 5%) | `eval-released` + `released_a100.sbatch` done and tested offline; checkpoints verified on the Mac; needs verified valid/test; **owner approval before GPU time** |
+| D2 Pipeline check | The Well's released CNextU-Net and TFNO checkpoints reproduce their published one-step VRMSE on our data path (within 5%) | **ran 2026-11-07: MISMATCH** (CNextU-Net 0.23 vs 0.48, TFNO 10.7 vs 0.86); TFNO convention probe pending |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; A100 pilot not run |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | not run; **owner approval before pilot GPU time** |
@@ -84,3 +84,11 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     Evaluation requires the audit to have checked the same family.
   * Audit rerun after pushing e87855e: "y grid: stored uniform (placeholder), used gauss; physics checks
     passed: True". Gate D passed. Subset manifests are on HPC3, to be pulled and committed.
+  * Pipeline check (job 59154129, commit 78d062f): **MISMATCH**. Released CNextU-Net scores 0.234 valid /
+    0.224 test (published 0.481 / 0.670). It reaches 0.03–0.05 from frame 50 on; the mean comes from the first
+    ~20 frames, where the nearly still fluid makes velocity VRMSE 3–4. Released TFNO scores 10.7 / 10.5
+    (published 0.857 / 0.657) and ~1.1 on every field even on late windows, which looks like a convention
+    mismatch. Both delta and RMS stats are in `stats.yaml`; the pinned trainer supports both
+    (DeltaWellDataset, RMSNormalization). Added `scripts/probe_released_conventions.py`, which scores both
+    checkpoints under z-score/RMS × state/delta, with persistence as the reference. No training until this
+    is explained.

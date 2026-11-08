@@ -25,8 +25,9 @@ outputs/
       spectra_<label>.parquet           # mean E(k) per regime x sigma x step x {pred, true}
   baselines/persistence/evaluations/    # same files with label "na"
   baselines/released/                   # rbbench eval-released (pipeline check, decisions D20)
-    released_check.json                 # pinned checkpoints, VRMSE vs published per model x split, verdict
-    <model>/one_step_<split>.parquet    # per window, same columns as one_step_<label>.parquet
+    released_check.json                 # pinned checkpoints and forward, ours / paper protocol / published, verdict
+    <model>/one_step_<split>.parquet    # per window: the one_step_<label>.parquet columns plus
+                                        #   paper_valid_vrmse_* and paper_test_vrmse_* (paper-era protocols)
 tables/ main_results.csv, per_seed_results.csv, resource_use.csv, gpu_hours.csv, missing_runs.csv
 figures/ fig1…fig7 (.pdf, .png)
 ```

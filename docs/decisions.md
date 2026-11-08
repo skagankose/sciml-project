@@ -170,7 +170,38 @@ A mismatch would point to a problem in our data path or metric. Implemented 2026
   do not fix them. `docs/benchmarks.md` on master still lists the paper values for `rayleigh_benard`.
 * *Consequence.* The 5% criterion against the published values cannot pass and does not test our pipeline.
   Our own TFNO is trained from scratch in the pinned environment, so the broken checkpoint does not affect
-  the study. The replacement criterion is **pending the owner's decision**.
+  the study.
+
+*Root causes (2026-11-08), from the paper-era code at tag v1.0.1 and the repository history.*
+* *Same inputs as the paper.* The data files on the server are dated 2024-12-05 (HTTP Last-Modified), the
+  original release. The splits are the official ones (1400/175/175). The v1.0.1 `stats.yaml` equals the
+  current one to the digits shown. The benchmark data config uses z-score normalization and batch 64.
+  Evaluating a checkpoint involves no seed.
+* *Same code source.* The models, normalization and VRMSE come from `github.com/PolymathicAI/the_well`,
+  but at `e63dec8` (2026-10-12), not the paper-era v1.0.x. The model classes differ only in their
+  constructor signature, except for the TFNO fix below. The VRMSE code is the same (eps 1e-7).
+* *TFNO never used its Fourier layers.* From 2024-06-03 ("Added gradient checkpointing") to commit `e430160`
+  (2025-11-17, "actually use the TFNO blocks"), the wrapper called `fno_blocks` without keeping the output.
+  The paper's TFNO, and the released checkpoint (2025-03-28), is therefore lifting → projection, a per-pixel
+  MLP. Its block weights were never trained, and the fixed code runs them, which gives noise. With the
+  paper-era forward, the released TFNO tracks its input (correlation 0.97–1.00 on synthetic data). It is
+  evaluated that way (`released.PAPER_FORWARD`).
+* *The paper's test numbers used unnormalised inputs.* In v1.0.1, `test_dataset` and `rollout_test_dataset`
+  are built without `use_normalization`, so the models saw raw fields and were scored against raw targets.
+  v1.1.0 fixed this ("Fixed normalization bug in test dataset").
+* *The paper's validation numbers are a short validation in normalised units.* During training, validation
+  used 20 shuffled batches of 64 windows (`short_validation_length: 20`), with no conversion to physical
+  units. The best checkpoint was chosen on that score.
+
+*Criterion (owner, 2026-11-08): "you don't need to match exactly with the paper, but results should be at
+least as good as the paper."* `eval-released` now reports three one-step VRMSEs per window:
+* ours (normalized inputs, physical units);
+* `paper_valid` (normalized units);
+* `paper_test` (raw inputs, as v1.0.1).
+
+It passes when ours ≤ published for every model and split. A paper-protocol value within 10% of the
+published one is reported as reproduced; this is evidence, not the criterion. The same "at least as good"
+test applies later to our own trained models.
 
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.

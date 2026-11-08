@@ -31,11 +31,43 @@ RELEASED = {
 }
 
 # One-step VRMSE (field mean) of these checkpoints, from docs/benchmarks.md at the pinned
-# The Well commit (best-validation checkpoint after 12 h on one H100).
+# The Well commit (best-validation checkpoint after 12 h on one H100). They were computed with the
+# paper-era code (the_well v1.0.x, read at tag v1.0.1; decisions D20):
+# * valid: training-time "short validation" (20 shuffled batches of 64 windows), in normalised units;
+# * test: `test_dataset` was built without `use_normalization`, so raw inputs went into models trained on
+#   normalised data and the output was scored against raw targets (fixed in v1.1.0, "Fixed
+#   normalization bug in test dataset").
 PUBLISHED_VRMSE = {
     "cnext_unet": {"valid": 0.4807, "test": 0.6699},
     "tfno": {"valid": 0.8568, "test": 0.6566},
 }
+# The paper-era protocol each published split corresponds to (columns of evaluate.one_step_rows).
+PAPER_PROTOCOL = {"valid": "paper_valid", "test": "paper_test"}
+
+# Until the_well commit e430160 (2025-11-17, "actually use the TFNO blocks") the TFNO wrapper called its FNO
+# blocks without keeping their output, so the paper's TFNO, and this checkpoint (uploaded 2025-03-28), is
+# lifting -> projection only; its FNO-block weights were never trained. The pinned code runs those blocks,
+# which turns the checkpoint's output into noise, so it is evaluated with the forward it was trained with.
+PAPER_FORWARD = {"tfno": "fno_blocks_skipped (the_well <= v1.2.0, before e430160)"}
+
+
+def use_paper_forward(name: str, model: nn.Module) -> str | None:
+    """Give a released model the forward pass it was trained with. Returns a label, or None if unchanged."""
+    if name not in PAPER_FORWARD:
+        return None
+    import types
+
+    inner = model.net.model  # the_well's NeuralOpsCheckpointWrapper around neuralop's TFNO
+
+    def forward(self, x, output_shape=None, **kwargs):  # the_well v1.0.1 TFNO forward, block outputs dropped
+        x = self.optional_checkpointing(self.lifting, x)
+        if self.domain_padding is not None:
+            x = self.domain_padding.pad(x)
+            x = self.domain_padding.unpad(x)
+        return self.optional_checkpointing(self.projection, x)
+
+    inner.forward = types.MethodType(forward, inner)
+    return PAPER_FORWARD[name]
 
 
 def fetch(name: str) -> dict:
@@ -68,8 +100,12 @@ def config_differences(released_config: dict, cfg: dict) -> list[str]:
             for key, value in ours.items() if released_config.get(key) != value]
 
 
-def load_released(name: str, cfg: dict, fetched: dict) -> nn.Module:
-    """Our model for `cfg`, with the released weights loaded strictly into its upstream network."""
+def load_released(name: str, cfg: dict, fetched: dict, paper_forward: bool = True) -> nn.Module:
+    """Our model for `cfg`, with the released weights loaded strictly into its upstream network.
+
+    With `paper_forward` (the default) a checkpoint trained with a since-fixed forward pass gets that forward
+    back (`PAPER_FORWARD`); the label is stored as `model.released_forward`.
+    """
     from safetensors.torch import load_model
 
     from rbbench.models.factory import model_from_config
@@ -79,4 +115,5 @@ def load_released(name: str, cfg: dict, fetched: dict) -> nn.Module:
         raise ValueError(f"{fetched['repo_id']} does not match our {name} config: " + "; ".join(diffs))
     model = model_from_config(cfg)
     load_model(model.net, fetched["weights_path"], strict=True)
+    model.released_forward = use_paper_forward(name, model) if paper_forward else None
     return model.eval()

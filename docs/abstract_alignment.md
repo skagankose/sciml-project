@@ -138,8 +138,16 @@ say where the code still differs:
   D20.
 * *Context:* The Well issue #49 (open) acknowledges that the paper numbers and some Hub checkpoints are
   inconsistent with the current code. Another user reported the same FNO/TFNO-only failure on a second dataset.
-* *Report:* state that the comparison was made and failed. Say that CNextU-Net validates our data path, and
-  that the TFNO checkpoint is broken upstream (cite #49). The pass criterion is pending the owner.
+* *Root causes (2026-11-08, D20):*
+  * the paper-era TFNO dropped its Fourier-layer outputs (fixed upstream in `e430160`, 2025-11-17);
+  * the paper's test set was not normalized (fixed in v1.1.0);
+  * the paper's validation was a 1,280-window short validation in normalized units.
+
+  The data, splits and normalization statistics are the paper's.
+* *Criterion (owner, 2026-11-08):* our results must be at least as good as the paper's. `eval-released`
+  checks this, and also reproduces the published values under the paper's protocol.
+* *Report:* explain the three upstream issues, show the paper-protocol reproduction, and note that the
+  paper's TFNO is a per-pixel MLP. Our TFNO, with working Fourier layers, is a different and stronger model.
 
 **F10 — Smaller wording points, already consistent with the code.**
 * "Each run trains for 4 hours": the clock counts training-loop time and excludes validation and checkpoint

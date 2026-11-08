@@ -59,7 +59,7 @@ def main(argv=None) -> int:
     models = {}
     for name in args.models:
         cfg = load_config(name, "main", "full")
-        models[name] = load_released(name, cfg, fetch(name))
+        models[name] = load_released(name, cfg, fetch(name), paper_forward=False)  # the pinned forward
 
     # rows[model][convention] -> list of (start, vrmse per field)
     rows = {m: {c: [] for c in CONVENTIONS} for m in models}

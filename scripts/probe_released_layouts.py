@@ -25,7 +25,7 @@ fd, _ = full_trajectory_dataset(d, "valid", 4)
 traj = load_trajectory(fd, list_trajectories(d, "valid")[0], d).float()
 x = traj[None, 4:8]; last = x[0, -1]
 MODEL = sys.argv[3] if len(sys.argv) > 3 and sys.argv[2] == "--model" else "tfno"
-net = load_released(MODEL, load_config(MODEL, "main", "full"), fetch(MODEL)).net
+net = load_released(MODEL, load_config(MODEL, "main", "full"), fetch(MODEL), paper_forward=False).net
 
 def corr(a, b):
     return [torch.corrcoef(torch.stack([a[..., c].flatten(), b[..., c].flatten()]))[0, 1].item() for c in range(4)]

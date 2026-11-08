@@ -261,7 +261,7 @@ def cmd_eval_released(args):
     from rbbench.data import FIELDS
     from rbbench.evaluate import evaluate_one_step, model_predictor
     from rbbench.manifests import provenance
-    from rbbench.released import PUBLISHED_VRMSE, fetch, load_released
+    from rbbench.released import PAPER_PROTOCOL, PUBLISHED_VRMSE, fetch, load_released
 
     device = _device(args.device)
     dataset_dir = _dataset_dir(args)
@@ -273,37 +273,47 @@ def cmd_eval_released(args):
     for name in args.models:
         cfg = load_config(name, args.experiment, args.size, args.override)
         fetched = fetch(name)
-        predictors[name] = model_predictor(load_released(name, cfg, fetched).to(device), device, "fp32")
-        checkpoints[name] = {k: fetched[k] for k in ("repo_id", "revision", "sha256")}
+        model = load_released(name, cfg, fetched)
+        predictors[name] = model_predictor(model.to(device), device, "fp32")
+        checkpoints[name] = {**{k: fetched[k] for k in ("repo_id", "revision", "sha256")},
+                             "forward": model.released_forward or "pinned the_well"}
     complete = args.max_trajectories is None
     results, passed = {}, True
     for split in args.splits:
         tables = evaluate_one_step(predictors, dataset_dir, split, cfg["task"]["n_steps_input"], cfg["eval"],
-                                   device, args.max_trajectories)
+                                   device, args.max_trajectories, paper_protocols=True)
         for name, df in tables.items():
             (out / name).mkdir(parents=True, exist_ok=True)
             df.to_parquet(out / name / f"one_step_{split}.parquet", index=False)
-            ours, published = float(df["vrmse_mean"].mean()), PUBLISHED_VRMSE[name][split]
-            rel = (ours - published) / published
-            within = abs(rel) <= args.tolerance
-            passed &= within
+            published = PUBLISHED_VRMSE[name][split]
+            ours = float(df["vrmse_mean"].mean())
+            protocol = PAPER_PROTOCOL[split]
+            paper = float(df[f"{protocol}_vrmse_mean"].mean())
+            rel = (paper - published) / published
+            as_good = ours <= published
+            passed &= as_good
             results.setdefault(name, {})[split] = {
                 "vrmse_mean": ours, **{f"vrmse_{f}": float(df[f"vrmse_{f}"].mean()) for f in FIELDS},
-                "n_windows": len(df), "n_trajectories": int(df.traj_id.nunique()),
-                "published_vrmse_mean": published, "relative_difference": rel, "within_tolerance": within,
+                "paper_valid_vrmse_mean": float(df["paper_valid_vrmse_mean"].mean()),
+                "paper_test_vrmse_mean": float(df["paper_test_vrmse_mean"].mean()),
+                "paper_protocol": protocol, "n_windows": len(df), "n_trajectories": int(df.traj_id.nunique()),
+                "published_vrmse_mean": published, "at_least_as_good": as_good,
+                "reproduction_relative_difference": rel, "reproduced": abs(rel) <= args.tolerance,
             }
-            print(f"{name:11s} {split:5s} VRMSE {ours:.4f}  published {published:.4f}  difference {100 * rel:+.1f}%  "
-                  f"{'ok' if within else 'MISMATCH'}  ({len(df)} windows)")
+            print(f"{name:11s} {split:5s} ours {ours:.4f} | paper protocol ({protocol}) {paper:.4f} vs published "
+                  f"{published:.4f} ({100 * rel:+.1f}%{', reproduced' if abs(rel) <= args.tolerance else ''}) | "
+                  f"ours <= published: {'yes' if as_good else 'NO'}  ({len(df)} windows)")
     verdict = passed if complete else None
     atomic_write_json(out / "released_check.json", {
-        "passed": verdict, "tolerance": args.tolerance, "complete_splits": complete,
+        "passed": verdict, "criterion": "our VRMSE <= published for every model and split (owner, 2026-11-08)",
+        "reproduction_tolerance": args.tolerance, "complete_splits": complete,
         "max_trajectories": args.max_trajectories, "checkpoints": checkpoints, "results": results,
         "metric_version": METRIC_VERSION, "provenance": provenance({"device": str(device)}),
     })
     if not complete:
         print(f"partial run (--max-trajectories {args.max_trajectories}): not a pipeline check")
     else:
-        print("PIPELINE CHECK PASSED" if passed else "PIPELINE CHECK: MISMATCH")
+        print("PIPELINE CHECK PASSED" if passed else "PIPELINE CHECK: FAILED (ours worse than published)")
     print(f"wrote {out / 'released_check.json'}")
     return 1 if verdict is False else 0
 
@@ -537,7 +547,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--splits", nargs="+", default=["valid", "test"], choices=["valid", "test"])
     sp.add_argument("--size", default="full", choices=["full", "tiny"], help="tiny is for tests only")
     sp.add_argument("--override", action="append", default=[])
-    sp.add_argument("--tolerance", type=float, default=0.05, help="max relative difference from the published VRMSE")
+    sp.add_argument("--tolerance", type=float, default=0.10,
+                    help="paper-protocol VRMSE within this relative difference of the published value counts as "
+                         "reproduced (reported, not the pass criterion)")
     sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a pipeline check")
     sp.add_argument("--allow-unverified-data", action="store_true")
     sp.set_defaults(func=cmd_eval_released)

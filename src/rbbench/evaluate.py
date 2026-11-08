@@ -131,19 +131,33 @@ def _physical(norm, t: torch.Tensor) -> torch.Tensor:
 
 
 def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tensor, base: dict, n_in: int,
-                  stride: int, batch_size: int, device: torch.device, norm) -> list[dict]:
-    """VRMSE (physical units) of every `stride`-th one-step window of one normalised trajectory."""
+                  stride: int, batch_size: int, device: torch.device, norm,
+                  paper_protocols: bool = False) -> list[dict]:
+    """VRMSE (physical units) of every `stride`-th one-step window of one normalised trajectory.
+
+    `paper_protocols` adds the paper-era scores used for the released checkpoints (decisions D20):
+    `paper_valid_*` scores the prediction in normalised units against the normalised target;
+    `paper_test_*` feeds the raw (physical) window, as the_well v1.0.x's unnormalised test set did, and
+    scores the raw output against the raw target.
+    """
     rows = []
     starts = list(range(0, traj.shape[0] - n_in, stride))
     for i in range(0, len(starts), batch_size):
         chunk = starts[i:i + batch_size]
         x = torch.stack([traj[s:s + n_in] for s in chunk]).to(device)
-        pred = _physical(norm, predict(x).cpu())
+        out = predict(x).cpu()
+        pred = _physical(norm, out)
         true = torch.stack([traj_phys[s + n_in] for s in chunk])
-        v = vrmse(pred, true).numpy()
-        for s, vals in zip(chunk, v):
-            rows.append({**base, "start": s, **{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, vals)},
-                         "vrmse_mean": float(vals.mean())})
+        scores = {"vrmse": vrmse(pred, true).numpy()}
+        if paper_protocols:
+            scores["paper_valid_vrmse"] = vrmse(out, torch.stack([traj[s + n_in] for s in chunk]).float()).numpy()
+            raw = torch.stack([traj_phys[s:s + n_in] for s in chunk]).to(device)
+            scores["paper_test_vrmse"] = vrmse(predict(raw).cpu(), true).numpy()
+        for j, s in enumerate(chunk):
+            row = {**base, "start": s}
+            for key, v in scores.items():
+                row |= {f"{key}_{f}": float(a) for f, a in zip(FIELDS, v[j])} | {f"{key}_mean": float(v[j].mean())}
+            rows.append(row)
     return rows
 
 
@@ -321,6 +335,7 @@ def evaluate_one_step(
     eval_cfg: dict,
     device: torch.device,
     max_trajectories: int | None = None,
+    paper_protocols: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """One-step VRMSE of every window of one split for each predictor, reading the data once."""
     fd, _ = full_trajectory_dataset(dataset_dir, split, n_steps_input)
@@ -333,7 +348,8 @@ def evaluate_one_step(
         base = {"traj_id": ref.id, "rayleigh": ref.rayleigh, "prandtl": ref.prandtl}
         for lab, predict in predictors.items():
             rows[lab] += one_step_rows(predict, traj, traj_phys, base, n_steps_input,
-                                       eval_cfg["one_step_window_stride"], eval_cfg["batch_size"], device, fd.norm)
+                                       eval_cfg["one_step_window_stride"], eval_cfg["batch_size"], device, fd.norm,
+                                       paper_protocols)
     return {lab: pd.DataFrame(r) for lab, r in rows.items()}
 
 

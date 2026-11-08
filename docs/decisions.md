@@ -51,13 +51,26 @@ recorded. No test-set tuning.
   chose for `rayleigh_benard` (model cards): CNextU-Net 5e-4, TFNO 1e-4. They are set in each model's
   `train_overrides`, are not tuned by us, and no test data is involved. AViT keeps 5e-4 until its rate is
   decided (F5).
-* *Batch size target:* 64, The Well's `rayleigh_benard` data config, if every core model fits on an A100 80
-  GB in fp32. Otherwise the largest size that fits all of them. Chosen from the profiling run.
+* *Batch size: 64* for every model, The Well's `rayleigh_benard` data config. It fits every model in fp32
+  on an A100 80 GB (profile 2026-11-08, `outputs/pilots/feasibility.csv`):
+
+  | batch 64, fp32 | step | peak memory | steps in 4 h | epochs of S100 in 4 h |
+  |---|---|---|---|---|
+  | CNextU-Net | 1.42 s | 58.7 GB | 10,121 | 2.4 |
+  | TFNO | 0.55 s | 44.9 GB | 26,160 | 6.1 |
+  | AViT | 0.38 s | 7.4 GB | 38,246 | 8.9 |
+  | ConvLSTM (extension) | 1.49 s | 23.6 GB | 9,669 | 2.3 |
+
+  Time per sample is nearly constant from batch 8 to 64, so a smaller batch would give more updates but not
+  more data in 4 h. The paper's best checkpoints came at epoch 12 (CNextU-Net) and 31 (TFNO) of 12 h on an
+  H100, so our 4 h runs train for about a fifth as many epochs.
 * *Paper's schedule, for reference:* AdamW with a linear warmup over 5 epochs from 0.1·lr, then cosine over
   200 epochs to 0.1·lr. With the 12 h stop (best epoch 12 for CNextU-Net, 31 for TFNO), that is nearly a
   constant rate. Ours decays to 0 over the 4 h budget (D6).
 
-**D8 — Precision (PENDING).** fp32 by default. bf16 autocast only for models whose A100 pilot shows finite,
+**D8 — Precision.** fp32 for every model in the core study (2026-11-08): the paper's setting (AMP off),
+and TFNO cannot run in bf16. bf16 halves CNextU-Net's step time (0.72 s at batch 64) but would give the
+models different precisions. Earlier note: fp32 by default. bf16 autocast only for models whose A100 pilot shows finite,
 matching validation loss; TFNO stays fp32 unless bf16 FFTs are shown to work. Recorded per model.
 * *TFNO is fp32 only (A100 check, 2026-11-07).* Under bf16 autocast, neuralop's `SpectralConv` fails in
   `torch.fft.rfftn` with "Unsupported dtype BFloat16" (torch 2.8). The Well's trainer keeps AMP off for the

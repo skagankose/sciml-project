@@ -31,9 +31,11 @@ schedule:
   min_lr_ratio: 0.0
 
 train:
-  batch_size: 8                     # PENDING Phase G: one shared batch size for all models
+  # The Well's rayleigh_benard data config (the paper's runs). Fits every model in fp32 on an A100 80 GB
+  # (profile 2026-11-08, peak: CNextU-Net 58.7 GB, TFNO 44.9, AViT 7.4, ConvLSTM 23.6). Decisions D7.
+  batch_size: 64
   loss: mse                         # one-step, full-state, normalized units, equal field weights
-  precision: fp32                   # fp32 | bf16 (CUDA only); PENDING Phase G per model
+  precision: fp32                   # every model, as the paper (AMP off); TFNO cannot use bf16 (D8)
   grad_clip_norm: null              # upstream does not clip
   deterministic: false
   # Cumulative training-loop seconds (data loading + forward + backward + optimizer).

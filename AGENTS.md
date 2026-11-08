@@ -25,7 +25,7 @@ Rules:
 | D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; A100 pilot not run |
-| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | not run; **owner approval before pilot GPU time** |
+| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7) |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
 | I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **needs owner approval**; budgets are 1 h/4 h, but `make-sweep` defaults still give 36 rows: pass the core grid explicitly |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
@@ -124,3 +124,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     model; VRMSE equals upstream exactly and NumPy to 1e-7). It then failed to write its JSON because
     `outputs/pilots/` did not exist, which stopped the job before the batch-size profiles. The script now
     creates the folder.
+  * Profile (batch 8–64, fp32 and bf16): batch 64 fits every model in fp32 (peak CNextU-Net 58.7 GB, TFNO
+    44.9, AViT 7.4, ConvLSTM 23.6). Set `train.batch_size: 64` (The Well's) and fp32 for all (D7, D8).
+    Core manifest `tasks/train.jsonl` generated (12 rows); the replication runs are rows 2 (CNextU-Net
+    100% s0) and 6 (TFNO 100% s0). Starting them starts the core sweep, so they need the owner's go-ahead.

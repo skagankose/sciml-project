@@ -108,6 +108,7 @@ def main() -> int:
     text = json.dumps(report, indent=2)
     print(text)
     if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text + "\n")
     return 0 if ok else 1
 

@@ -120,3 +120,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
       So the published test values did not come from the public test-set bug, and my first reading was wrong.
     * `compare-paper` now judges our runs against the released checkpoint scored identically, not against
       the published values.
+  * First profiling job: `compare_upstream.py` passed on the real data (rollout max abs diff 0.0 for every Well
+    model; VRMSE equals upstream exactly and NumPy to 1e-7). It then failed to write its JSON because
+    `outputs/pilots/` did not exist, which stopped the job before the batch-size profiles. The script now
+    creates the folder.

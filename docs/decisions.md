@@ -260,6 +260,10 @@ per step and TFNO at 7.8 s (later 47 s), at batch 64, against 1.42 s and 0.55 s 
 * *Cause:* upstream `WellDataset._load_one_sample` (e63dec8) opens the HDF5 file anew for every sample,
   through fsspec with a fresh 8 MB block cache. On BeeGFS each sample then costs open and metadata round
   trips, and reads many 8 MB blocks for about 5 MB of fields.
+* *File layout (checked on HPC3):* every field is stored contiguously and uncompressed (`chunks None`).
+  Buoyancy and pressure are `(40, 200, 512, 128)` and velocity `(40, 200, 512, 128, 2)` float32 per file. A
+  window of 5 frames is therefore three contiguous reads: 1.3 + 1.3 + 2.6 MB. The native driver reads
+  exactly that, so the files need no repacking.
 * *Fix:*
   * `data.PersistentWellDataset` overrides only the file opening: one `h5py.File` per path per process,
     native driver, 64 MB chunk cache, reopened after a fork. Reading, normalization and sample assembly stay

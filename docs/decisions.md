@@ -142,6 +142,36 @@ A mismatch would point to a problem in our data path or metric. Implemented 2026
   judgement: the published runs used their own evaluation loop and an H100, so small differences are expected,
   while a broken normalization, field order or metric would be far off.
 
+*Result (2026-11-07, job 59154129): MISMATCH; the published values cannot be the reference.*
+
+| | valid | test | published valid / test |
+|---|---|---|---|
+| CNextU-Net | 0.234 | 0.224 | 0.481 / 0.670 |
+| TFNO | 10.7 | 10.5 | 0.857 / 0.657 |
+
+* *CNextU-Net works through our pipeline.* From frame 50 on it scores 0.02–0.05, against 0.20 for
+  persistence. Of the four conventions, only z-score next-state is good (`scripts/probe_released_conventions.py`:
+  late median 0.019; the delta and RMS readings 0.14–0.31). That exercises our loading, normalization, layout,
+  orientation, denormalization and metric on the real data. Its mean comes from the first ~20 frames, where the
+  nearly still fluid makes velocity VRMSE 3–4.
+* *The released TFNO does not work under any convention.* On developed flow it scores ~1.1 on every field
+  (the field mean scores 1). Read as a delta, it lands on persistence (0.216 vs 0.204), so its output carries
+  almost no information. The two contraction paths (factorized and reconstructed) agree to 2e-6. With the same
+  weights, no channel order (t f / f t), x/y transpose, flip or field order gives an output that tracks the
+  input: the best worst-field correlation is 0.08 over 40 combinations (`scripts/probe_released_layouts.py`,
+  synthetic input). Tracking the input is necessary but not sufficient: CNextU-Net reaches 0.86 with the
+  correct layout and up to 0.94 with wrong field orders. So this test can rule layouts out but not confirm
+  one. The real-data probe above is the confirmation for CNextU-Net.
+* *Upstream status.* The Well issue #49 ("Inconsistent Pre-trained Baseline Performance", open) attributes
+  mismatches to a normalization change and to Hub checkpoints trained "before dataset orientations were
+  normalized"; retrained checkpoints and corrected paper numbers are promised but not released. A comment of
+  2026-11-05 reports the same pattern on `turbulent_radiative_layer_2D`: the Hub UNetConvNext reproduces, while
+  the Hub FNO/TFNO score 2.0/3.98 against 0.50 (persistence 0.58), and transposes, field orders, RMS and delta
+  do not fix them. `docs/benchmarks.md` on master still lists the paper values for `rayleigh_benard`.
+* *Consequence.* The 5% criterion against the published values cannot pass and does not test our pipeline.
+  Our own TFNO is trained from scratch in the pinned environment, so the broken checkpoint does not affect
+  the study. The replacement criterion is **pending the owner's decision**.
+
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.
 * Fewer trajectories already works: a smaller fraction through `make-subsets`.

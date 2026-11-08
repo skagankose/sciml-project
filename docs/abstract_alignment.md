@@ -129,6 +129,18 @@ say where the code still differs:
 * `cluster/README.md`: a new step 3b, the 12-run sweep commands and the storage and SU figures;
 * `tasks/README.md`.
 
+**F11 — The released checkpoints do not reproduce the published VRMSE (found 2026-11-07).** For the report.
+* *Abstract:* "we first evaluate The Well's released CNextU-Net and TFNO checkpoints and compare with their
+  published VRMSE."
+* *Result:* CNextU-Net scores 0.234 valid / 0.224 test, against 0.481 / 0.670 published. It works (0.02–0.05
+  on developed flow, against 0.20 for persistence) and is better than the published value. The released TFNO is
+  non-functional under every input convention (10.7 / 10.5, against 0.857 / 0.657). Details are in decisions
+  D20.
+* *Context:* The Well issue #49 (open) acknowledges that the paper numbers and some Hub checkpoints are
+  inconsistent with the current code. Another user reported the same FNO/TFNO-only failure on a second dataset.
+* *Report:* state that the comparison was made and failed. Say that CNextU-Net validates our data path, and
+  that the TFNO checkpoint is broken upstream (cite #49). The pass criterion is pending the owner.
+
 **F10 — Smaller wording points, already consistent with the code.**
 * "Each run trains for 4 hours": the clock counts training-loop time and excludes validation and checkpoint
   writes (D9). Say so in the report.
@@ -171,3 +183,4 @@ say where the code still differs:
 - [x] F8 dataset size (dropped)
 - [x] F9 docs
 - [ ] F10 report wording
+- [ ] F11 released checkpoints vs published VRMSE (pass criterion pending the owner; report wording)

@@ -34,9 +34,9 @@ RELEASED = {
 # The Well commit (best-validation checkpoint after 12 h on one H100). They were computed with the
 # paper-era code (the_well v1.0.x, read at tag v1.0.1; decisions D20):
 # * valid: training-time "short validation" (20 shuffled batches of 64 windows), in normalised units;
-# * test: `test_dataset` was built without `use_normalization`, so raw inputs went into models trained on
-#   normalised data and the output was scored against raw targets (fixed in v1.1.0, "Fixed
-#   normalization bug in test dataset").
+# * test: a full pass after training. The public v1.0.1 builds `test_dataset` without normalisation (fixed
+#   in v1.1.0), but emulating that gives CNextU-Net 9.99 against 0.67, so the paper's runs normalised it.
+# Neither emulated protocol reproduces these values (D20); they are a bar for our scores, not a target.
 PUBLISHED_VRMSE = {
     "cnext_unet": {"valid": 0.4807, "test": 0.6699},
     "tfno": {"valid": 0.8568, "test": 0.6566},

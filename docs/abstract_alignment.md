@@ -140,14 +140,19 @@ say where the code still differs:
   inconsistent with the current code. Another user reported the same FNO/TFNO-only failure on a second dataset.
 * *Root causes (2026-11-08, D20):*
   * the paper-era TFNO dropped its Fourier-layer outputs (fixed upstream in `e430160`, 2025-11-17);
-  * the paper's test set was not normalized (fixed in v1.1.0);
-  * the paper's validation was a 1,280-window short validation in normalized units.
+  * the paper's validation was a 1,280-window short validation in normalized units;
+  * the public v1.0.1 builds the test set without normalization (fixed in v1.1.0), but emulating that does
+    not give the published test values, so the paper's runs normalised it.
 
   The data, splits and normalization statistics are the paper's.
-* *Criterion (owner, 2026-11-08):* our results must be at least as good as the paper's. `eval-released`
-  checks this, and also reproduces the published values under the paper's protocol.
-* *Report:* explain the three upstream issues, show the paper-protocol reproduction, and note that the
-  paper's TFNO is a per-pixel MLP. Our TFNO, with working Fourier layers, is a different and stronger model.
+* *Criterion (owner, 2026-11-08):* our results must be at least as good as the paper's.
+  * Released checkpoints: ours ≤ published. **PASSED** on the 2026-11-08 rerun: CNextU-Net 0.234 / 0.224,
+    TFNO 0.305 / 0.300, against 0.481 / 0.670 and 0.857 / 0.657.
+  * Our trained runs: ours ≤ the released checkpoint scored identically (`compare-paper`).
+* *Report:* explain the upstream issues, give both the published values and the released checkpoints'
+  scores on our pipeline, and say the exact published values could not be reproduced (protocol details are
+  not fully recoverable). Note that the paper's TFNO is a per-pixel MLP. Our TFNO, with working Fourier
+  layers, is a different and stronger model.
 
 **F10 — Smaller wording points, already consistent with the code.**
 * "Each run trains for 4 hours": the clock counts training-loop time and excludes validation and checkpoint

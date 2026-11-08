@@ -142,7 +142,7 @@ def test_paper_protocols(dataset_dir):
 
 
 def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
-    """A trained run against the paper: judged only once the released-checkpoint reference exists."""
+    """A trained run against the paper's model, scored identically; judged only once that reference exists."""
     from helpers import FakeClock
 
     from rbbench.manifests import atomic_write_json
@@ -164,14 +164,17 @@ def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
 
     ref = tmp_path / "out" / "baselines" / "released"
     ref.mkdir(parents=True)
-    atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {
-        "valid": {"vrmse_mean": 1.0e9}, "test": {"vrmse_mean": 1.0e9}}}})
-    code = main(args)
+    worse = {"vrmse_mean": 1.0e9, "paper_valid_vrmse_mean": 1.0e9}  # a reference any model beats
+    atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {"valid": worse, "test": worse}}})
+    assert main(args) == 0
     record = json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())
-    valid, test = record["results"]["valid"], record["results"]["test"]
-    assert set(valid["checks"]) == {"paper protocol <= published", "ours <= released checkpoint"}
-    assert test["checks"] == {"ours <= released checkpoint": True}  # raw-input test protocol is not a criterion
-    assert record["passed"] == valid["checks"]["paper protocol <= published"]
-    assert code == (0 if record["passed"] else 1)
+    for split in ("valid", "test"):
+        assert record["results"][split]["checks"] == {"physical units <= released": True,
+                                                      "normalised units <= released": True}
+    assert record["passed"] is True  # the published values are reported, never the bar
+    better = {"vrmse_mean": 0.0, "paper_valid_vrmse_mean": 0.0}
+    atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {"valid": better, "test": better}}})
+    assert main(args) == 1
+    assert json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())["passed"] is False
     df = pd.read_parquet(run / "evaluations" / "paper_compare_4h_valid.parquet")
     assert {"vrmse_mean", "paper_valid_vrmse_mean", "paper_test_vrmse_mean"} <= set(df.columns)

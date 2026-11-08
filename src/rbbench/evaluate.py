@@ -137,8 +137,8 @@ def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tenso
 
     `paper_protocols` adds the paper-era scores used for the released checkpoints (decisions D20):
     `paper_valid_*` scores the prediction in normalised units against the normalised target;
-    `paper_test_*` feeds the raw (physical) window, as the_well v1.0.x's unnormalised test set did, and
-    scores the raw output against the raw target.
+    `paper_test_*` feeds the raw (physical) window, as the public the_well v1.0.1 test set would, and scores
+    the raw output against the raw target (diagnostic only: it does not give the published test values).
     """
     rows = []
     starts = list(range(0, traj.shape[0] - n_in, stride))

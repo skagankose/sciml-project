@@ -196,9 +196,12 @@ A mismatch would point to a problem in our data path or metric. Implemented 2026
   MLP. Its block weights were never trained, and the fixed code runs them, which gives noise. With the
   paper-era forward, the released TFNO tracks its input (correlation 0.97–1.00 on synthetic data). It is
   evaluated that way (`released.PAPER_FORWARD`).
-* *The paper's test numbers used unnormalised inputs.* In v1.0.1, `test_dataset` and `rollout_test_dataset`
-  are built without `use_normalization`, so the models saw raw fields and were scored against raw targets.
-  v1.1.0 fixed this ("Fixed normalization bug in test dataset").
+* *The public v1.0.1 test set is unnormalised, but the published test values were not produced that way.*
+  In v1.0.1, `test_dataset` and `rollout_test_dataset` are built without `use_normalization`; v1.1.0 fixed
+  this ("Fixed normalization bug in test dataset"). Emulating that bug gives CNextU-Net 9.99 and TFNO 1.18
+  against the published 0.67 and 0.66 (rerun, 2026-11-08). So the paper's runs must have normalised the test
+  set, and the public v1.0.1 is not exactly the code that produced them. (Corrects the first reading of
+  2026-11-08, which blamed the published test values on this bug.)
 * *The paper's validation numbers are a short validation in normalised units.* During training, validation
   used 20 shuffled batches of 64 windows (`short_validation_length: 20`), with no conversion to physical
   units. The best checkpoint was chosen on that score.
@@ -210,8 +213,28 @@ least as good as the paper."* `eval-released` now reports three one-step VRMSEs 
 * `paper_test` (raw inputs, as v1.0.1).
 
 It passes when ours ≤ published for every model and split. A paper-protocol value within 10% of the
-published one is reported as reproduced; this is evidence, not the criterion. The same "at least as good"
-test applies later to our own trained models.
+published one is reported as reproduced; this is evidence, not the criterion.
+
+*Rerun (2026-11-08, job 59224204, commit c8e3065): PASSED.*
+
+| | ours | published | paper-valid protocol | paper-test protocol |
+|---|---|---|---|---|
+| CNextU-Net valid | 0.234 | 0.481 | 0.701 | |
+| CNextU-Net test | 0.224 | 0.670 | | 9.99 |
+| TFNO valid | 0.305 | 0.857 | 0.675 | |
+| TFNO test | 0.300 | 0.657 | | 1.18 |
+
+* With its paper-era forward, the released TFNO (a per-pixel MLP) scores 0.30, against 10.7 with the pinned
+  forward.
+* Neither paper protocol reproduces the published values. The valid values come from one 1,280-window
+  random draw per epoch on heavy-tailed per-window scores, with the best epoch picked on that draw. The
+  test values were not computed with the public test-set bug (above).
+
+*Our trained models (2026-11-08):* comparing them with the published values is not like for like: under the
+paper's validation protocol, the paper's own released CNextU-Net scores 0.70 against its published 0.48. So
+`compare-paper` compares our run with the released checkpoint scored identically: the same windows, code and
+data. It requires ours ≤ released on valid and test, in physical units (our protocol) and in normalised units
+(the paper's validation protocol). The published values are reported only.
 
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.

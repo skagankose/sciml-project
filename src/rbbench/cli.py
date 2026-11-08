@@ -319,15 +319,16 @@ def cmd_eval_released(args):
 
 
 def cmd_compare_paper(args):
-    """One of our trained runs against the paper: at least as good, measured the same way (decisions D20).
+    """One of our trained runs against the paper's model: at least as good, measured the same way (D20).
 
-    * valid, paper protocol (normalised units, as the published validation values): ours <= published;
-    * valid and test, our protocol: ours <= the released checkpoint (the paper's model, eval-released).
-    The paper's raw-input test protocol is reported but not a criterion: it scores the v1.0.x bug.
+    The reference is the released checkpoint scored by eval-released on the same windows with the same code:
+    on valid and test, ours <= released in physical units (our protocol) and in normalised units (the paper's
+    validation protocol). The published values are reported only: the paper's own released CNextU-Net scores
+    0.70 in normalised units against its published 0.48, so they cannot be a like-for-like bar.
     """
     from rbbench.evaluate import evaluate_one_step, model_predictor
     from rbbench.manifests import provenance, sha256_file
-    from rbbench.released import PAPER_PROTOCOL, PUBLISHED_VRMSE
+    from rbbench.released import PUBLISHED_VRMSE
     from rbbench.sweep import get_task
 
     device = _device(args.device)
@@ -359,20 +360,23 @@ def cmd_compare_paper(args):
         df.to_parquet(out_dir / f"paper_compare_{args.label}_{split}.parquet", index=False)
         r = {key: float(df[f"{key}_mean"].mean()) for key in ("vrmse", "paper_valid_vrmse", "paper_test_vrmse")}
         published = PUBLISHED_VRMSE[name][split]
-        released_ours = released.get(split, {}).get("vrmse_mean")
+        ref = released.get(split, {})
+        released_ours, released_norm = ref.get("vrmse_mean"), ref.get("paper_valid_vrmse_mean")
         checks = {}
-        if split == "valid":
-            checks["paper protocol <= published"] = r["paper_valid_vrmse"] <= published
-        if released_ours is not None:
-            checks["ours <= released checkpoint"] = r["vrmse"] <= released_ours
+        if released_ours is not None and released_norm is not None:
+            checks["physical units <= released"] = r["vrmse"] <= released_ours
+            checks["normalised units <= released"] = r["paper_valid_vrmse"] <= released_norm
         passed &= all(checks.values())
-        results[split] = {**r, "published_vrmse_mean": published, "published_protocol": PAPER_PROTOCOL[split],
-                          "released_checkpoint_vrmse_mean": released_ours, "checks": checks, "n_windows": len(df)}
-        ref = f"released {released_ours:.4f}" if released_ours is not None else "released: not evaluated yet"
-        print(f"{name:11s} {args.label} {split:5s} ours {r['vrmse']:.4f} ({ref}) | paper protocol "
-              f"{r[PAPER_PROTOCOL[split] + '_vrmse']:.4f} vs published {published:.4f} | "
-              + ", ".join(f"{k}: {'yes' if v else 'NO'}" for k, v in checks.items()))
-    complete = args.max_trajectories is None and bool(released)
+        results[split] = {**r, "released_checkpoint": {"vrmse": released_ours, "paper_valid_vrmse": released_norm},
+                          "published_vrmse_mean": published, "checks": checks, "n_windows": len(df)}
+        if checks:
+            refs = f"released {released_ours:.4f} / {released_norm:.4f}"
+        else:
+            refs = "released: not evaluated yet"
+        print(f"{name:11s} {args.label} {split:5s} ours {r['vrmse']:.4f} physical / {r['paper_valid_vrmse']:.4f} "
+              f"normalised | {refs} | published {published:.4f} | "
+              + (", ".join(f"{k}: {'yes' if v else 'NO'}" for k, v in checks.items()) or "not judged"))
+    complete = args.max_trajectories is None and all(results[sp]["checks"] for sp in args.splits)
     verdict = passed if complete else None
     atomic_write_json(out_dir / f"paper_compare_{args.label}.json", {
         "passed": verdict, "run_dir": str(run_dir), "label": args.label, "model": name,
@@ -384,7 +388,7 @@ def cmd_compare_paper(args):
     if verdict is None:
         print("not a complete comparison (partial data, or eval-released has not been run)")
     else:
-        print("AT LEAST AS GOOD AS THE PAPER" if verdict else "WORSE THAN THE PAPER")
+        print("AT LEAST AS GOOD AS THE PAPER'S MODEL" if verdict else "WORSE THAN THE PAPER'S MODEL")
     return 1 if verdict is False else 0
 
 

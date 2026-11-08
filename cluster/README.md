@@ -125,8 +125,10 @@ runs, CNextU-Net and TFNO at 100% data, seed 0, so they cost no extra GPU time:
    sbatch --array=<cnext row>,<tfno row> --export=ALL,LABEL=4h cluster/slurm/paper_compare_a100.sbatch
    tail -n 4 logs/rb4-paper-*.out
    ```
-   It ends with `AT LEAST AS GOOD AS THE PAPER` or `WORSE THAN THE PAPER`. The result is written to
-   `outputs/runs/<run_id>/evaluations/paper_compare_4h.json`.
+   The reference is the released checkpoint scored identically by step 3b (same windows, code and data). The
+   run must be at least as good on valid and test, in physical and in normalised units; the published values
+   are printed for context. The log ends with `AT LEAST AS GOOD AS THE PAPER'S MODEL` or `WORSE THAN THE
+   PAPER'S MODEL`, and the result is written to `outputs/runs/<run_id>/evaluations/paper_compare_4h.json`.
 
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 

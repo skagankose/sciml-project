@@ -23,6 +23,7 @@ Rules:
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
 | D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
+| R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; **not started** (owner submits; ~50 GPU-h free-gpu) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; A100 pilot not run |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7) |
@@ -128,3 +129,6 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     44.9, AViT 7.4, ConvLSTM 23.6). Set `train.batch_size: 64` (The Well's) and fp32 for all (D7, D8).
     Core manifest `tasks/train.jsonl` generated (12 rows); the replication runs are rows 2 (CNextU-Net
     100% s0) and 6 (TFNO 100% s0). Starting them starts the core sweep, so they need the owner's go-ahead.
+  * Owner (2026-11-08): replicate the paper first, training as long as needed; the study keeps its budgets.
+    The replication is now two separate 24 h runs (`replication.yaml`, `tasks/replication.jsonl`), not core
+    rows 2 and 6. The core sweep waits until the replication is done.

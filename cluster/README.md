@@ -115,20 +115,37 @@ It ends with `PIPELINE CHECK PASSED` (ours ≤ published everywhere) or `PIPELIN
 
 ## 3c. Replication: our own CNextU-Net and TFNO vs the paper **[gate: owner approval of GPU time]**
 
-Our trained models must be at least as good as the paper's (decisions D20). The replication runs are two core
-runs, CNextU-Net and TFNO at 100% data, seed 0, so they cost no extra GPU time:
-1. Profile batch sizes up to The Well's 64 (step 4 below, with `BATCH_SIZES="8 16 32 64"`); the batch size
-   is then frozen in `configs/common.yaml` and the 12-row core manifest is generated (step 5).
-2. Train the two rows first: `sbatch --array=<cnext row>,<tfno row> cluster/slurm/train_a100.sbatch`.
-3. Compare each with the paper (after `eval-released`, step 3b):
-   ```bash
-   sbatch --array=<cnext row>,<tfno row> --export=ALL,LABEL=4h cluster/slurm/paper_compare_a100.sbatch
-   tail -n 4 logs/rb4-paper-*.out
-   ```
-   The reference is the released checkpoint scored identically by step 3b (same windows, code and data). The
-   run must be at least as good on valid and test, in physical and in normalised units; the published values
-   are printed for context. The log ends with `AT LEAST AS GOOD AS THE PAPER'S MODEL` or `WORSE THAN THE
-   PAPER'S MODEL`, and the result is written to `outputs/runs/<run_id>/evaluations/paper_compare_4h.json`.
+Before the study, our training code must produce models at least as good as the paper's (owner, 2026-11-08;
+decisions D20). The replication trains each model as long as the paper did, which is not the study's budget:
+* 24 h of training time on one A100, about 14 and 37 epochs. The paper's best checkpoints came at epochs 12
+  and 31, which is about 20 h on an A100.
+* Checkpoints at 6, 12, 18 and 24 h.
+* The paper's learning rates, batch 64 and fp32.
+* Its own manifest `tasks/replication.jsonl` (row 0 CNextU-Net, row 1 TFNO), never aggregated with the study.
+
+About 50 GPU-h on `free-gpu` (no SUs), outside the study's ~100 GPU-h.
+
+```bash
+sbatch --array=0,1 --time=26:00:00 --export=ALL,MANIFEST=tasks/replication.jsonl cluster/slurm/train_a100.sbatch
+```
+
+The two run in parallel when two A100s are free. If one is preempted or reaches its time limit, resubmit
+the same command; finished runs skip and the others resume. If `sbatch` rejects `--time=26:00:00`, use the
+partition's maximum.
+
+When both have finished, compare each with the released checkpoint scored identically (step 3b):
+
+```bash
+sbatch --array=0,1 --export=ALL,MANIFEST=tasks/replication.jsonl,LABEL=24h cluster/slurm/paper_compare_a100.sbatch
+tail -n 5 logs/rb4-paper-*_0.out logs/rb4-paper-*_1.out
+```
+
+* The run must be at least as good on valid and test, in physical and in normalised units.
+* The published values are printed for context.
+* Each log ends with `AT LEAST AS GOOD AS THE PAPER'S MODEL` or `WORSE THAN THE PAPER'S MODEL`. The result is
+  in `outputs/runs/<run_id>/evaluations/paper_compare_24h.json`.
+* The paper chose its checkpoint on validation. `LABEL=12h` or `18h` scores the earlier checkpoints, if
+  validation is needed to choose one.
 
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 

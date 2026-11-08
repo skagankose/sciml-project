@@ -249,6 +249,12 @@ paper's validation protocol, the paper's own released CNextU-Net scores 0.70 aga
 data. It requires ours ≤ released on valid and test, in physical units (our protocol) and in normalised units
 (the paper's validation protocol). The published values are reported only.
 
+*Replication budget (owner, 2026-11-08): "train as much as we need to match the paper"; the study keeps its
+limited budgets.* The paper's best checkpoints came at epoch 12 (CNextU-Net) and 31 (TFNO). At batch 64 on
+our A100 that is ~20 h of training for either model, so each replication run gets 24 h, with checkpoints at
+6, 12, 18 and 24 h (`configs/experiments/replication.yaml`, `tasks/replication.jsonl`). That costs about 50
+GPU-h on `free-gpu`, outside the study's ~100 GPU-h, and the runs are never aggregated with the study.
+
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.
 * Fewer trajectories already works: a smaller fraction through `make-subsets`.

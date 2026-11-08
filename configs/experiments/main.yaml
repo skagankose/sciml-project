@@ -1,5 +1,6 @@
 # Main sweep: one 4 h run per task, checkpoints at the first optimizer step at/after 1 h and
 # 4 h of training time. The core grid (cnext_unet, tfno, avit x 10/100% x seeds 0,1) is passed
 # to make-sweep explicitly (cluster/README.md step 5).
+# The replication of the paper (24 h runs) is configs/experiments/replication.yaml, not this sweep.
 # Inherits everything from common.yaml. Freeze PENDING values there before use.
 {}

@@ -139,3 +139,39 @@ def test_paper_protocols(dataset_dir):
     pd.testing.assert_frame_equal(plain, both[plain.columns])  # our scores are unchanged
     assert np.allclose(both.paper_test_vrmse_mean, both.vrmse_mean, rtol=1e-5)
     assert np.allclose(both.paper_valid_vrmse_mean, both.vrmse_mean, rtol=1e-3)
+
+
+def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
+    """A trained run against the paper: judged only once the released-checkpoint reference exists."""
+    from helpers import FakeClock
+
+    from rbbench.manifests import atomic_write_json
+    from rbbench.train import train_run
+
+    cfg = tiny_cfg("cnext_unet", "train.budgets_seconds={1h: 2.0, 4h: 6.0}", "train.val_every_seconds=1.0e9",
+                   "train.resume_every_seconds=1.0e9", "train.max_steps=null")
+    run = tmp_path / "run"
+    assert train_run(cfg, run, dataset_dir, 0, torch.device("cpu"), clock=FakeClock(0.5))["status"] == "complete"
+    args = ["compare-paper", "--run-dir", str(run), "--label", "4h", "--data-root", str(dataset_dir.parents[1]),
+            "--output-root", str(tmp_path / "out"), "--device", "cpu"]
+    with pytest.raises(SystemExit, match="not verified"):
+        main(args)
+    args.append("--allow-unverified-data")
+    assert main(args) == 0  # no released reference yet: reported, not judged
+    record = json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())
+    assert record["passed"] is None and record["released_reference"] is None
+    assert record["results"]["valid"]["published_vrmse_mean"] == released.PUBLISHED_VRMSE["cnext_unet"]["valid"]
+
+    ref = tmp_path / "out" / "baselines" / "released"
+    ref.mkdir(parents=True)
+    atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {
+        "valid": {"vrmse_mean": 1.0e9}, "test": {"vrmse_mean": 1.0e9}}}})
+    code = main(args)
+    record = json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())
+    valid, test = record["results"]["valid"], record["results"]["test"]
+    assert set(valid["checks"]) == {"paper protocol <= published", "ours <= released checkpoint"}
+    assert test["checks"] == {"ours <= released checkpoint": True}  # raw-input test protocol is not a criterion
+    assert record["passed"] == valid["checks"]["paper protocol <= published"]
+    assert code == (0 if record["passed"] else 1)
+    df = pd.read_parquet(run / "evaluations" / "paper_compare_4h_valid.parquet")
+    assert {"vrmse_mean", "paper_valid_vrmse_mean", "paper_test_vrmse_mean"} <= set(df.columns)

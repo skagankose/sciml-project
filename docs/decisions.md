@@ -46,6 +46,16 @@ whether it picks one rate shared by all models or one per model is open. The Wel
 (5e-4 CNextU-Net, 1e-4 TFNO). Per-model rates need per-model overrides in `make-sweep`. Until then
 `optim.lr = 5e-4` for every model. If a model needs gradient accumulation to reach the shared batch size, it is
 recorded. No test-set tuning.
+* *Replication of the paper (owner request, 2026-11-08):* our trained CNextU-Net and TFNO must be at least as
+  good as the paper's (D20). To compare like with like, the two models use the rates The Well's own sweep
+  chose for `rayleigh_benard` (model cards): CNextU-Net 5e-4, TFNO 1e-4. They are set in each model's
+  `train_overrides`, are not tuned by us, and no test data is involved. AViT keeps 5e-4 until its rate is
+  decided (F5).
+* *Batch size target:* 64, The Well's `rayleigh_benard` data config, if every core model fits on an A100 80
+  GB in fp32. Otherwise the largest size that fits all of them. Chosen from the profiling run.
+* *Paper's schedule, for reference:* AdamW with a linear warmup over 5 epochs from 0.1·lr, then cosine over
+  200 epochs to 0.1·lr. With the 12 h stop (best epoch 12 for CNextU-Net, 31 for TFNO), that is nearly a
+  constant rate. Ours decays to 0 over the 4 h budget (D6).
 
 **D8 — Precision (PENDING).** fp32 by default. bf16 autocast only for models whose A100 pilot shows finite,
 matching validation loss; TFNO stays fp32 unless bf16 FFTs are shown to work. Recorded per model.

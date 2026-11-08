@@ -109,3 +109,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * With the paper-era forward, the released TFNO tracks its input (0.97–1.00).
   * Owner's criterion: results at least as good as the paper. `eval-released` now scores ours plus the
     paper-valid and paper-test protocols, and passes when ours ≤ published.
+  * Replication set up (cluster/README step 3c): our CNextU-Net and TFNO at 100%, seed 0 (two core runs) are
+    trained first and compared with the paper by `rbbench compare-paper`. Criterion: on valid, ours ≤ published
+    under the paper's protocol; on valid and test, ours ≤ the released checkpoint under our protocol.
+    Learning rates are The Well's own swept values (CNextU-Net 5e-4, TFNO 1e-4; D7). The batch size targets
+    The Well's 64 and is chosen from profiling.

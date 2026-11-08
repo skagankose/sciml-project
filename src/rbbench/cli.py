@@ -318,6 +318,76 @@ def cmd_eval_released(args):
     return 1 if verdict is False else 0
 
 
+def cmd_compare_paper(args):
+    """One of our trained runs against the paper: at least as good, measured the same way (decisions D20).
+
+    * valid, paper protocol (normalised units, as the published validation values): ours <= published;
+    * valid and test, our protocol: ours <= the released checkpoint (the paper's model, eval-released).
+    The paper's raw-input test protocol is reported but not a criterion: it scores the v1.0.x bug.
+    """
+    from rbbench.evaluate import evaluate_one_step, model_predictor
+    from rbbench.manifests import provenance, sha256_file
+    from rbbench.released import PAPER_PROTOCOL, PUBLISHED_VRMSE
+    from rbbench.sweep import get_task
+
+    device = _device(args.device)
+    dataset_dir = _dataset_dir(args)
+    unverified = [s for s in args.splits if not (dataset_dir / f"rbbench_complete_{s}.json").exists()]
+    if unverified and not args.allow_unverified_data:
+        sys.exit(f"splits {unverified} are not verified downloads (no rbbench_complete_<split>.json)")
+    if args.run_dir:
+        run_dir = Path(args.run_dir)
+    elif args.manifest is not None and args.task_index is not None:
+        run_dir = _output_root(args) / "runs" / get_task(Path(args.manifest), args.task_index)["run_id"]
+    else:
+        sys.exit("give --run-dir, or --manifest with --task-index")
+    if not (run_dir / "COMPLETE.json").exists():
+        sys.exit(f"{run_dir} has not finished training")
+    cfg, model, ckpt = load_run_model(run_dir, args.label, device)
+    name = cfg["model"]["name"]
+    if name not in PUBLISHED_VRMSE:
+        sys.exit(f"the paper reports no rayleigh_benard VRMSE for {name}")
+    released_path = _output_root(args) / "baselines" / "released" / "released_check.json"
+    released = read_json(released_path)["results"].get(name, {}) if released_path.exists() else {}
+    predict = model_predictor(model, device, cfg["train"]["precision"])
+    out_dir = run_dir / "evaluations"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results, passed = {}, True
+    for split in args.splits:
+        df = evaluate_one_step({"run": predict}, dataset_dir, split, cfg["task"]["n_steps_input"], cfg["eval"],
+                               device, args.max_trajectories, paper_protocols=True)["run"]
+        df.to_parquet(out_dir / f"paper_compare_{args.label}_{split}.parquet", index=False)
+        r = {key: float(df[f"{key}_mean"].mean()) for key in ("vrmse", "paper_valid_vrmse", "paper_test_vrmse")}
+        published = PUBLISHED_VRMSE[name][split]
+        released_ours = released.get(split, {}).get("vrmse_mean")
+        checks = {}
+        if split == "valid":
+            checks["paper protocol <= published"] = r["paper_valid_vrmse"] <= published
+        if released_ours is not None:
+            checks["ours <= released checkpoint"] = r["vrmse"] <= released_ours
+        passed &= all(checks.values())
+        results[split] = {**r, "published_vrmse_mean": published, "published_protocol": PAPER_PROTOCOL[split],
+                          "released_checkpoint_vrmse_mean": released_ours, "checks": checks, "n_windows": len(df)}
+        ref = f"released {released_ours:.4f}" if released_ours is not None else "released: not evaluated yet"
+        print(f"{name:11s} {args.label} {split:5s} ours {r['vrmse']:.4f} ({ref}) | paper protocol "
+              f"{r[PAPER_PROTOCOL[split] + '_vrmse']:.4f} vs published {published:.4f} | "
+              + ", ".join(f"{k}: {'yes' if v else 'NO'}" for k, v in checks.items()))
+    complete = args.max_trajectories is None and bool(released)
+    verdict = passed if complete else None
+    atomic_write_json(out_dir / f"paper_compare_{args.label}.json", {
+        "passed": verdict, "run_dir": str(run_dir), "label": args.label, "model": name,
+        "checkpoint": {"sha256": sha256_file(run_dir / f"checkpoint_{args.label}.pt"), "step": ckpt["step"],
+                       "train_seconds": ckpt["train_seconds"]},
+        "released_reference": str(released_path) if released else None, "results": results,
+        "provenance": provenance({"device": str(device)}),
+    })
+    if verdict is None:
+        print("not a complete comparison (partial data, or eval-released has not been run)")
+    else:
+        print("AT LEAST AS GOOD AS THE PAPER" if verdict else "WORSE THAN THE PAPER")
+    return 1 if verdict is False else 0
+
+
 def cmd_profile(args):
     from rbbench.config import load_config
     from rbbench.profile import profile_model, write_rows
@@ -553,6 +623,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a pipeline check")
     sp.add_argument("--allow-unverified-data", action="store_true")
     sp.set_defaults(func=cmd_eval_released)
+
+    sp = sub.add_parser("compare-paper", help="a trained run vs the paper: at least as good, measured the same way")
+    common(sp, out=True, device=True)
+    sp.add_argument("--run-dir", help="a run directory (or use --manifest and --task-index)")
+    sp.add_argument("--manifest")
+    sp.add_argument("--task-index", type=int)
+    sp.add_argument("--label", default="4h", help="milestone checkpoint to compare")
+    sp.add_argument("--splits", nargs="+", default=["valid", "test"], choices=["valid", "test"])
+    sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a comparison")
+    sp.add_argument("--allow-unverified-data", action="store_true")
+    sp.set_defaults(func=cmd_compare_paper)
 
     sp = sub.add_parser("profile", help="throughput/memory/latency per model (A100 feasibility)")
     common(sp, device=True)

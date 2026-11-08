@@ -80,6 +80,7 @@ The `smoke` command runs the real pipeline end to end on tiny models:
 | `train`, `train-task` | one run (explicit or by task index); resumable, budgeted |
 | `eval-task`, `eval-baseline` | evaluate the milestone checkpoints / persistence |
 | `eval-released` | pipeline check: The Well's released CNextU-Net/TFNO checkpoints vs their published VRMSE |
+| `compare-paper` | one of our trained runs vs the paper: at least as good, measured the same way |
 | `profile` | A100 throughput, memory and latency (`outputs/pilots/feasibility.csv`) |
 | `aggregate` | `tables/` and `figures/` from copied outputs (runs on the Mac) |
 | `verify-download`, `check-gpu`, `fixture`, `smoke` | infrastructure |
@@ -95,7 +96,7 @@ src/rbbench/   data, models/, train, rollout, evaluate, metrics/{well_metric,phy
                audit, profile, aggregate, download, manifests, released, cli; vendor/openstl (ConvLSTM cell, verbatim)
 scripts/   download_rb.sh, compare_upstream.py, thin CLI wrappers
 cluster/   env.sh, setup_env.sh, push.sh, pull.sh,
-           slurm/{setup_cpu,check,download_cpu,released_a100,profile_a100,pilot_a100,train_a100,eval_a100}.sbatch
+           slurm/{setup_cpu,check,download_cpu,released_a100,paper_compare_a100,profile_a100,pilot_a100,train_a100,eval_a100}.sbatch
 tests/     model, layout, subset, normalization, rollout, VRMSE, physics, noise, resume, budget, aggregate, pipeline, CUDA
 tasks/     frozen manifests (generated on HPC3 from the real data, then committed)
 docs/      methodology, decisions, upstream audit, results schema

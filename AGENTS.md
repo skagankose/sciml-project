@@ -21,7 +21,7 @@ Rules:
 | A Mac bootstrap | tests + synthetic smoke for all 4 models without data | **passed 2026-10-22** (90 passed, 9 CUDA skipped) |
 | B Upstream audit | shapes, parameter counts, random init, gradients; `docs/upstream_audit.md` | **passed 2026-10-22** (Mac CPU; 512×128 forward on CPU) |
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
-| D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). Audit: counts 1400/175/175 OK; physics checks failed on the stored y, a uniform placeholder. Probe: the values are on Chebyshev-Gauss nodes (all checks pass to ~1e-9); now `physics.y_grid: gauss` (D18). **Rerun the audit** to pass the gate |
+| D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
 | D2 Pipeline check | The Well's released CNextU-Net and TFNO checkpoints reproduce their published one-step VRMSE on our data path (within 5%) | `eval-released` + `released_a100.sbatch` done and tested offline; checkpoints verified on the Mac; needs verified valid/test; **owner approval before GPU time** |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | code + tests done; real manifests not generated |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; A100 pilot not run |
@@ -82,3 +82,5 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     Nusselt and the noise wall mask. The placeholder had put rows 0 and 127 on the walls, which would have left
     them unperturbed. The audit records the stored y and fails on anything but the nodes or the placeholder.
     Evaluation requires the audit to have checked the same family.
+  * Audit rerun after pushing e87855e: "y grid: stored uniform (placeholder), used gauss; physics checks
+    passed: True". Gate D passed. Subset manifests are on HPC3, to be pulled and committed.

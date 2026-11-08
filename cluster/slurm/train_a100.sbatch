@@ -17,6 +17,8 @@
 set -eo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source cluster/env.sh
+# DataLoader workers: all CPUs of the job but one (runtime settings never change a run's identity).
+export RBBENCH_NUM_WORKERS=${RBBENCH_NUM_WORKERS:-$(( ${SLURM_CPUS_PER_TASK:-5} - 1 ))}
 MANIFEST=${MANIFEST:-tasks/train.jsonl}
 
 echo "host $(hostname)  job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}  commit $(git rev-parse HEAD)"

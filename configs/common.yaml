@@ -15,8 +15,6 @@ paths:
 
 data:
   normalization: zscore             # upstream stats.yaml, frozen for every subset (docs/decisions.md D4)
-  num_workers: 4
-  pin_memory: true
   subset_manifest: null             # set per task: tasks/subset_{10,30,100}.json
 
 optim:
@@ -75,3 +73,11 @@ physics:
 sweep:
   seeds: [0, 1, 2]
   fractions: [0.1, 0.3, 1.0]
+
+# Data-loading knobs: excluded from the config hash (config.config_hash), so changing them never changes a
+# run's identity or blocks a resume. RBBENCH_NUM_WORKERS overrides num_workers per job (the Slurm scripts
+# set it from the CPUs they request).
+runtime:
+  num_workers: 4
+  prefetch_factor: 4                # batches each worker keeps ready
+  pin_memory: true

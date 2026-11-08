@@ -14,6 +14,8 @@
 set -eo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source cluster/env.sh
+# DataLoader workers: all CPUs of the job but one (runtime settings never change a run's identity).
+export RBBENCH_NUM_WORKERS=${RBBENCH_NUM_WORKERS:-$(( ${SLURM_CPUS_PER_TASK:-5} - 1 ))}
 MANIFEST=${MANIFEST:-tasks/pilot.jsonl}
 export OUTPUT_ROOT=${PILOT_OUTPUT_ROOT:-$OUTPUT_ROOT/pilot}
 AUDIT=${AUDIT:-outputs/audit/dataset_audit.json}

@@ -392,6 +392,25 @@ def cmd_compare_paper(args):
     return 1 if verdict is False else 0
 
 
+def cmd_bench_data(args):
+    """Data-loading throughput without a model: the upstream reader against the persistent one."""
+    from rbbench.manifests import stable_int
+    from rbbench.profile import bench_loader
+
+    rows = []
+    for loader in args.loaders:
+        for workers in args.workers:
+            r = bench_loader(_dataset_dir(args), args.split, args.batch_size, args.batches, workers,
+                             persistent=loader == "persistent", seed=stable_int("bench", loader, workers),
+                             prefetch_factor=args.prefetch_factor)
+            rows.append(r)
+            print(f"{r['loader']:10s} workers {workers:2d}: {r['s_per_batch']:.3f} s per batch of {args.batch_size}"
+                  f"  {r['samples_per_s']:7.1f} samples/s  {r['mb_per_s']:7.1f} MB/s", flush=True)
+    if args.out:
+        atomic_write_json(args.out, {"rows": rows, "split": args.split})
+    return 0
+
+
 def cmd_profile(args):
     from rbbench.config import load_config
     from rbbench.profile import profile_model, write_rows
@@ -638,6 +657,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a comparison")
     sp.add_argument("--allow-unverified-data", action="store_true")
     sp.set_defaults(func=cmd_compare_paper)
+
+    sp = sub.add_parser("bench-data", help="data-loading throughput alone (no model), upstream vs persistent reader")
+    common(sp, exp=False)
+    sp.add_argument("--split", default="train", choices=["train", "valid", "test"])
+    sp.add_argument("--batch-size", type=int, default=64)
+    sp.add_argument("--batches", type=int, default=20)
+    sp.add_argument("--workers", type=int, nargs="+", default=[4, 8])
+    sp.add_argument("--prefetch-factor", type=int, default=4)
+    sp.add_argument("--loaders", nargs="+", default=["upstream", "persistent"], choices=["upstream", "persistent"])
+    sp.add_argument("--out")
+    sp.set_defaults(func=cmd_bench_data)
 
     sp = sub.add_parser("profile", help="throughput/memory/latency per model (A100 feasibility)")
     common(sp, device=True)

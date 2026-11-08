@@ -255,6 +255,25 @@ our A100 that is ~20 h of training for either model, so each replication run get
 6, 12, 18 and 24 h (`configs/experiments/replication.yaml`, `tasks/replication.jsonl`). That costs about 50
 GPU-h on `free-gpu`, outside the study's ~100 GPU-h, and the runs are never aggregated with the study.
 
+**D23 — Data loading (2026-11-08).** The first replication runs were I/O-bound. CNextU-Net ran at 5.75 s
+per step and TFNO at 7.8 s (later 47 s), at batch 64, against 1.42 s and 0.55 s in the profile.
+* *Cause:* upstream `WellDataset._load_one_sample` (e63dec8) opens the HDF5 file anew for every sample,
+  through fsspec with a fresh 8 MB block cache. On BeeGFS each sample then costs open and metadata round
+  trips, and reads many 8 MB blocks for about 5 MB of fields.
+* *Fix:*
+  * `data.PersistentWellDataset` overrides only the file opening: one `h5py.File` per path per process,
+    native driver, 64 MB chunk cache, reopened after a fork. Reading, normalization and sample assembly stay
+    upstream's, and samples are bitwise identical (`tests/test_fast_loader.py`).
+  * Loader settings live in `runtime`, excluded from the config hash. `RBBENCH_NUM_WORKERS` sets the
+    worker count per job; the Slurm scripts use CPUs − 1.
+  * The profiler reads fresh random windows per measurement. Before, every measurement after the first
+    re-read the same cached windows, so the D7 step times measure compute with cached I/O.
+* *Needed rate at batch 64 so that compute, not I/O, sets the pace:* CNextU-Net about 45 samples/s
+  (235 MB/s), TFNO about 116 (610 MB/s), AViT about 170 (890 MB/s). `rbbench bench-data` measures what
+  `/pub` delivers, on a CPU node.
+* The core manifests were regenerated (only the hash changed); the partial runs under the old hashes are
+  void.
+
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.
 * Fewer trajectories already works: a smaller fraction through `make-subsets`.

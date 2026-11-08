@@ -34,6 +34,7 @@ from rbbench.data import (
     ResumableRandomSampler,
     evenly_spaced,
     list_trajectories,
+    loader_settings,
     make_well_dataset,
     window_indices,
 )
@@ -384,13 +385,12 @@ def train_run(
                   gpu_mem_alloc_gb=alloc, gpu_mem_reserved_gb=reserved)
         return res
 
+    loader_kwargs = loader_settings(cfg)
+    loader_kwargs["pin_memory"] &= device.type == "cuda"
+
     def make_loader():
-        return DataLoader(
-            windows, batch_size=batch_size, sampler=sampler, drop_last=True,
-            num_workers=cfg["data"]["num_workers"],
-            pin_memory=cfg["data"]["pin_memory"] and device.type == "cuda",
-            persistent_workers=False,
-        )
+        return DataLoader(windows, batch_size=batch_size, sampler=sampler, drop_last=True,
+                          persistent_workers=False, **loader_kwargs)
 
     max_steps = tcfg.get("max_steps")
     last_resume_wall = time.time()

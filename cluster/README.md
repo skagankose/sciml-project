@@ -133,7 +133,13 @@ The two run in parallel when two A100s are free. If one is preempted or reaches 
 the same command; finished runs skip and the others resume. If `sbatch` rejects `--time=26:00:00`, use the
 partition's maximum.
 
-When both have finished, compare each with the released checkpoint scored identically (step 3b):
+Before training, check that data loading keeps up (D23). This is CPU only, about 10–20 minutes:
+
+```bash
+sbatch -p free -c 16 --mem=64G --time=01:00:00 -J rb4-bench -o logs/%x-%j.out --wrap 'source cluster/env.sh && python -m rbbench bench-data --batch-size 64 --batches 15 --workers 4 8 15 --out outputs/pilots/bench_data.json'
+```
+
+When both runs have finished, compare each with the released checkpoint scored identically (step 3b):
 
 ```bash
 sbatch --array=0,1 --export=ALL,MANIFEST=tasks/replication.jsonl,LABEL=24h cluster/slurm/paper_compare_a100.sbatch

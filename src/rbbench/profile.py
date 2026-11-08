@@ -14,10 +14,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from rbbench.data import FieldWindows, ResumableRandomSampler, make_well_dataset
+from rbbench.data import FieldWindows, ResumableRandomSampler, loader_settings, make_well_dataset
 from rbbench.device import autocast_context, check_precision, synchronize
 from rbbench.evaluate import measure_latency, model_predictor
-from rbbench.manifests import atomic_torch_save
+from rbbench.manifests import atomic_torch_save, stable_int
 from rbbench.models.factory import count_parameters, count_parameters_used, model_from_config
 from rbbench.rollout import rollout
 
@@ -48,9 +48,12 @@ def profile_model(cfg: dict, device: torch.device, dataset_dir: Path, batch_size
         check_precision(name, precision)
         ds = make_well_dataset(dataset_dir, "train", cfg["task"]["n_steps_input"], 1)
         windows = FieldWindows(ds, range(len(ds)))
-        loader = DataLoader(windows, batch_size=batch_size, sampler=ResumableRandomSampler(len(windows), 0),
-                            drop_last=True, num_workers=cfg["data"]["num_workers"],
-                            pin_memory=device.type == "cuda")
+        # A fresh random order per measurement: with one shared order, every measurement after the first
+        # read the same windows from the page cache, and the 2026-11-08 profile missed the I/O cost.
+        sampler = ResumableRandomSampler(len(windows), stable_int("profile", name, batch_size, precision))
+        kwargs = loader_settings(cfg)
+        kwargs["pin_memory"] &= device.type == "cuda"
+        loader = DataLoader(windows, batch_size=batch_size, sampler=sampler, drop_last=True, **kwargs)
         model = model_from_config(cfg, seed=0)
         row["n_params"] = count_parameters(model)
         x0, _ = windows[0]
@@ -132,3 +135,31 @@ def write_rows(rows: list[dict], path: Path) -> None:
             w.writeheader()
         for r in rows:
             w.writerow(r)
+
+
+def bench_loader(dataset_dir: Path, split: str, batch_size: int, batches: int, workers: int,
+                 persistent: bool, seed: int, prefetch_factor: int = 4, n_steps_input: int = 4) -> dict:
+    """Data-loading throughput alone (no model): random windows, as in training, fresh ones per call.
+
+    Separates I/O from compute: training is I/O-bound when this is slower than the profiled step time.
+    The first batch (worker start-up) is not timed.
+    """
+    ds = make_well_dataset(dataset_dir, split, n_steps_input, 1, persistent=persistent)
+    windows = FieldWindows(ds, range(len(ds)))
+    kwargs = {"num_workers": workers}
+    if workers > 0:
+        kwargs["prefetch_factor"] = prefetch_factor
+    loader = DataLoader(windows, batch_size=batch_size, sampler=ResumableRandomSampler(len(windows), seed),
+                        drop_last=True, **kwargs)
+    it = iter(loader)
+    x, y = next(it)
+    sample_bytes = (x[0].numel() + y[0].numel()) * x.element_size()
+    t0 = time.perf_counter()
+    for _ in range(batches):
+        next(it)
+    seconds = time.perf_counter() - t0
+    del it
+    return {"loader": "persistent" if persistent else "upstream", "workers": workers, "batch_size": batch_size,
+            "batches": batches, "s_per_batch": seconds / batches,
+            "samples_per_s": batches * batch_size / seconds,
+            "mb_per_s": batches * batch_size * sample_bytes / seconds / 1e6}

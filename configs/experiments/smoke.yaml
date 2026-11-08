@@ -1,7 +1,7 @@
 # Mac smoke runs on the synthetic fixture (tiny models, a few steps, CPU).
 task:
   spatial_resolution: [64, 32]
-data:
+runtime:
   num_workers: 0
   pin_memory: false
 schedule:

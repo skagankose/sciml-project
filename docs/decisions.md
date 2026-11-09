@@ -158,6 +158,10 @@ compares their one-step VRMSE with the published values (CNextU-Net 0.4807 valid
 evaluation, never to train from. Checked 2026-10-30:
 * Both checkpoints exist on Hugging Face (created 2025-03-28), and their configs match `configs/models/*.yaml`
   `full`.
+* *Model cards (read 2026-11-08 at the pinned revisions):* up to 12 h or 500 epochs on one H100 96 GB; the
+  released checkpoint is the best on validation (epoch 12 CNextU-Net, 31 TFNO); learning rate the best of 5
+  (5e-4, 1e-4); 4 input frames; batch "set to maximize the memory usage" (the data config says 64). No seed
+  and no training date are given: one run per model. Summary for the report in `docs/checkin_2026-11-12.md`.
 * The pinned benchmark data config sets `use_normalization: True` with no type, which falls back to
   `ZScoreNormalization` on the shipped `stats.yaml`. That is the same normalization as D4.
 

@@ -33,6 +33,10 @@ outputs/
                                         #   normalised_vrmse_* (the paper's protocol) and raw_input_vrmse_*
                                         #   (v1.0.1 test-set diagnostic); job 59224204 wrote them as
                                         #   paper_valid_vrmse_* and paper_test_vrmse_*
+    <model>/paper_rollout_<split>.parquet  # the paper's rollout (Table 3) from frame 0, per trajectory x step:
+                                        #   traj_id, rayleigh, prandtl, step, vrmse_* (physical units),
+                                        #   normalised_vrmse_*; window means under results.<model>.<split>
+                                        #   .paper_rollout in released_check.json
 tables/ main_results.csv, per_seed_results.csv, resource_use.csv, gpu_hours.csv, missing_runs.csv
 figures/ fig1…fig7 (.pdf, .png)
 ```

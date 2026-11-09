@@ -30,7 +30,9 @@ from rbbench.data import (
     full_trajectory_dataset,
     list_trajectories,
     load_trajectory,
+    make_well_dataset,
     split_files,
+    trajectory_window_range,
 )
 from rbbench.device import autocast_context, synchronize
 from rbbench.manifests import atomic_write_json, now_utc, read_json, sha256_json
@@ -351,6 +353,57 @@ def evaluate_one_step(
             rows[lab] += one_step_rows(predict, traj, traj_phys, base, n_steps_input,
                                        eval_cfg["one_step_window_stride"], eval_cfg["batch_size"], device, fd.norm,
                                        paper_protocols)
+    return {lab: pd.DataFrame(r) for lab, r in rows.items()}
+
+
+def paper_rollout_rows(predict: Predictor, frames: torch.Tensor, base: dict, n_in: int, device: torch.device,
+                       norm) -> list[dict]:
+    """The paper's rollout (Table 3; decisions D20) of one trajectory's first frames `[n_in + H, X, Y, F]`.
+
+    `H` autoregressive steps from frame 0 on normalised data: the paper-era trainer (v1.0.1) neither normalises
+    nor denormalises inside a rollout. Per step: VRMSE in normalised units (the paper's, `normalised_*`) and in
+    physical units (ours, `vrmse_*`).
+    """
+    horizon = frames.shape[0] - n_in
+    pred = rollout(predict, frames[None, :n_in].to(device), horizon).cpu()[0]  # [H, X, Y, F], normalised
+    true = frames[n_in:].float()
+    scores = {"vrmse": vrmse(_physical(norm, pred), _physical(norm, true)).numpy(),
+              "normalised_vrmse": vrmse(pred, true).numpy()}
+    rows = []
+    for k in range(horizon):
+        row = {**base, "step": k + 1}
+        for key, v in scores.items():
+            row |= {f"{key}_{f}": float(a) for f, a in zip(FIELDS, v[k])} | {f"{key}_mean": float(v[k].mean())}
+        rows.append(row)
+    return rows
+
+
+def evaluate_paper_rollouts(
+    predictors: dict[str, Predictor],
+    dataset_dir: Path,
+    split: str,
+    n_steps_input: int,
+    horizon: int,
+    device: torch.device,
+    max_trajectories: int | None = None,
+) -> dict[str, pd.DataFrame]:
+    """The paper's rollout of every trajectory of one split, from its first frame, for each predictor.
+
+    Reads only the first `n_steps_input + horizon` frames of each trajectory. `horizon` is cut to the
+    trajectory length (the rows' `step` column records what was run).
+    """
+    probe = make_well_dataset(dataset_dir, split, n_steps_input, 1)
+    horizon = min(horizon, min(probe.n_steps_per_trajectory) - n_steps_input)
+    ds = make_well_dataset(dataset_dir, split, n_steps_input, horizon)
+    refs = list_trajectories(dataset_dir, split)
+    refs = refs[:max_trajectories] if max_trajectories else refs
+    rows: dict[str, list[dict]] = {lab: [] for lab in predictors}
+    for ref in refs:
+        sample = ds[trajectory_window_range(ds, ref, dataset_dir).start]  # the window starting at frame 0
+        frames = torch.cat([sample["input_fields"], sample["output_fields"]], dim=0)
+        base = {"traj_id": ref.id, "rayleigh": ref.rayleigh, "prandtl": ref.prandtl}
+        for lab, predict in predictors.items():
+            rows[lab] += paper_rollout_rows(predict, frames, base, n_steps_input, device, ds.norm)
     return {lab: pd.DataFrame(r) for lab, r in rows.items()}
 
 

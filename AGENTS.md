@@ -185,3 +185,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     `compare-paper` refuses to judge against a `released_check.json` with the old names, so
     `eval-released` must be rerun before the replication is judged. The D2 criterion is unchanged.
   * D20, F11, the methodology, README and check-in notes corrected.
+  * Paper rollouts (Table 3): `eval-released` now also rolls each released checkpoint out from frame 0 of
+    every trajectory (30 steps, normalised data, as v1.0.1) and reports VRMSE over steps 6–12 and 13–30 in
+    normalised and physical units. The paper gives ">10" for every RB model in both windows. Reported, not
+    judged; result pending the next `eval-released` run (D20).

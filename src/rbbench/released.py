@@ -46,6 +46,33 @@ PUBLISHED_VRMSE = {
 # The paper-era protocol, for both published splits: the `normalised_*` columns of evaluate.one_step_rows.
 PAPER_PROTOCOL = "normalised"
 
+# The paper's Table 3: VRMSE on the test set averaged over rollout steps 6-12 and 13-30 (1-based, inclusive),
+# rollouts "initiated from the beginning of the simulation" (Section 4). For rayleigh_benard every model,
+# CNextU-Net and TFNO included, is ">10" in both windows. The paper-era trainer (v1.0.1) logs log-spaced
+# windows `np.linspace(0, log T, 5)`; with T = 30 they are slices 5:12 and 12:30, the same steps. Its default
+# T = 100 would give 3:10 and 10:31 instead, so the paper's runs presumably rolled out 30 steps.
+PAPER_ROLLOUT_STEPS = 30
+PAPER_ROLLOUT_WINDOWS = {"6:12": (6, 12), "13:30": (13, 30)}
+PUBLISHED_ROLLOUT_ABOVE = 10.0
+
+
+def paper_rollout_summary(df, split: str) -> dict:
+    """Window means of `evaluate.evaluate_paper_rollouts` rows; compared with Table 3 on the test split."""
+    windows = {}
+    for units, column in (("normalised", "normalised_vrmse_mean"), ("physical", "vrmse_mean")):
+        windows[units] = {}
+        for name, (lo, hi) in PAPER_ROLLOUT_WINDOWS.items():
+            inside = df.step.between(lo, hi)
+            windows[units][name] = float(df.loc[inside, column].mean()) if inside.any() else None
+    judged = split == "test"
+    above = all(v is not None and v > PUBLISHED_ROLLOUT_ABOVE for v in windows["normalised"].values())
+    return {
+        "start_frame": 0, "steps": int(df.step.max()), "n_trajectories": int(df.traj_id.nunique()),
+        "window_vrmse_mean": windows,
+        "published": f"> {PUBLISHED_ROLLOUT_ABOVE:g} in both windows (Table 3)" if judged else None,
+        "reproduced": above if judged else None,
+    }
+
 # Until the_well commit e430160 (2025-11-17, "actually use the TFNO blocks") the TFNO wrapper called its FNO
 # blocks without keeping their output, so the paper's TFNO, and this checkpoint (uploaded 2025-03-28), is
 # lifting -> projection only; its FNO-block weights were never trained. The pinned code runs those blocks,

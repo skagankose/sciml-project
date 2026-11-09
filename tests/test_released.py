@@ -12,8 +12,15 @@ from safetensors.torch import save_model
 from rbbench import released
 from rbbench.cli import main
 from rbbench.config import load_config
-from rbbench.data import full_trajectory_dataset, list_trajectories
-from rbbench.evaluate import evaluate, evaluate_one_step, make_cohort
+from rbbench.data import full_trajectory_dataset, list_trajectories, load_trajectory
+from rbbench.evaluate import (
+    _physical,
+    evaluate,
+    evaluate_one_step,
+    evaluate_paper_rollouts,
+    make_cohort,
+)
+from rbbench.metrics.well_metric import vrmse
 from rbbench.models.factory import model_from_config
 from rbbench.rollout import Persistence
 
@@ -107,6 +114,20 @@ def test_eval_released_command(dataset_dir, fake_fetch, tmp_path):
             df = pd.read_parquet(tmp_path / "out" / "baselines" / "released" / name / f"one_step_{split}.parquet")
             assert {"vrmse_mean", "normalised_vrmse_mean", "raw_input_vrmse_mean"} <= set(df.columns)
             assert r["normalised_vrmse_mean"] == pytest.approx(df.normalised_vrmse_mean.mean())
+            # the paper's rollout (Table 3): from frame 0, cut to the 24-frame synthetic trajectories
+            roll = r["paper_rollout"]
+            assert roll["start_frame"] == 0 and roll["steps"] == 24 - 4
+            assert roll["n_trajectories"] == len(list_trajectories(dataset_dir, split))
+            rd = pd.read_parquet(tmp_path / "out" / "baselines" / "released" / name / f"paper_rollout_{split}.parquet")
+            assert len(rd) == roll["n_trajectories"] * roll["steps"]
+            assert roll["window_vrmse_mean"]["normalised"]["6:12"] == pytest.approx(
+                rd.loc[rd.step.between(6, 12), "normalised_vrmse_mean"].mean())
+            assert roll["window_vrmse_mean"]["physical"]["13:30"] == pytest.approx(
+                rd.loc[rd.step.between(13, 30), "vrmse_mean"].mean())
+            if split == "test":  # Table 3 is test only: ">10" in both windows
+                assert roll["reproduced"] == all(v > 10 for v in roll["window_vrmse_mean"]["normalised"].values())
+            else:
+                assert roll["reproduced"] is None and roll["published"] is None
     assert record["checkpoints"]["tfno"]["repo_id"] == "local/tfno" and record["provenance"]["git"]
     assert record["checkpoints"]["tfno"]["forward"] == released.PAPER_FORWARD["tfno"]
     assert record["checkpoints"]["cnext_unet"]["forward"] == "pinned the_well"
@@ -144,6 +165,37 @@ def test_paper_protocols(dataset_dir):
     pd.testing.assert_frame_equal(plain, both[plain.columns])  # our scores are unchanged
     assert np.allclose(both.raw_input_vrmse_mean, both.vrmse_mean, rtol=1e-5)
     assert np.allclose(both.normalised_vrmse_mean, both.vrmse_mean, rtol=1e-3)
+
+
+def test_paper_rollout_starts_at_frame_zero(dataset_dir):
+    """The paper's rollouts start at the beginning of the simulation (Table 3). Persistence repeats frame 3,
+    so step k scores frame 3 against frame 3 + k; the short read must give the trajectory's own first frames."""
+    fd, total = full_trajectory_dataset(dataset_dir, "test", 4)
+    ref = list_trajectories(dataset_dir, "test")[0]
+    traj = load_trajectory(fd, ref, dataset_dir)
+    df = evaluate_paper_rollouts({"p": Persistence()}, dataset_dir, "test", 4, 30, torch.device("cpu"), 1)["p"]
+    horizon = total - 4  # 30 steps cut to the synthetic trajectory
+    assert df.step.tolist() == list(range(1, horizon + 1)) and set(df.traj_id) == {ref.id}
+    held = traj[3].expand(horizon, *traj.shape[1:])
+    expected = vrmse(held, traj[4:]).numpy().mean(-1)
+    assert np.ptp(expected) > 0.1  # the frames differ, so a wrong start would not match
+    assert np.allclose(df.normalised_vrmse_mean, expected, rtol=1e-5)
+    physical = vrmse(_physical(fd.norm, held), _physical(fd.norm, traj[4:])).numpy().mean(-1)
+    assert np.allclose(df.vrmse_mean, physical, rtol=1e-5)
+
+
+def test_paper_rollout_summary_windows():
+    """Steps 6-12 and 13-30, 1-based and inclusive; the published bound is judged on test only."""
+    rows = [{"traj_id": t, "step": k, "normalised_vrmse_mean": 20.0 if k >= 6 else 0.0, "vrmse_mean": float(k)}
+            for t in ("a", "b") for k in range(1, 31)]
+    s = released.paper_rollout_summary(pd.DataFrame(rows), "test")
+    assert s["steps"] == 30 and s["n_trajectories"] == 2 and s["reproduced"] is True
+    assert s["window_vrmse_mean"]["physical"] == {"6:12": 9.0, "13:30": 21.5}
+    for r in rows:
+        if 6 <= r["step"] <= 12:
+            r["normalised_vrmse_mean"] = 10.0
+    assert released.paper_rollout_summary(pd.DataFrame(rows), "test")["reproduced"] is False  # not above 10
+    assert released.paper_rollout_summary(pd.DataFrame(rows), "valid")["reproduced"] is None
 
 
 def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):

@@ -296,6 +296,25 @@ normalised units (the paper's protocol). The published values are reported only.
 checkpoint reproduces the published value in normalised units to 1% (2026-11-09), so that check is in effect a
 check against the paper's test number.
 
+*Rollouts (Table 3), added 2026-11-09; result pending the next `eval-released` run.* The paper reports test
+VRMSE averaged over rollout steps 6–12 and 13–30, with rollouts "initiated from the beginning of the
+simulation" (Section 4). For `rayleigh_benard` every model, CNextU-Net and TFNO included, is ">10" in both
+windows. Our study's rollouts start at frames 20, 80 and 140 (D15), so they cannot be compared with these.
+* `eval-released` now also rolls each released checkpoint out from frame 0 of every trajectory: 30 steps,
+  autoregressive on normalised data, as the paper-era trainer did (v1.0.1 neither normalises nor
+  denormalises inside a rollout). It reads only the first 34 frames of each trajectory.
+* Scores per step: VRMSE in normalised units (the paper's) and in physical units (ours), averaged per window
+  over steps and trajectories (`released.paper_rollout_summary`). Per-step rows are in
+  `<model>/paper_rollout_<split>.parquet`.
+* Reported, not judged: on test, "reproduced" means both normalised-unit window means are above 10. The
+  bound is weak. In normalised units, one-step velocity VRMSE on windows that start in the first 20 frames
+  already averages 8.7–11.4 for these checkpoints (job 59224204), so a rollout from frame 0 is expected to
+  exceed 10.
+* Window definition: v1.0.1 logs log-spaced windows `np.linspace(0, log T, 5)` of a T-step rollout. With
+  T = 30 they are the slices 5:12 and 12:30, which are steps 6–12 and 13–30 (1-based). The v1.0.1 default
+  T = 100 would give 3:10 and 10:31, so the paper's runs presumably used 30 steps. We use the paper's stated
+  windows, 1-based and inclusive.
+
 *Replication budget (owner, 2026-11-08): "train as much as we need to match the paper"; the study keeps its
 limited budgets.* The paper's best checkpoints came at epoch 12 (CNextU-Net) and 31 (TFNO). At batch 64 on
 our A100 that is ~20 h of training for either model, so each replication run gets 24 h, with checkpoints at

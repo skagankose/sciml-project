@@ -255,13 +255,24 @@ def cmd_eval_baseline(args):
 
 
 def cmd_eval_released(args):
-    """Pipeline check (gate D2): The Well's released checkpoints, one-step VRMSE on our data path."""
+    """Pipeline check (gate D2): The Well's released checkpoints on our data path.
+
+    One-step VRMSE on every window (the pass criterion), and the paper's rollout from frame 0 (Table 3;
+    reported, not judged).
+    """
     from rbbench import METRIC_VERSION
     from rbbench.config import load_config
     from rbbench.data import FIELDS
-    from rbbench.evaluate import evaluate_one_step, model_predictor
+    from rbbench.evaluate import evaluate_one_step, evaluate_paper_rollouts, model_predictor
     from rbbench.manifests import provenance
-    from rbbench.released import PAPER_PROTOCOL, PUBLISHED_VRMSE, fetch, load_released
+    from rbbench.released import (
+        PAPER_PROTOCOL,
+        PAPER_ROLLOUT_STEPS,
+        PUBLISHED_VRMSE,
+        fetch,
+        load_released,
+        paper_rollout_summary,
+    )
 
     device = _device(args.device)
     dataset_dir = _dataset_dir(args)
@@ -280,8 +291,11 @@ def cmd_eval_released(args):
     complete = args.max_trajectories is None
     results, passed = {}, True
     for split in args.splits:
-        tables = evaluate_one_step(predictors, dataset_dir, split, cfg["task"]["n_steps_input"], cfg["eval"],
+        n_in = cfg["task"]["n_steps_input"]
+        tables = evaluate_one_step(predictors, dataset_dir, split, n_in, cfg["eval"],
                                    device, args.max_trajectories, paper_protocols=True)
+        rollouts = evaluate_paper_rollouts(predictors, dataset_dir, split, n_in, PAPER_ROLLOUT_STEPS, device,
+                                           args.max_trajectories)
         for name, df in tables.items():
             (out / name).mkdir(parents=True, exist_ok=True)
             df.to_parquet(out / name / f"one_step_{split}.parquet", index=False)
@@ -302,6 +316,15 @@ def cmd_eval_released(args):
             print(f"{name:11s} {split:5s} ours {ours:.4f} | paper protocol ({PAPER_PROTOCOL}) {paper:.4f} vs published "
                   f"{published:.4f} ({100 * rel:+.1f}%{', reproduced' if abs(rel) <= args.tolerance else ''}) | "
                   f"ours <= published: {'yes' if as_good else 'NO'}  ({len(df)} windows)")
+            rollouts[name].to_parquet(out / name / f"paper_rollout_{split}.parquet", index=False)
+            roll = results[name][split]["paper_rollout"] = paper_rollout_summary(rollouts[name], split)
+            w = roll["window_vrmse_mean"]
+            verdict_text = "" if roll["reproduced"] is None else (
+                f" | published {roll['published']}: {'reproduced' if roll['reproduced'] else 'NOT reproduced'}")
+            print(f"{name:11s} {split:5s} rollout from frame 0, {roll['steps']} steps, normalised "
+                  + ", ".join(f"{k} {v:.3g}" for k, v in w["normalised"].items() if v is not None)
+                  + " | physical " + ", ".join(f"{k} {v:.3g}" for k, v in w["physical"].items() if v is not None)
+                  + verdict_text)
     verdict = passed if complete else None
     atomic_write_json(out / "released_check.json", {
         "passed": verdict, "criterion": "our VRMSE <= published for every model and split (owner, 2026-11-08)",

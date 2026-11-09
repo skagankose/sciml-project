@@ -28,7 +28,7 @@ Rules:
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile 2026-11-08; step times from the search 2026-11-09** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19; batch 64 fp32, D7). Data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts on real data run in the first evaluation |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
-| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **10% runs started 2026-11-09 by the owner** (array 59398100, rows 0, 1, 4, 5, 8, 9, one at a time, commit f42b2e2); the 100% rows need owner approval. Rates fixed 2026-11-09 (1e-3 for all, D7). `eval` in common.yaml is hashed: do not edit it from now on (D15). Do not push while array tasks are queued (see 2026-11-09 log) |
+| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **10% runs started 2026-11-09 by the owner** (rows 0, 1, 4, 5, 8, 9, commit f42b2e2; on the paid `gpu` partition, class account, from 2026-11-09 with owner approval); the 100% rows need owner approval. Rates fixed 2026-11-09 (1e-3 for all, D7). `eval` in common.yaml is hashed: do not edit it from now on (D15). Do not push while array tasks are queued (see 2026-11-09 log) |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
 
 Values still PENDING are listed in `docs/decisions.md`: batch size, learning rate, precision, schedule, rollout
@@ -212,3 +212,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     pending). The pipeline-check rerun is job 59403844 (`--time=04:00:00`). All waited with `ReqNodeNotAvail`:
     the backfill scheduler had planned the free A100 nodes (sinfo `mix-`) for higher-priority jobs. The only
     reservation is the maintenance window on 2026-12-14 and 12-15, after the report is due.
+  * Owner (2026-11-09): cancel the free-gpu jobs and run the six 10% rows and the pipeline check on the paid
+    `gpu` partition with the class account `eecs195221_class_gpu` (shared class allocation, 31,530 of 33,000
+    SU left). Wall time is charged, so `/pub` waits cost SUs. These cover 1.6–2.7× the training time
+    (`data_wait_seconds`), so expect roughly 6–11 h and 240–440 SU per run, about 2,000 SU in all. The
+    rows run in parallel with `--time=14:00:00`. The 100% rows still need separate approval.

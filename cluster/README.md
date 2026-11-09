@@ -214,8 +214,15 @@ Extensions (a third seed, 30% data, ConvLSTM) are separate manifests and need th
   not poll the queue in a loop.
 * Exit code 3 means the job was preempted or hit its time limit with state saved. Resubmit the same array:
   finished tasks skip and the rest resume.
-* The paid `gpu` partition (34 SU/GPU-hour, ≥ 1,632 SU for the core sweep) requires
-  `sbatch -p gpu -A <lab>_gpu …` and the owner's permission.
+* The paid `gpu` partition requires `sbatch -p gpu -A <account> …` and the owner's permission. It charges
+  32 SU per GPU-hour plus 1 SU per core-hour of wall time, waits for `/pub` included: 40 SU/h for
+  `train_a100.sbatch` (8 cores), 36 SU/h for `released_a100.sbatch` (4 cores). The owner approved the class
+  account `eecs195221_class_gpu` for the 10% runs and the pipeline check (2026-11-09):
+
+  ```bash
+  sbatch -p gpu -A eecs195221_class_gpu --array=0,1,4,5,8,9 --time=14:00:00 cluster/slurm/train_a100.sbatch
+  sbatch -p gpu -A eecs195221_class_gpu --time=04:00:00 cluster/slurm/released_a100.sbatch
+  ```
 
 ## 6. Evaluation and results
 

@@ -32,7 +32,7 @@ but The Well's `configs/optimizer/adam.yaml` has 1e-4 both at v1.0.1 and at `e63
 follow the code. Likewise its `rayleigh_benard` data config has batch 64, where the text says the batch was set
 to fill GPU memory.
 
-**D6 — Learning-rate schedule under a wall-clock budget (PENDING confirmation).** Warmup in optimizer steps,
+**D6 — Learning-rate schedule under a time budget (fixed 2026-11-09 when the core runs started; the planned comparison with a constant rate was not run).** Warmup in optimizer steps,
 then cosine decay over *cumulative training seconds* towards the final 4 h milestone. The total step count is
 unknown in advance, so a step-based cosine cannot end exactly at 4 h. Decaying on time makes the 4 h
 checkpoint the end of the schedule; the 1 h checkpoint is an intermediate state of the same schedule, not a
@@ -41,7 +41,7 @@ separately tuned 1 h run. (Budgets were 2 h/6 h before the final abstract.) The 
 The budgets live in `train.budgets_seconds` (`1h: 3600, 4h: 14400`); their labels name the checkpoints and
 evaluations everywhere, and an override replaces the whole mapping rather than merging into it.
 
-**D7 — Learning rate and batch size (PENDING).** One shared batch size for all models, chosen from the
+**D7 — Learning rate and batch size (fixed 2026-11-09: batch 64, learning rate 1e-3 for every model).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on
 validation data before training. Deferred on 2026-10-30; **run, one rate per model (owner, 2026-11-08)**:
 * *Search* (`configs/experiments/lr_search.yaml`, `tasks/lr_search.jsonl`): CNextU-Net, TFNO and AViT ×
@@ -57,12 +57,13 @@ validation data before training. Deferred on 2026-10-30; **run, one rate per mod
   it is out of date and `train-task` refuses it.
 * *Known bias:* a 20 min search can favour rates that learn fast early over ones that are best at 4 h. It is
   the same for every model.
-* *Results so far (2026-11-08, 4 of 9 runs; `docs/checkin_2026-11-12.md`):* validation VRMSE CNextU-Net
-  0.841 (1e-4) and 0.469 (5e-4); TFNO 0.358 (5e-4) and 0.302 (1e-3). The larger rate wins so far for every
-  model, and TFNO's best is at the top of the grid. **Owner, 2026-11-08: keep the three-rate grid**; a choice
-  at 1e-3 is reported as at the edge of the grid. (Had it been widened, the new rates would have gone into a
-  separate manifest: `sweep` is part of the config hash, so editing `lr_search.yaml`'s `lrs` changes every
-  search run's id.)
+* *Result (2026-11-09, all 9 runs; jobs 59374848, 59390860, 59393014; `docs/checkin_2026-11-12.md`):*
+  validation VRMSE at 1e-4 / 5e-4 / 1e-3: CNextU-Net 0.841 / 0.469 / **0.408**, TFNO 0.603 / 0.358 / **0.302**,
+  AViT 0.646 / 0.332 / **0.257**. Every model takes **1e-3**, set in `main.yaml`'s `model_overrides`;
+  `tasks/train.jsonl` was regenerated (10% rows 0, 1, 4, 5, 8, 9). No run diverged. 1e-3 is the edge of the
+  grid for all three. **Owner, 2026-11-08: keep the three-rate grid**, so this is reported as a limitation.
+  (Had it been widened, the new rates would have gone into a separate manifest: `sweep` is part of the config
+  hash, so editing `lr_search.yaml`'s `lrs` changes every search run's id.)
 * If a model needs gradient accumulation to reach the shared batch size, it is recorded. No test-set tuning.
 * *Replication of the paper (owner request, 2026-11-08):* our trained CNextU-Net and TFNO must be at least as
   good as the paper's (D20). To compare like with like, the two models use the rates The Well's own sweep
@@ -128,6 +129,9 @@ the upstream parser and normalization while avoiding re-reading ~37 GB per check
 Very early starts are near the conduction state, where target variance is tiny and VRMSE is ill-conditioned. The
 start list must be frozen on the *validation* split before any test evaluation, then `tasks/eval_cohort.json`
 is generated once and never changed (its hash is checked).
+*2026-11-09:* `eval` in `common.yaml` is part of every run's config hash, so it stays as it is now that the
+core runs have started. If validation calls for other starts, they go into the cohort file only (a
+`make-cohort` option, still to add), never into `common.yaml`.
 
 **D16 — Failure horizon.** First step whose field-mean VRMSE exceeds the threshold; rollouts that never cross
 are right-censored, summarised with Kaplan–Meier survival and median. Thresholds 1.0 / 2.0 (primary) with 5.0

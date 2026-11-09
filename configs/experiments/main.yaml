@@ -5,6 +5,17 @@
 # Inherits everything from common.yaml. Freeze PENDING values there before use.
 #
 # model_overrides: each model's learning rate from the equal-budget search (experiments/lr_search.yaml,
-# `rbbench select-lr`, decisions D7). Until the search is done every model has common.yaml's 5e-4, and
-# tasks/train.jsonl is regenerated after it.
-model_overrides: {}
+# `rbbench select-lr`, decisions D7). Search of 2026-11-08/09 (HPC3 jobs 59374848, 59390860, 59393014):
+# every model's lowest validation VRMSE after 20 min of GPU time was at 1e-3, the largest rate tried
+# (CNextU-Net 0.408, TFNO 0.302, AViT 0.257). The owner kept the three-rate grid, so this is reported as
+# a choice at the edge of the grid.
+model_overrides:
+  cnext_unet:
+    optim:
+      lr: 1.0e-03
+  tfno:
+    optim:
+      lr: 1.0e-03
+  avit:
+    optim:
+      lr: 1.0e-03

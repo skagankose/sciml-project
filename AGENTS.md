@@ -25,10 +25,10 @@ Rules:
 | D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
 | R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark done (persistent, 8 workers: ~98 samples/s from `/pub`). **Postponed until after the Nov 12 check-in (owner, 2026-11-08)**; run ids now `…-9dfed09a`/`…-bb6db502` (D24) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
-| F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; real-data runs on A100 (the learning-rate search, job 59374848): loss decreases for every model, preempted runs saved their state (tasks 6, 7), resume pending |
-| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7). **Step times measured in the search** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19); data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts still to run on real data |
+| F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
+| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile 2026-11-08; step times from the search 2026-11-09** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19; batch 64 fp32, D7). Data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts on real data run in the first evaluation |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
-| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **needs owner approval**; `tasks/train.jsonl` is out of date until the search's rates are in `main.yaml` (D7); budgets are 1 h/4 h, but `make-sweep` defaults still give 36 rows: pass the core grid explicitly |
+| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **needs owner approval**; rates fixed 2026-11-09 (1e-3 for all, D7) and `tasks/train.jsonl` regenerated (12 rows; 10% = rows 0, 1, 4, 5, 8, 9). `eval` in common.yaml is hashed: do not edit it from now on (D15) |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
 
 Values still PENDING are listed in `docs/decisions.md`: batch size, learning rate, precision, schedule, rollout
@@ -165,3 +165,10 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     caveats are in `docs/checkin_2026-11-12.md`.
   * The transfer node `hpc3-xfer` accepts rsync without a new login, so `cluster/pull.sh` works from the
     agent's shell.
+* 2026-11-09: learning-rate search done (all 9 runs; jobs 59374848, 59390860, 59393014). Validation VRMSE at
+  1e-4 / 5e-4 / 1e-3: CNextU-Net 0.841 / 0.469 / 0.408; TFNO 0.603 / 0.358 / 0.302; AViT 0.646 / 0.332 / 0.257.
+  * Every model takes 1e-3, the edge of the grid; the owner kept three rates. Set in `main.yaml`;
+    `tasks/train.jsonl` regenerated (10% rows 0, 1, 4, 5, 8, 9).
+  * Starting the core runs fixes warmup 500 and the time-cosine schedule (D6), and the `eval` section, which
+    is part of the run hash (D15).
+  * Milestone 2 written up in `docs/checkin_2026-11-12.md`. Next: the six 10% runs, on the owner's go-ahead.

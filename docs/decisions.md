@@ -59,9 +59,10 @@ validation data before training. Deferred on 2026-10-30; **run, one rate per mod
   the same for every model.
 * *Results so far (2026-11-08, 4 of 9 runs; `docs/checkin_2026-11-12.md`):* validation VRMSE CNextU-Net
   0.841 (1e-4) and 0.469 (5e-4); TFNO 0.358 (5e-4) and 0.302 (1e-3). The larger rate wins so far for every
-  model, and TFNO's best is at the top of the grid. Widening the grid is the owner's call. If it is widened,
-  the new rates go into a separate manifest (`sweep` is part of the config hash, so editing
-  `lr_search.yaml`'s `lrs` would change every search run's id).
+  model, and TFNO's best is at the top of the grid. **Owner, 2026-11-08: keep the three-rate grid**; a choice
+  at 1e-3 is reported as at the edge of the grid. (Had it been widened, the new rates would have gone into a
+  separate manifest: `sweep` is part of the config hash, so editing `lr_search.yaml`'s `lrs` changes every
+  search run's id.)
 * If a model needs gradient accumulation to reach the shared batch size, it is recorded. No test-set tuning.
 * *Replication of the paper (owner request, 2026-11-08):* our trained CNextU-Net and TFNO must be at least as
   good as the paper's (D20). To compare like with like, the two models use the rates The Well's own sweep

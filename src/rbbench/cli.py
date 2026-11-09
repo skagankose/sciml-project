@@ -525,6 +525,53 @@ def cmd_smoke(args):
     print(f"smoke OK -> {work}")
 
 
+def cmd_select_lr(args):
+    """Learning-rate search results, each model's rate (validation loss only) and the pilot timings."""
+    import pandas as pd
+
+    from rbbench.lr_search import choose, overrides_yaml, pilot_timings, run_results
+    from rbbench.manifests import atomic_write_json
+    from rbbench.sweep import read_jsonl
+
+    rows = read_jsonl(Path(args.manifest))
+    if not rows or any("lr" not in r for r in rows):
+        raise SystemExit(f"{args.manifest} is not a learning-rate search manifest (rows need an lr)")
+    results = run_results(rows, _output_root(args))
+    chosen = choose(results)
+    timings = pilot_timings(results, Path(args.tasks_dir))
+    out_dir = _output_root(args) / "lr_search"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(results).to_csv(out_dir / "lr_search.csv", index=False)
+    pd.DataFrame(timings).to_csv(out_dir / "pilot_timings.csv", index=False)
+    atomic_write_json(out_dir / "selection.json", {"manifest": args.manifest, "chosen": chosen,
+                                                   "results": results, "pilot_timings": timings})
+
+    print("Learning-rate search (validation loss at the search budget; lower is better)")
+    for r in results:
+        if r["status"] == "complete":
+            print(f"  {r['model']:<11} lr {r['lr']:.0e}  val loss {r['val_loss']:.4f}  val VRMSE {r['val_vrmse']:.4f}"
+                  f"  {r['steps']} steps  {r['gpu_s_per_step']:.3f} GPU s/step  "
+                  f"+{r['wait_s_per_step']:.3f} s data wait  {r['wall_hours']:.2f} h wall")
+        else:
+            print(f"  {r['model']:<11} lr {r['lr']:.0e}  {r['status']}")
+    print("\nPilot timings (study budgets; GPU time counts, data waits do not: D24)")
+    for t in timings:
+        epochs = "  ".join(f"{k.split('_', 2)[2]}: {v:.1f} ep" for k, v in t.items()
+                           if k.startswith("epochs_4h"))
+        print(f"  {t['model']:<11} {t['gpu_s_per_step']:.3f} GPU s/step ({t['gpu_samples_per_s']:.0f} samples/s), "
+              f"waiting {100 * t['wait_fraction_of_wall']:.0f}% of wall; 1h: {t['steps_1h']:.0f} steps, "
+              f"4h: {t['steps_4h']:.0f} steps ({epochs}), 4h needs ~{t['est_wall_hours_4h']:.1f} h wall")
+    print("\nChosen")
+    for model, c in chosen.items():
+        if c["lr"] is None:
+            print(f"  {model:<11} not yet: " + (c.get("note") or f"waiting for lr {c['pending_lrs']}"))
+        else:
+            edge = "  (at the edge of the grid)" if c["at_grid_edge"] else ""
+            print(f"  {model:<11} lr {c['lr']:.0e}{edge}")
+    print(f"\nFor configs/experiments/main.yaml:\n{overrides_yaml(chosen)}\n-> {out_dir}")
+    return 0 if all(c["lr"] is not None for c in chosen.values()) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rbbench", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
@@ -657,6 +704,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a comparison")
     sp.add_argument("--allow-unverified-data", action="store_true")
     sp.set_defaults(func=cmd_compare_paper)
+
+    sp = sub.add_parser("select-lr", help="learning-rate search: each model's rate (validation only), pilot timings")
+    common(sp, data=False, out=True, exp=False)
+    sp.add_argument("--manifest", default=str(REPO_ROOT / "tasks" / "lr_search.jsonl"))
+    sp.add_argument("--tasks-dir", default=str(REPO_ROOT / "tasks"))
+    sp.set_defaults(func=cmd_select_lr)
 
     sp = sub.add_parser("bench-data", help="data-loading throughput alone (no model), upstream vs persistent reader")
     common(sp, exp=False)

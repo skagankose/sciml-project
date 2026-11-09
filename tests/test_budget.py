@@ -24,6 +24,35 @@ def test_milestones_at_cumulative_training_time(dataset_dir, tiny_cfg, tmp_path)
     assert set(done["checkpoints"]) == {"1h", "4h"}
 
 
+def test_budget_counts_gpu_time_not_data_wait(dataset_dir, tiny_cfg, tmp_path):
+    """compute (default): waiting for batches is logged, not charged; wall charges both (D24)."""
+    import csv
+
+    train_run(tiny_cfg("avit", *BUDGET), tmp_path / "c", dataset_dir, 0, torch.device("cpu"), clock=FakeClock(0.5))
+    done = json.loads((tmp_path / "c" / "COMPLETE.json").read_text())
+    ms = done["milestones"]
+    assert (ms["4h"]["step"], ms["4h"]["train_seconds"]) == (12, 6.0)
+    assert ms["1h"]["data_wait_seconds"] == pytest.approx(2.0) and done["data_wait_seconds"] == pytest.approx(6.0)
+    rows = [r for r in csv.DictReader(open(tmp_path / "c" / "train_metrics.csv")) if r["event"] == "train"]
+    assert rows and all(r["data_wait_seconds"] != "" for r in rows)
+
+    train_run(tiny_cfg("avit", *BUDGET, "train.budget_clock=wall"), tmp_path / "w", dataset_dir, 0,
+              torch.device("cpu"), clock=FakeClock(0.5))
+    ms = json.loads((tmp_path / "w" / "COMPLETE.json").read_text())["milestones"]
+    assert (ms["1h"]["step"], ms["4h"]["step"]) == (2, 6) and ms["4h"]["data_wait_seconds"] == pytest.approx(3.0)
+
+    with pytest.raises(ValueError, match="budget_clock"):
+        train_run(tiny_cfg("avit", *BUDGET, "train.budget_clock=gpu"), tmp_path / "x", dataset_dir, 0,
+                  torch.device("cpu"), clock=FakeClock(0.5))
+
+
+def test_study_configs_use_the_compute_clock():
+    from rbbench.config import load_config
+
+    for experiment in ("main", "replication", "lr_search"):
+        assert load_config("avit", experiment)["train"]["budget_clock"] == "compute"
+
+
 def test_overshoot_recorded(dataset_dir, tiny_cfg, tmp_path):
     cfg = tiny_cfg("avit", *BUDGET)
     train_run(cfg, tmp_path / "run", dataset_dir, 0, torch.device("cpu"), clock=FakeClock(0.75))

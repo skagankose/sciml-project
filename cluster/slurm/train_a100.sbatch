@@ -4,13 +4,15 @@
 #   mkdir -p logs && sbatch cluster/slurm/train_a100.sbatch
 # Paid partition only with permission:  sbatch -p gpu -A <LAB>_gpu cluster/slurm/train_a100.sbatch
 # Resubmitting the same array is safe: complete tasks exit at once, partial ones resume.
-# --time is a job ceiling, not the 4 h training target (validation/checkpoints/startup add time).
+# --time is a job ceiling, not the 4 h training target. The budget counts GPU training time only (D24), so a
+# run that waits for data from /pub takes longer in real time (AViT ~7 h for its 4 h); validation, checkpoints
+# and startup add more. If the ceiling is reached the run saves its state: resubmit the same task.
 #SBATCH --job-name=rb4-train
 #SBATCH --partition=free-gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=6G
-#SBATCH --time=05:00:00
+#SBATCH --time=10:00:00
 #SBATCH --array=0-11%1
 #SBATCH --signal=B:USR1@300
 #SBATCH --output=logs/%x-%A_%a.out

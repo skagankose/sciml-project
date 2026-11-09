@@ -1,0 +1,20 @@
+# Equal-budget learning-rate search (final abstract; decisions D7, alignment F5).
+# Every (model, rate) pair trains on the 10% subset, seed 0, for the same 20 min of GPU training time
+# (train.budget_clock, D24) with the study's recipe. Each model's rate for the study is the one with the lowest
+# validation loss at 20 min (`rbbench select-lr`), written to main.yaml's model_overrides. Validation data
+# only; nothing here reads the test split.
+#
+# Differences from the study, both because the budget is 12x shorter:
+# * warmup 100 steps, not 500. At 20 min CNextU-Net makes ~850 steps; 500 warmup steps would be 60% of the
+#   run and end in a jump down the cosine (D6). 100 steps keep warmup between 3% and 12% of every search run.
+# * 512 validation windows instead of 64, so the choice does not hinge on a few windows.
+sweep:
+  fractions: [0.1]
+  seeds: [0]
+  lrs: [1.0e-4, 5.0e-4, 1.0e-3]
+schedule:
+  warmup_steps: 100
+train:
+  budgets_seconds:
+    20m: 1200
+  val_windows: 512

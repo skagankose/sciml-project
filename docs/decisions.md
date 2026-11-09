@@ -40,17 +40,25 @@ evaluations everywhere, and an override replaces the whole mapping rather than m
 
 **D7 — Learning rate and batch size (PENDING).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on
-validation data before training: one small grid ({1e-4, 5e-4, 1e-3}), the same budget per (model, rate),
-selection on validation only. **Deferred by the owner (2026-10-30):** the search is not implemented, and
-whether it picks one rate shared by all models or one per model is open. The Well's own RB rates differ
-(5e-4 CNextU-Net, 1e-4 TFNO). Per-model rates need per-model overrides in `make-sweep`. Until then
-`optim.lr = 5e-4` for every model. If a model needs gradient accumulation to reach the shared batch size, it is
-recorded. No test-set tuning.
+validation data before training. Deferred on 2026-10-30; **run, one rate per model (owner, 2026-11-08)**:
+* *Search* (`configs/experiments/lr_search.yaml`, `tasks/lr_search.jsonl`): CNextU-Net, TFNO and AViT ×
+  {1e-4, 5e-4, 1e-3}, all on the 10% subset, seed 0, each for the same 20 min of GPU training time (D24) with
+  the study's recipe. Two differences, both from the 12× shorter budget: 100 warmup steps instead of 500 (500
+  would be 60% of CNextU-Net's ~850 steps and end in a jump down the cosine, D6), and 512 validation windows
+  instead of 64. About 3 GPU-h of training on `free-gpu`.
+* *Selection* (`rbbench select-lr`): per model, the lowest validation loss at 20 min; a diverged rate is the
+  worst. A choice at the edge of the grid is flagged. Results in `outputs/lr_search/`. No test data is read.
+* *Where the rates live:* `model_overrides` in each experiment config (merged after the model file, only the
+  loaded model's entry, so one model's rate never changes another's hash). `main.yaml` gets the search's
+  rates, `replication.yaml` keeps The Well's. `tasks/train.jsonl` is regenerated after the search; until then
+  it is out of date and `train-task` refuses it.
+* *Known bias:* a 20 min search can favour rates that learn fast early over ones that are best at 4 h. It is
+  the same for every model.
+* If a model needs gradient accumulation to reach the shared batch size, it is recorded. No test-set tuning.
 * *Replication of the paper (owner request, 2026-11-08):* our trained CNextU-Net and TFNO must be at least as
   good as the paper's (D20). To compare like with like, the two models use the rates The Well's own sweep
-  chose for `rayleigh_benard` (model cards): CNextU-Net 5e-4, TFNO 1e-4. They are set in each model's
-  `train_overrides`, are not tuned by us, and no test data is involved. AViT keeps 5e-4 until its rate is
-  decided (F5).
+  chose for `rayleigh_benard` (model cards): CNextU-Net 5e-4, TFNO 1e-4, set in `replication.yaml`. They are
+  not tuned by us, and no test data is involved.
 * *Batch size: 64* for every model, The Well's `rayleigh_benard` data config. It fits every model in fp32
   on an A100 80 GB (profile 2026-11-08, `outputs/pilots/feasibility.csv`):
 
@@ -80,10 +88,10 @@ matching validation loss; TFNO stays fp32 unless bf16 FFTs are shown to work. Re
 * CNextU-Net, AViT and ConvLSTM pass a full-size bf16 step and 30-step rollout on the A100. Whether to use
   bf16 for them, and so give the models different precisions, is still open.
 
-**D9 — Budget clock.** Per optimizer step, from requesting the batch to the synchronised end of
-`optimizer.step()`. Excludes startup, worker spawn, validation and checkpoint writes; those are logged
-separately (`overhead_seconds`). DataLoader workers keep prefetching during validation, which slightly
-favours data loading after a validation pass; this is small and the same for every model.
+**D9 — Budget clock.** Per optimizer step. Excludes startup, worker spawn, validation and checkpoint writes;
+those are logged separately (`overhead_seconds`). *Since 2026-11-08 (D24)* the step is counted from the moment
+its batch is ready to the synchronised end of `optimizer.step()`, so waiting for the data loader is excluded
+too (`data_wait_seconds`). Before, it was counted from requesting the batch (`train.budget_clock: wall`).
 
 **D10 — Milestone checkpoints.** First optimizer step at/after 1:00:00 and 4:00:00 of training time; actual
 seconds and overshoot are recorded. `max_steps` (smoke/pilot only) can force milestones, and then
@@ -294,6 +302,22 @@ per step and TFNO at 7.8 s (later 47 s), at batch 64, against 1.42 s and 0.55 s 
     nodes' local disk size) or measure the shortfall and report it.
 * The core manifests were regenerated (only the hash changed); the partial runs under the old hashes are
   void.
+
+**D24 — Budgets count GPU training time, not waiting for data (owner, 2026-11-08).** `/pub` delivers about
+98 samples/s into one node (D23). CNextU-Net never waits, but AViT could use ~170 and would spend ~40% of a
+time budget waiting, so a wall-clock budget would give it about half its steps: the comparison would partly
+measure our storage.
+* `train.budget_clock: compute` (common.yaml): a step is counted from the moment its batch is ready to the
+  synchronised end of the update (host-to-device copy, forward, backward, optimizer). The device is
+  synchronised every step, so the time spent in the loader is pure waiting. It is logged as
+  `data_wait_seconds` (metrics, milestones, `COMPLETE.json`, `resource_use.csv`). `wall` keeps the old count.
+* A budget therefore buys every model the same GPU time whatever the storage does. The learning-rate schedule
+  (D6), validation interval and milestones all use this clock.
+* Cost: runs that wait take longer in real time (estimate for 4 h: CNextU-Net ~4 h, TFNO ~5 h, AViT ~7 h
+  plus validation and checkpoints), and GPU-hours (D22) count the real time. `train_a100.sbatch` allows 10 h.
+  The real waits come from the search runs (`rbbench select-lr`, pilot timings).
+* The key is part of the config hash, so the manifests were regenerated (replication run ids now
+  `…-9dfed09a` and `…-bb6db502`); earlier partial runs are void.
 
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.

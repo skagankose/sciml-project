@@ -3,4 +3,8 @@
 # to make-sweep explicitly (cluster/README.md step 5).
 # The replication of the paper (24 h runs) is configs/experiments/replication.yaml, not this sweep.
 # Inherits everything from common.yaml. Freeze PENDING values there before use.
-{}
+#
+# model_overrides: each model's learning rate from the equal-budget search (experiments/lr_search.yaml,
+# `rbbench select-lr`, decisions D7). Until the search is done every model has common.yaml's 5e-4, and
+# tasks/train.jsonl is regenerated after it.
+model_overrides: {}

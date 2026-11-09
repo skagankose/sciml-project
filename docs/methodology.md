@@ -52,9 +52,11 @@ runs, and only evaluated, never trained from (AGENTS.md rule 3; decisions D20).
 
 * The objective, optimizer, normalization, batch size and schedule are the same for every model; see
   `docs/decisions.md` D5–D8.
-* An equal-budget learning-rate search on validation data precedes training. Its procedure is deferred (D7).
-* Each (model, fraction, seed) run trains for 4 h of measured training-loop time on one A100 80 GB. Checkpoints
-  are taken at the first step at/after 1 h and at/after 4 h of that same run.
+* An equal-budget learning-rate search on validation data precedes training: each model tries 1e-4, 5e-4 and
+  1e-3 for 20 min of GPU time on the 10% subset and keeps the rate with the lowest validation loss (D7).
+* Each (model, fraction, seed) run trains for 4 h of GPU training time on one A100 80 GB: time spent waiting
+  for data from storage is excluded and reported (D24). Checkpoints are taken at the first step at/after 1 h
+  and at/after 4 h of that same run.
 * The core grid is 3 models × 2 fractions × 2 seeds = 12 runs, which gives 24 checkpoints.
 * Extensions, if time and compute allow, in priority order:
   1. input-noise robustness (evaluation only);

@@ -84,7 +84,10 @@ is clean only; `configs/experiments/noise.yaml` holds the extension (decisions D
     re-run evaluates the same noise.
 
 **F5 — Equal-budget learning-rate search is not implemented** (carried over from the earlier check).
-**Deferred by the owner (2026-10-30); revisit before the sweep.** Recorded in decisions D7.
+**Done 2026-11-08 (owner: run it, one rate per model):** `configs/experiments/lr_search.yaml`,
+`tasks/lr_search.jsonl` (3 models × 3 rates, 20 min of GPU time each on 10%) and `rbbench select-lr`, which
+also writes the pilot timings. The rates go to `main.yaml` `model_overrides` (decisions D7). The text below
+is the state before.
 * *Abstract:* "an equal-budget learning-rate search on validation data precedes training"; "budgets fixed from
   pilot timings" is a Nov 12 milestone.
 * *Code:* one fixed `optim.lr: 5.0e-4` (PENDING, D7), no search command and no search budget. `make-sweep`
@@ -155,8 +158,8 @@ say where the code still differs:
   layers, is a different and stronger model.
 
 **F10 — Smaller wording points, already consistent with the code.**
-* "Each run trains for 4 hours": the clock counts training-loop time and excludes validation and checkpoint
-  writes (D9). Say so in the report.
+* "Each run trains for 4 hours": the clock counts the GPU's training steps and excludes waiting for data,
+  validation and checkpoint writes (D9, D24). Say so in the report, with the real (wall) hours alongside.
 * "Predefined error threshold": thresholds 1.0, 2.0 and 5.0 are computed, and the primary one is frozen on
   validation (D16).
 * The persistence baseline is computed but not in the abstract. It is optional to report.

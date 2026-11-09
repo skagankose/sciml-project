@@ -5,11 +5,13 @@ outputs/
   audit/dataset_audit.json              # rbbench inspect-dataset (gates physics diagnostics)
   pilots/feasibility.csv                # rbbench profile (one row per model x precision x batch)
   pilots/compare_upstream.json          # scripts/compare_upstream.py
+  lr_search/{lr_search.csv,pilot_timings.csv,selection.json}   # rbbench select-lr (decisions D7, D24)
   runs/<model>/f<010|030|100>/s<seed>/<subset8>-<config8>/      # run_id
     resolved_config.yaml                # full config; its hash is in the task row
     provenance.json                     # per attempt: git commit/dirty, packages, GPU, Slurm ids, host,
                                         #   wall_seconds and end_status (trained | preempted | failed | error)
-    train_metrics.csv                   # event rows: start|resume|train|val|milestone_*|preempted|failed
+    train_metrics.csv                   # event rows: start|resume|train|val|milestone_*|preempted|failed;
+                                        #   train_seconds (budget clock, D24) and data_wait_seconds
     checkpoint_<label>.pt               # full state at the milestone step; label = budget name (1h, 4h)
     last_resume.pt                      # latest full state (preemption)
     COMPLETE.json                       # training finished; checkpoint sha256, milestones, overhead
@@ -43,7 +45,7 @@ figures/ fig1…fig7 (.pdf, .png)
 * `main_results.csv`: `model, fraction, budget, metric, sigma, step, mean, std, n_seeds, per_seed`.
 * `gpu_hours.csv`: `run_id, model, fraction, seed, attempts, unclosed_attempts, train_wall_hours,
   train_gpu_hours, eval_passes, eval_wall_hours, eval_gpu_hours`, plus a `TOTAL` row (decisions D22).
-* `resource_use.csv`: `train_seconds, overshoot_seconds, optimizer_steps, samples_seen, peak_train_mem_gb,
+* `resource_use.csv`: `train_seconds, overshoot_seconds, data_wait_seconds, optimizer_steps, samples_seen, peak_train_mem_gb,
   n_parameters, attempts, val/ckpt overhead, infer_ms_per_frame, rollout_ms, gpus, budget_satisfied`.
 
 ## Completion contract

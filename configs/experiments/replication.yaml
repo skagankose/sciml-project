@@ -4,9 +4,19 @@
 #
 # The paper: 12 h on one H100 at batch 64, best checkpoint at epoch 12 (CNextU-Net) and 31 (TFNO). On our A100
 # at batch 64 (profile 2026-11-08: 1.42 s and 0.55 s per step, 4,287 steps per epoch) that is ~20 h of
-# training for either model. The budget is 24 h of training time (~14 and ~37 epochs), with checkpoints every
-# 6 h for the training curve. The learning rates (model configs), batch 64 and fp32 are the paper's; the
-# schedule is ours (warmup, then cosine to 0 at the last budget), see decisions D6/D7.
+# training for either model. The budget is 24 h of GPU training time (~14 and ~37 epochs; D24), with checkpoints
+# every 6 h for the training curve. The learning rates, batch 64 and fp32 are the paper's; the schedule is ours
+# (warmup, then cosine to 0 at the last budget), see decisions D6/D7.
+#
+# The Well's own 5-rate sweep chose these rates for rayleigh_benard (model cards
+# polymathic-ai/UNetConvNext-rayleigh_benard and polymathic-ai/TFNO-rayleigh_benard).
+model_overrides:
+  cnext_unet:
+    optim:
+      lr: 5.0e-4
+  tfno:
+    optim:
+      lr: 1.0e-4
 train:
   budgets_seconds:
     6h: 21600

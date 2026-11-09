@@ -53,7 +53,7 @@ from rbbench.models.factory import count_parameters, model_from_config
 
 CHECKPOINT_FORMAT = 1
 METRIC_COLUMNS = (
-    "event", "attempt", "step", "epoch", "train_seconds", "wall_seconds", "lr", "loss",
+    "event", "attempt", "step", "epoch", "train_seconds", "data_wait_seconds", "wall_seconds", "lr", "loss",
     "samples_seen", "val_loss", "val_vrmse", "gpu_mem_alloc_gb", "gpu_mem_reserved_gb", "note",
 )
 
@@ -98,8 +98,8 @@ class BudgetCosineLR:
     """Linear warmup over steps, then cosine decay over cumulative training seconds.
 
     The rate is a pure function of (step, train_seconds), so resuming is exact. With a
-    wall-clock budget the total step count is unknown in advance; decaying on time makes
-    the 6h checkpoint the end of the schedule and the 2h checkpoint an intermediate state.
+    time budget the total step count is unknown in advance; decaying on time makes
+    the last checkpoint (4h) the end of the schedule and earlier ones (1h) intermediate states.
     """
 
     def __init__(self, base_lr: float, warmup_steps: int, total_seconds: float,
@@ -292,6 +292,13 @@ def train_run(
         atomic_write_text(paths.config, dump_config(cfg))
 
     tcfg, ocfg, scfg = cfg["train"], cfg["optim"], cfg["schedule"]
+    # What the budgets count (decisions D24). "compute": each optimizer step from the moment its batch is
+    # ready (host-to-device copy, forward, backward, update; the device is synchronized every step), so
+    # waiting for the data loader is excluded and logged as data_wait_seconds. "wall": both. Configs written
+    # before the option existed ran on "wall".
+    budget_clock = tcfg.get("budget_clock", "wall")
+    if budget_clock not in ("compute", "wall"):
+        raise ValueError(f"train.budget_clock must be compute or wall, not {budget_clock!r}")
     budgets = sorted(((float(v), k) for k, v in tcfg["budgets_seconds"].items()))
     final_seconds = budgets[-1][0]
     precision = tcfg["precision"]
@@ -321,7 +328,7 @@ def train_run(
     sampler = ResumableRandomSampler(len(windows), seed)
 
     state = {
-        "step": 0, "train_seconds": 0.0, "samples_seen": 0, "epoch": 0, "position": 0,
+        "step": 0, "train_seconds": 0.0, "data_wait_seconds": 0.0, "samples_seen": 0, "epoch": 0, "position": 0,
         "milestones": {}, "val_history": [], "attempt": 0, "overhead_seconds": {"val": 0.0, "ckpt": 0.0},
     }
     resumed_from = None
@@ -332,7 +339,7 @@ def train_run(
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         for k in state:
-            state[k] = ckpt["state"][k]
+            state[k] = ckpt["state"].get(k, state[k])
         load_rng_state(ckpt["rng"])
         resumed_from = state["step"]
     state["attempt"] += 1
@@ -411,6 +418,8 @@ def train_run(
                     sampler.epoch, sampler.start = state["epoch"], 0
                     it = iter(make_loader())
                     continue
+                t_ready = clock()
+                state["data_wait_seconds"] += t_ready - t0
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 lr = sched.lr(state["step"], state["train_seconds"])
@@ -425,7 +434,7 @@ def train_run(
                     torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip_norm"])
                 optimizer.step()
                 synchronize(device)
-                state["train_seconds"] += clock() - t0
+                state["train_seconds"] += clock() - (t_ready if budget_clock == "compute" else t0)
                 state["step"] += 1
                 state["position"] += batch_size
                 state["samples_seen"] += batch_size
@@ -436,7 +445,8 @@ def train_run(
                 if state["step"] % tcfg["log_every_steps"] == 0:
                     alloc, reserved = _gpu_mem(device)
                     log.write(event="train", step=state["step"], epoch=state["epoch"],
-                              train_seconds=round(state["train_seconds"], 4), lr=lr, loss=loss_value,
+                              train_seconds=round(state["train_seconds"], 4),
+                              data_wait_seconds=round(state["data_wait_seconds"], 4), lr=lr, loss=loss_value,
                               samples_seen=state["samples_seen"], gpu_mem_alloc_gb=alloc,
                               gpu_mem_reserved_gb=reserved)
 
@@ -450,6 +460,7 @@ def train_run(
                         state["milestones"][label] = {
                             "target_seconds": seconds, "train_seconds": state["train_seconds"],
                             "overshoot_seconds": state["train_seconds"] - seconds, "step": state["step"],
+                            "data_wait_seconds": state["data_wait_seconds"],
                             "samples_seen": state["samples_seen"], "forced_by_max_steps": forced and state["train_seconds"] < seconds,
                             "validation": res, "peak_mem_alloc_gb": alloc, "peak_mem_reserved_gb": reserved,
                         }
@@ -512,6 +523,7 @@ def finalize_run(paths: RunPaths, model, state: dict, cfg_sha: str, seed: int, r
         "checkpoints": checkpoints,
         "final_step": state["step"],
         "train_seconds": state["train_seconds"],
+        "data_wait_seconds": state.get("data_wait_seconds"),
         "samples_seen": state["samples_seen"],
         "attempts": state["attempt"],
         "overhead_seconds": state["overhead_seconds"],

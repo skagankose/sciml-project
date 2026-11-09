@@ -13,8 +13,5 @@ tiny:
   blocks_at_neck: 1
   init_features: 8
   gradient_checkpointing: false
-# Learning rate: The Well's own 5-rate sweep chose 5e-4 for UNetConvNext on rayleigh_benard (model card
-# polymathic-ai/UNetConvNext-rayleigh_benard). Used so our runs can be compared with the paper (decisions D7).
-train_overrides:
-  optim:
-    lr: 5.0e-4
+# Learning rates are set per experiment (model_overrides): The Well's 5e-4 in replication.yaml, the search's
+# choice in main.yaml (decisions D7).

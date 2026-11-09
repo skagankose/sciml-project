@@ -1,4 +1,8 @@
-"""Task manifests: one JSONL row per (model, fraction, seed), parsed by index (never `eval`)."""
+"""Task manifests: one JSONL row per (model, fraction, seed[, lr]), parsed by index (never `eval`).
+
+An experiment whose `sweep` section lists `lrs` (the learning-rate search) gets one row per rate as well, each
+with its own `optim.lr` override and an `lr` key.
+"""
 
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ def make_sweep(experiment: str, tasks_dir: Path, size: str = "full", models=MODE
     base = load_config(models[0], experiment, size)
     fractions = fractions or base["sweep"]["fractions"]
     seeds = seeds or base["sweep"]["seeds"]
+    lrs = base["sweep"].get("lrs") or [None]
     rows = []
     for model in models:
         for frac in fractions:
@@ -42,15 +47,20 @@ def make_sweep(experiment: str, tasks_dir: Path, size: str = "full", models=MODE
                 raise ValueError(f"{manifest_path} is for fraction {manifest['fraction']}, not {frac}")
             subset_sha = sha256_file(manifest_path)
             for seed in seeds:
-                cfg = task_config(model, experiment, size, rel, extra_overrides)
-                cfg_sha = config_hash(cfg)
-                rows.append({
-                    "task_index": len(rows), "run_id": run_id(model, frac, seed, subset_sha, cfg_sha),
-                    "model": model, "fraction": frac, "seed": seed, "experiment": experiment, "size": size,
-                    "subset_manifest": rel, "subset_sha256": subset_sha, "config_sha256": cfg_sha,
-                    "overrides": list(extra_overrides or []),
-                })
-    validate_rows(rows, expect=len(models) * len(fractions) * len(seeds))
+                for lr in lrs:
+                    overrides = list(extra_overrides or []) + ([f"optim.lr={lr!r}"] if lr is not None else [])
+                    cfg = task_config(model, experiment, size, rel, overrides)
+                    cfg_sha = config_hash(cfg)
+                    row = {
+                        "task_index": len(rows), "run_id": run_id(model, frac, seed, subset_sha, cfg_sha),
+                        "model": model, "fraction": frac, "seed": seed, "experiment": experiment, "size": size,
+                        "subset_manifest": rel, "subset_sha256": subset_sha, "config_sha256": cfg_sha,
+                        "overrides": overrides,
+                    }
+                    if lr is not None:
+                        row["lr"] = cfg["optim"]["lr"]
+                    rows.append(row)
+    validate_rows(rows, expect=len(models) * len(fractions) * len(seeds) * len(lrs))
     return rows
 
 
@@ -66,9 +76,9 @@ def validate_rows(rows: list[dict], expect: int | None = None) -> None:
     ids = [r["run_id"] for r in rows]
     if len(set(ids)) != len(ids):
         raise ValueError("duplicate run ids")
-    combos = [(r["model"], r["fraction"], r["seed"]) for r in rows]
+    combos = [(r["model"], r["fraction"], r["seed"], r.get("lr")) for r in rows]
     if len(set(combos)) != len(combos):
-        raise ValueError("duplicate (model, fraction, seed) combinations")
+        raise ValueError("duplicate (model, fraction, seed, lr) combinations")
 
 
 def write_jsonl(rows: list[dict], path: Path) -> None:

@@ -117,7 +117,7 @@ It ends with `PIPELINE CHECK PASSED` (ours ≤ published everywhere) or `PIPELIN
 
 Before the study, our training code must produce models at least as good as the paper's (owner, 2026-11-08;
 decisions D20). The replication trains each model as long as the paper did, which is not the study's budget:
-* 24 h of training time on one A100, about 14 and 37 epochs. The paper's best checkpoints came at epochs 12
+* 24 h of GPU training time (D24) on one A100, about 14 and 37 epochs. The paper's best checkpoints came at epochs 12
   and 31, which is about 20 h on an A100.
 * Checkpoints at 6, 12, 18 and 24 h.
 * The paper's learning rates, batch 64 and fp32.
@@ -126,11 +126,11 @@ decisions D20). The replication trains each model as long as the paper did, whic
 About 50 GPU-h on `free-gpu` (no SUs), outside the study's ~100 GPU-h.
 
 ```bash
-sbatch --array=0,1 --time=26:00:00 --export=ALL,MANIFEST=tasks/replication.jsonl cluster/slurm/train_a100.sbatch
+sbatch --array=0,1 --time=30:00:00 --export=ALL,MANIFEST=tasks/replication.jsonl cluster/slurm/train_a100.sbatch
 ```
 
 The two run in parallel when two A100s are free. If one is preempted or reaches its time limit, resubmit
-the same command; finished runs skip and the others resume. If `sbatch` rejects `--time=26:00:00`, use the
+the same command; finished runs skip and the others resume. If `sbatch` rejects `--time=30:00:00`, use the
 partition's maximum.
 
 Before training, check that data loading keeps up (D23). This is CPU only, about 10–20 minutes:
@@ -153,6 +153,27 @@ tail -n 5 logs/rb4-paper-*_0.out logs/rb4-paper-*_1.out
 * The paper chose its checkpoint on validation. `LABEL=12h` or `18h` scores the earlier checkpoints, if
   validation is needed to choose one.
 
+## 4a. Learning-rate search and pilot timings **[approved by the owner, 2026-11-08]**
+
+Nine runs (3 models × 1e-4, 5e-4, 1e-3), 20 min of GPU time each on the 10% subset, seed 0 (decisions D7,
+D24). About 3 GPU-h of training on `free-gpu`; with waits for data, AViT's runs take ~35 min of real time.
+
+```bash
+sbatch --array=0-8 --time=01:30:00 --export=ALL,MANIFEST=tasks/lr_search.jsonl cluster/slurm/train_a100.sbatch
+```
+
+If a task is preempted, resubmit only that index (`--array=<i>`); never run two copies of one task. When all
+nine have finished (CPU only, seconds, on the login node):
+
+```bash
+python -m rbbench select-lr --manifest tasks/lr_search.jsonl
+```
+
+It prints each run's validation loss and timing, the pilot timings (GPU seconds per step, share of time
+waiting for data, steps and epochs per budget, real hours needed for 4 h), each model's rate, and the
+`model_overrides` block for `configs/experiments/main.yaml`. Results are in `outputs/lr_search/`. Paste the
+output to the agent: the rates go into `main.yaml` on the Mac and `tasks/train.jsonl` is regenerated.
+
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 
 ```bash
@@ -169,10 +190,10 @@ Report to the owner:
 
 Then freeze batch size, learning rate and precision (decisions D6–D8) and record them in `docs/decisions.md`.
 
-## 5. Main sweep **[gate: explicit owner approval; 12 core jobs × ~4.5 h]**
+## 5. Main sweep **[gate: explicit owner approval; 12 core jobs, 4 h of GPU time each, ~4–7 h real]**
 
-`make-sweep` still defaults to the earlier grid (`docs/abstract_alignment.md` F2), so pass the core grid
-explicitly:
+First put the search's rates into `configs/experiments/main.yaml` (step 4a). `make-sweep` still defaults to
+the earlier grid (`docs/abstract_alignment.md` F2), so pass the core grid explicitly:
 
 ```bash
 # on the Mac, then commit and push:

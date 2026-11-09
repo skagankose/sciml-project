@@ -19,7 +19,7 @@ data:
 
 optim:
   name: adamw
-  lr: 5.0e-4                        # PENDING: shared grid {1e-4, 5e-4, 1e-3} on validation
+  lr: 5.0e-4                        # default; the study's per-model rates come from the search (main.yaml, D7)
   weight_decay: 1.0e-4              # upstream configs/optimizer/adam.yaml
   betas: [0.9, 0.999]
 
@@ -36,7 +36,11 @@ train:
   precision: fp32                   # every model, as the paper (AMP off); TFNO cannot use bf16 (D8)
   grad_clip_norm: null              # upstream does not clip
   deterministic: false
-  # Cumulative training-loop seconds (data loading + forward + backward + optimizer).
+  # What the budgets count (decisions D24). compute: the GPU's training steps only (host-to-device copy,
+  # forward, backward, optimizer), so time waiting for data from storage does not use up a budget and is
+  # logged as data_wait_seconds. wall: training-loop time including that wait.
+  budget_clock: compute
+  # Cumulative training seconds, as counted by budget_clock.
   # Labels name the checkpoints (checkpoint_1h.pt, ...); overrides replace this mapping whole.
   budgets_seconds:
     1h: 3600

@@ -1,4 +1,10 @@
-"""YAML configuration: common.yaml <- experiments/<exp>.yaml <- models/<model>.yaml <- overrides."""
+"""YAML configuration: common.yaml <- experiments/<exp>.yaml <- models/<model>.yaml
+<- the experiment's model_overrides[<model>] <- overrides.
+
+`model_overrides` lets one experiment give each model its own settings (e.g. the learning rate the search
+chose). Only the entry for the model being loaded is merged; the mapping itself is not kept, so one model's
+entry never changes another model's config hash.
+"""
 
 from __future__ import annotations
 
@@ -83,6 +89,11 @@ def load_config(
         raise ValueError(f"model config {model}.yaml has no size {size!r}")
     cfg["model"] = {"name": model, "size": size, "args": model_file[size]}
     cfg = deep_merge(cfg, model_file.get("train_overrides", {}) or {})
+    per_model = cfg.pop("model_overrides", None) or {}
+    unknown = sorted(set(per_model) - set(MODEL_NAMES))
+    if unknown:
+        raise ValueError(f"experiments/{experiment}.yaml: model_overrides for unknown models {unknown}")
+    cfg = deep_merge(cfg, per_model.get(model) or {})
     cfg["experiment"] = experiment
     for text in overrides or []:
         cfg = deep_merge(cfg, parse_override(text))

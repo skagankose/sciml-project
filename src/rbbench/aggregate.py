@@ -137,7 +137,8 @@ def resource_table(loaded: list[dict]) -> pd.DataFrame:
         recs.append({
             "run_id": r["run_id"], "model": r["model"], "fraction": r["fraction"], "seed": r["seed"],
             "budget": m["label"], "train_seconds": ms.get("train_seconds"),
-            "overshoot_seconds": ms.get("overshoot_seconds"), "optimizer_steps": ms.get("step"),
+            "overshoot_seconds": ms.get("overshoot_seconds"), "data_wait_seconds": ms.get("data_wait_seconds"),
+            "optimizer_steps": ms.get("step"),
             "samples_seen": ms.get("samples_seen"), "peak_train_mem_gb": ms.get("peak_mem_alloc_gb"),
             "n_parameters": prov.get("n_parameters"), "attempts": comp.get("attempts"),
             "val_overhead_s": comp.get("overhead_seconds", {}).get("val"),

@@ -12,8 +12,5 @@ tiny:
   modes2: 8
   hidden_channels: 16
   gradient_checkpointing: false
-# Learning rate: The Well's own 5-rate sweep chose 1e-4 for TFNO on rayleigh_benard (model card
-# polymathic-ai/TFNO-rayleigh_benard). Used so our runs can be compared with the paper (decisions D7).
-train_overrides:
-  optim:
-    lr: 1.0e-4
+# Learning rates are set per experiment (model_overrides): The Well's 1e-4 in replication.yaml, the search's
+# choice in main.yaml (decisions D7).

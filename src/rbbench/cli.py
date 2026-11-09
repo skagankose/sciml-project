@@ -526,7 +526,7 @@ def cmd_smoke(args):
 
 
 def cmd_select_lr(args):
-    """Learning-rate search results, each model's rate (validation loss only) and the pilot timings."""
+    """Learning-rate search results, each model's rate (validation VRMSE only) and the pilot timings."""
     import pandas as pd
 
     from rbbench.lr_search import choose, overrides_yaml, pilot_timings, run_results
@@ -546,10 +546,10 @@ def cmd_select_lr(args):
     atomic_write_json(out_dir / "selection.json", {"manifest": args.manifest, "chosen": chosen,
                                                    "results": results, "pilot_timings": timings})
 
-    print("Learning-rate search (validation loss at the search budget; lower is better)")
+    print("Learning-rate search (chosen by validation VRMSE at the search budget; lower is better)")
     for r in results:
         if r["status"] == "complete":
-            print(f"  {r['model']:<11} lr {r['lr']:.0e}  val loss {r['val_loss']:.4f}  val VRMSE {r['val_vrmse']:.4f}"
+            print(f"  {r['model']:<11} lr {r['lr']:.0e}  val VRMSE {r['val_vrmse']:.4f}  val loss {r['val_loss']:.4f}"
                   f"  {r['steps']} steps  {r['gpu_s_per_step']:.3f} GPU s/step  "
                   f"+{r['wait_s_per_step']:.3f} s data wait  {r['wall_hours']:.2f} h wall")
         else:

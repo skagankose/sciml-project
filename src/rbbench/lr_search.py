@@ -1,7 +1,8 @@
 """Equal-budget learning-rate search: results, each model's rate, and the pilot timings (decisions D7, D24).
 
 Reads only the search runs' training artifacts (COMPLETE.json, FAILED.json, provenance.json): the
-validation loss at the search budget. Nothing here reads test data.
+validation VRMSE at the search budget, the study's metric and the paper's selection criterion (owner,
+2026-11-08). Nothing here reads test data.
 
 The same runs are the real-data pilots: GPU seconds per optimizer step and the time spent waiting for data,
 which give the steps and epochs each model gets in the study's budgets (abstract milestone "budgets fixed
@@ -45,7 +46,7 @@ def run_results(rows: list[dict], output_root: Path) -> list[dict]:
 
 
 def choose(results: list[dict]) -> dict:
-    """Per model: the rate with the lowest validation loss, once every rate of that model has finished.
+    """Per model: the rate with the lowest validation VRMSE, once every rate of that model has finished.
 
     A diverged rate counts as infinitely bad. `at_grid_edge` flags a choice at the smallest or largest rate
     tried, where a wider grid might have done better.
@@ -57,13 +58,13 @@ def choose(results: list[dict]) -> dict:
         if pending:
             chosen[model] = {"lr": None, "pending_lrs": pending}
             continue
-        finite = [r for r in mine if math.isfinite(r["val_loss"])]
+        finite = [r for r in mine if math.isfinite(r["val_vrmse"])]
         if not finite:
             chosen[model] = {"lr": None, "pending_lrs": [], "note": "every rate diverged"}
             continue
-        best = min(finite, key=lambda r: r["val_loss"])
+        best = min(finite, key=lambda r: r["val_vrmse"])
         grid = sorted(r["lr"] for r in mine)
-        chosen[model] = {"lr": best["lr"], "val_loss": best["val_loss"], "val_vrmse": best["val_vrmse"],
+        chosen[model] = {"lr": best["lr"], "val_vrmse": best["val_vrmse"], "val_loss": best["val_loss"],
                          "at_grid_edge": best["lr"] in (grid[0], grid[-1]), "pending_lrs": []}
     return chosen
 

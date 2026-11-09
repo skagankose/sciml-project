@@ -169,7 +169,7 @@ nine have finished (CPU only, seconds, on the login node):
 python -m rbbench select-lr --manifest tasks/lr_search.jsonl
 ```
 
-It prints each run's validation loss and timing, the pilot timings (GPU seconds per step, share of time
+It prints each run's validation VRMSE (the selection criterion), loss and timing, the pilot timings (GPU seconds per step, share of time
 waiting for data, steps and epochs per budget, real hours needed for 4 h), each model's rate, and the
 `model_overrides` block for `configs/experiments/main.yaml`. Results are in `outputs/lr_search/`. Paste the
 output to the agent: the rates go into `main.yaml` on the Mac and `tasks/train.jsonl` is regenerated.

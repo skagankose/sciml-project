@@ -49,8 +49,8 @@ validation data before training. Deferred on 2026-10-30; **run, one rate per mod
   the study's recipe. Two differences, both from the 12× shorter budget: 100 warmup steps instead of 500 (500
   would be 60% of CNextU-Net's ~850 steps and end in a jump down the cosine, D6), and 512 validation windows
   instead of 64. About 3 GPU-h of training on `free-gpu`.
-* *Selection* (`rbbench select-lr`): per model, the lowest validation loss at 20 min; a diverged rate is the
-  worst. A choice at the edge of the grid is flagged. Results in `outputs/lr_search/`. No test data is read.
+* *Selection* (`rbbench select-lr`): per model, the lowest validation VRMSE at 20 min (owner, 2026-11-08: the
+  study's metric and the paper's criterion; validation loss is reported too); a diverged rate is the worst. A choice at the edge of the grid is flagged. Results in `outputs/lr_search/`. No test data is read.
 * *Where the rates live:* `model_overrides` in each experiment config (merged after the model file, only the
   loaded model's entry, so one model's rate never changes another's hash). `main.yaml` gets the search's
   rates, `replication.yaml` keeps The Well's. `tasks/train.jsonl` is regenerated after the search; until then

@@ -1,7 +1,7 @@
 # Equal-budget learning-rate search (final abstract; decisions D7, alignment F5).
 # Every (model, rate) pair trains on the 10% subset, seed 0, for the same 20 min of GPU training time
 # (train.budget_clock, D24) with the study's recipe. Each model's rate for the study is the one with the lowest
-# validation loss at 20 min (`rbbench select-lr`), written to main.yaml's model_overrides. Validation data
+# validation VRMSE at 20 min (`rbbench select-lr`), written to main.yaml's model_overrides. Validation data
 # only; nothing here reads the test split.
 #
 # Differences from the study, both because the budget is 12x shorter:

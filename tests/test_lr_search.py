@@ -1,7 +1,6 @@
 """Equal-budget learning-rate search: manifest, per-model rates and the selection (decisions D7, D24)."""
 
 import json
-import math
 
 import pytest
 from test_subset_manifest import _fake_train
@@ -70,13 +69,13 @@ def test_model_overrides_touch_only_their_model(tmp_path):
         load_config("avit", config_dir=d)
 
 
-def _fake_run(out, row, val_loss, gpu_s=0.5, wait_s=0.25, windows=27440, trajectories=140):
+def _fake_run(out, row, val_loss, val_vrmse, gpu_s=0.5, wait_s=0.25, windows=27440, trajectories=140):
     run = out / "runs" / row["run_id"]
     run.mkdir(parents=True)
     steps = int(1200 / gpu_s)
     milestone = {"target_seconds": 1200.0, "train_seconds": steps * gpu_s, "step": steps,
                  "samples_seen": steps * 64, "data_wait_seconds": steps * wait_s,
-                 "validation": {"val_loss": val_loss, "val_vrmse": math.sqrt(val_loss)}}
+                 "validation": {"val_loss": val_loss, "val_vrmse": val_vrmse}}
     atomic_write_json(run / "COMPLETE.json", {"milestones": {"20m": milestone}})
     atomic_write_json(run / "provenance.json", {"attempts": [{"wall_seconds": 1800.0}],
                                                 "n_train_windows": windows, "n_train_trajectories": trajectories})
@@ -88,11 +87,12 @@ def test_select_lr(tasks_dir, tmp_path, capsys):
     manifest = tmp_path / "lr.jsonl"
     write_jsonl(rows, manifest)
     out = tmp_path / "outputs"
-    losses = {("cnext_unet", 1e-4): 0.30, ("cnext_unet", 5e-4): 0.20, ("cnext_unet", 1e-3): 0.25,
-              ("tfno", 1e-4): 0.40, ("tfno", 5e-4): 0.35}
+    # (val loss, val VRMSE): CNextU-Net's lowest loss (1e-4) is not its lowest VRMSE (5e-4); VRMSE decides
+    scores = {("cnext_unet", 1e-4): (0.10, 0.40), ("cnext_unet", 5e-4): (0.20, 0.30), ("cnext_unet", 1e-3): (0.25, 0.35),
+              ("tfno", 1e-4): (0.40, 0.60), ("tfno", 5e-4): (0.35, 0.50)}
     for r in rows:
-        if (r["model"], r["lr"]) in losses:
-            _fake_run(out, r, losses[r["model"], r["lr"]])
+        if (r["model"], r["lr"]) in scores:
+            _fake_run(out, r, *scores[r["model"], r["lr"]])
     args = ["select-lr", "--manifest", str(manifest), "--output-root", str(out), "--tasks-dir", str(tasks_dir)]
 
     # TFNO's 1e-3 has not run yet: no choice for TFNO

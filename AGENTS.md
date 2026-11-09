@@ -28,7 +28,7 @@ Rules:
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile 2026-11-08; step times from the search 2026-11-09** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19; batch 64 fp32, D7). Data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts on real data run in the first evaluation |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
-| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **needs owner approval**; rates fixed 2026-11-09 (1e-3 for all, D7) and `tasks/train.jsonl` regenerated (12 rows; 10% = rows 0, 1, 4, 5, 8, 9). `eval` in common.yaml is hashed: do not edit it from now on (D15) |
+| I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **10% runs started 2026-11-09 by the owner** (array 59398100, rows 0, 1, 4, 5, 8, 9, one at a time, commit f42b2e2); the 100% rows need owner approval. Rates fixed 2026-11-09 (1e-3 for all, D7). `eval` in common.yaml is hashed: do not edit it from now on (D15). Do not push while array tasks are queued (see 2026-11-09 log) |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
 
 Values still PENDING are listed in `docs/decisions.md`: batch size, learning rate, precision, schedule, rollout
@@ -189,3 +189,11 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     every trajectory (30 steps, normalised data, as v1.0.1) and reports VRMSE over steps 6–12 and 13–30 in
     normalised and physical units. The paper gives ">10" for every RB model in both windows. Reported, not
     judged; result pending the next `eval-released` run (D20).
+* 2026-11-09 (afternoon): the owner submitted the six 10% runs.
+  * First attempt (array 59395480): task 0 was preempted after 4 min. Tasks 1, 4, 5, 8 and 9 exited at start
+    with "production runs need a clean, committed git tree": the agent's `cluster/push.sh` was copying
+    `f42b2e2` while they started, and rsync updates top-level files before `.git/`. No training was lost.
+    Afterwards the HPC3 tree was checked equal to `f42b2e2` (files fetched and compared; macOS `openrsync -c`
+    dry-runs report false differences). Rule: do not push while array tasks are queued.
+  * Resubmitted as array 59398100 (rows 0, 1, 4, 5, 8, 9, `%1`) at `f42b2e2`; task 0 started 10:33 on
+    hpc3-gpu-l54-04. The pipeline-check rerun with the paper rollouts (job 59397615) started 10:33.

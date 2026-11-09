@@ -132,7 +132,8 @@ say where the code still differs:
 * `cluster/README.md`: a new step 3b, the 12-run sweep commands and the storage and SU figures;
 * `tasks/README.md`.
 
-**F11 — The released checkpoints do not reproduce the published VRMSE (found 2026-11-07).** For the report.
+**F11 — The released checkpoints vs the published VRMSE (found 2026-11-07; test values reproduced
+2026-11-09).** For the report.
 * *Abstract:* "we first evaluate The Well's released CNextU-Net and TFNO checkpoints and compare with their
   published VRMSE."
 * *Result:* CNextU-Net scores 0.234 valid / 0.224 test, against 0.481 / 0.670 published. It works (0.02–0.05
@@ -152,10 +153,15 @@ say where the code still differs:
   * Released checkpoints: ours ≤ published. **PASSED** on the 2026-11-08 rerun: CNextU-Net 0.234 / 0.224,
     TFNO 0.305 / 0.300, against 0.481 / 0.670 and 0.857 / 0.657.
   * Our trained runs: ours ≤ the released checkpoint scored identically (`compare-paper`).
-* *Report:* explain the upstream issues, give both the published values and the released checkpoints'
-  scores on our pipeline, and say the exact published values could not be reproduced (protocol details are
-  not fully recoverable). Note that the paper's TFNO is a per-pixel MLP. Our TFNO, with working Fourier
-  layers, is a different and stronger model.
+* *Test values reproduced (2026-11-09, same job):* scored as the paper did (normalised inputs, VRMSE in
+  normalised units, full test set), the released checkpoints give CNextU-Net 0.6688 against 0.6699 published
+  and TFNO 0.6634 against 0.6566. The published valid values are not reproduced (0.70 / 0.68 against
+  0.48 / 0.86): they come from a 1,280-window random draw per epoch. Our physical-unit scores are lower only
+  because of the units (VRMSE's eps on the nearly still first frames; D20).
+* *Report:* explain the upstream issues. Give the published values, the released checkpoints' scores in
+  normalised units (test reproduced to 1%), and our physical-unit scores, saying which units each uses.
+  Say the published validation values could not be reproduced (one random draw). Note that the paper's TFNO
+  is a per-pixel MLP. Our TFNO, with working Fourier layers, is a different and stronger model.
 
 **F10 — Smaller wording points, already consistent with the code.**
 * "Each run trains for 4 hours": the clock counts the GPU's training steps and excludes waiting for data,
@@ -199,4 +205,5 @@ say where the code still differs:
 - [x] F8 dataset size (dropped)
 - [x] F9 docs
 - [ ] F10 report wording
-- [ ] F11 released checkpoints vs published VRMSE (pass criterion pending the owner; report wording)
+- [ ] F11 released checkpoints vs published VRMSE (passed 2026-11-08; test values reproduced 2026-11-09;
+  report wording)

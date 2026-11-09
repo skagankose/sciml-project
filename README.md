@@ -106,5 +106,6 @@ docs/      methodology, decisions, upstream audit, results schema
 
 On `rayleigh_benard`, The Well's 12 h H100 benchmark reports a test one-step VRMSE of 0.6699 for CNextU-Net
 and 0.6566 for TFNO. There are no published Well RB numbers for AViT or ConvLSTM. This project's budgets are 1 h
-and 4 h on an A100, so its trained models are not expected to match. The released checkpoints themselves should
-match; that is the pipeline check.
+and 4 h on an A100, so its trained models are not expected to match. The released checkpoints themselves do
+match: scored in normalised units as the paper did, our pipeline gives 0.6688 and 0.6634 (the pipeline check,
+decisions D20).

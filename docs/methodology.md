@@ -43,10 +43,13 @@ trainable parameter counts (18.6–19.3M). Exact configurations are in `docs/ups
 
 Before any training, The Well's released checkpoints `polymathic-ai/UNetConvNext-rayleigh_benard` and
 `polymathic-ai/TFNO-rayleigh_benard` are evaluated with this project's data path and metric. Their
-configurations match ours. Their one-step VRMSE should match the published values: CNextU-Net 0.4807 (valid) /
-0.6699 (test), TFNO 0.8568 / 0.6566. The check passes when every model and split is within 5% of the published
-value. The checkpoints are pinned to a revision and file hash, scored with the same per-window code as our own
-runs, and only evaluated, never trained from (AGENTS.md rule 3; decisions D20).
+configurations match ours. The published one-step VRMSE values are CNextU-Net 0.4807 (valid) / 0.6699 (test)
+and TFNO 0.8568 / 0.6566. The check passes when our VRMSE (physical units) is at most the published value for
+every model and split (owner, 2026-11-08). Scored as the paper did (normalised inputs, VRMSE in normalised
+units), the released checkpoints reproduce the published test values to within 1% (0.6688 and 0.6634). The
+validation values, which came from one random 1,280-window draw per epoch, are not reproduced. The
+checkpoints are pinned to a revision and file hash, scored with the same per-window code as our own runs, and
+only evaluated, never trained from (AGENTS.md rule 3; decisions D20).
 
 ## Training
 

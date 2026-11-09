@@ -239,7 +239,8 @@ A mismatch would point to a problem in our data path or metric. Implemented 2026
   this ("Fixed normalization bug in test dataset"). Emulating that bug gives CNextU-Net 9.99 and TFNO 1.18
   against the published 0.67 and 0.66 (rerun, 2026-11-08). So the paper's runs must have normalised the test
   set, and the public v1.0.1 is not exactly the code that produced them. (Corrects the first reading of
-  2026-11-08, which blamed the published test values on this bug.)
+  2026-11-08, which blamed the published test values on this bug.) The test values were computed on
+  normalised inputs and scored in normalised units, and they are reproduced that way (2026-11-09, below).
 * *The paper's validation numbers are a short validation in normalised units.* During training, validation
   used 20 shuffled batches of 64 windows (`short_validation_length: 20`), with no conversion to physical
   units. The best checkpoint was chosen on that score.
@@ -247,32 +248,53 @@ A mismatch would point to a problem in our data path or metric. Implemented 2026
 *Criterion (owner, 2026-11-08): "you don't need to match exactly with the paper, but results should be at
 least as good as the paper."* `eval-released` now reports three one-step VRMSEs per window:
 * ours (normalized inputs, physical units);
-* `paper_valid` (normalized units);
-* `paper_test` (raw inputs, as v1.0.1).
+* `normalised` (normalized inputs, scored in normalized units: the paper's protocol);
+* `raw_input` (raw inputs, as the public v1.0.1 test set; a diagnostic).
 
-It passes when ours ≤ published for every model and split. A paper-protocol value within 10% of the
-published one is reported as reproduced; this is evidence, not the criterion.
+These two columns were called `paper_valid` and `paper_test` until 2026-11-09; the files of job 59224204
+use the old names. It passes when ours ≤ published for every model and split. A normalised-units value
+within 10% of the published one is reported as reproduced; this is evidence, not the criterion.
 
-*Rerun (2026-11-08, job 59224204, commit c8e3065): PASSED.*
+*Rerun (2026-11-08, job 59224204, commit c8e3065): PASSED.* All columns from that job's
+`released_check.json`; every window of the 175 trajectories of each split (34,300 windows).
 
-| | ours | published | paper-valid protocol | paper-test protocol |
+| | ours (physical units) | published | normalised units | raw inputs |
 |---|---|---|---|---|
-| CNextU-Net valid | 0.234 | 0.481 | 0.701 | |
-| CNextU-Net test | 0.224 | 0.670 | | 9.99 |
-| TFNO valid | 0.305 | 0.857 | 0.675 | |
-| TFNO test | 0.300 | 0.657 | | 1.18 |
+| CNextU-Net valid | 0.234 | 0.481 | 0.701 | 10.15 |
+| CNextU-Net test | 0.224 | 0.670 | **0.669** | 9.99 |
+| TFNO valid | 0.305 | 0.857 | 0.675 | 1.19 |
+| TFNO test | 0.300 | 0.657 | **0.663** | 1.18 |
 
 * With its paper-era forward, the released TFNO (a per-pixel MLP) scores 0.30, against 10.7 with the pinned
   forward.
-* Neither paper protocol reproduces the published values. The valid values come from one 1,280-window
-  random draw per epoch on heavy-tailed per-window scores, with the best epoch picked on that draw. The
-  test values were not computed with the public test-set bug (above).
+* *The published test values are reproduced (found 2026-11-09).* In normalised units on the full test set,
+  the released checkpoints score CNextU-Net 0.6688 against the published 0.6699 (−0.2%) and TFNO 0.6634
+  against 0.6566 (+1.0%; with its paper-era forward). The 2026-11-08 reading ("neither paper protocol
+  reproduces the published values") was wrong: it scored valid only in normalised units and test only with
+  raw inputs. `eval-released` now judges reproduction in normalised units on both splits
+  (`released.PAPER_PROTOCOL`). So our data, splits, normalisation, model loading and metric reproduce the
+  paper's test numbers to 1%.
+* *The published valid values are not reproduced* (0.70 / 0.68 on every window). They come from one
+  1,280-window random draw per epoch on heavy-tailed per-window scores, with the best epoch picked on that
+  draw. The Hugging Face model cards list these valid values (0.4807, 0.8568) without naming a split, next
+  to the text "We use the model performing best on the validation set to report test set results."
+* *Why units matter.* The same predictions score 0.224 and 0.669 (CNextU-Net, test). VRMSE divides by the
+  target's spatial variance plus eps = 1e-7. Over the first ~50 frames the fluid is nearly still, the
+  velocity variance in physical units is close to eps, and eps damps the score; in normalised units it does
+  not. Buoyancy and pressure agree in both units throughout, and from frame 50 on all fields do (CNextU-Net
+  0.0382 vs 0.0383). The paper's numbers are therefore dominated by velocity in the first frames.
+* *The criterion mixes units.* "Ours ≤ published" compares physical-unit scores with normalised-unit
+  published values. In normalised units the released TFNO is 1.0% above its published test value. The
+  like-for-like evidence for the pipeline is the reproduction above. The criterion is the owner's and is
+  unchanged.
 
-*Our trained models (2026-11-08):* comparing them with the published values is not like for like: under the
-paper's validation protocol, the paper's own released CNextU-Net scores 0.70 against its published 0.48. So
-`compare-paper` compares our run with the released checkpoint scored identically: the same windows, code and
-data. It requires ours ≤ released on valid and test, in physical units (our protocol) and in normalised units
-(the paper's validation protocol). The published values are reported only.
+*Our trained models (2026-11-08):* comparing them with the published valid values is not like for like:
+under the paper's protocol, the paper's own released CNextU-Net scores 0.70 on every valid window against its
+published 0.48. So `compare-paper` compares our run with the released checkpoint scored identically: the same
+windows, code and data. It requires ours ≤ released on valid and test, in physical units (our protocol) and in
+normalised units (the paper's protocol). The published values are reported only. On test, the released
+checkpoint reproduces the published value in normalised units to 1% (2026-11-09), so that check is in effect a
+check against the paper's test number.
 
 *Replication budget (owner, 2026-11-08): "train as much as we need to match the paper"; the study keeps its
 limited budgets.* The paper's best checkpoints came at epoch 12 (CNextU-Net) and 31 (TFNO). At batch 64 on

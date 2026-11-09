@@ -136,8 +136,9 @@ def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tenso
     """VRMSE (physical units) of every `stride`-th one-step window of one normalised trajectory.
 
     `paper_protocols` adds the paper-era scores used for the released checkpoints (decisions D20):
-    `paper_valid_*` scores the prediction in normalised units against the normalised target;
-    `paper_test_*` feeds the raw (physical) window, as the public the_well v1.0.1 test set would, and scores
+    `normalised_*` scores the prediction in normalised units against the normalised target, as the paper did
+    (on the full test set it reproduces the published test values);
+    `raw_input_*` feeds the raw (physical) window, as the public the_well v1.0.1 test set would, and scores
     the raw output against the raw target (diagnostic only: it does not give the published test values).
     """
     rows = []
@@ -150,9 +151,9 @@ def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tenso
         true = torch.stack([traj_phys[s + n_in] for s in chunk])
         scores = {"vrmse": vrmse(pred, true).numpy()}
         if paper_protocols:
-            scores["paper_valid_vrmse"] = vrmse(out, torch.stack([traj[s + n_in] for s in chunk]).float()).numpy()
+            scores["normalised_vrmse"] = vrmse(out, torch.stack([traj[s + n_in] for s in chunk]).float()).numpy()
             raw = torch.stack([traj_phys[s:s + n_in] for s in chunk]).to(device)
-            scores["paper_test_vrmse"] = vrmse(predict(raw).cpu(), true).numpy()
+            scores["raw_input_vrmse"] = vrmse(predict(raw).cpu(), true).numpy()
         for j, s in enumerate(chunk):
             row = {**base, "start": s}
             for key, v in scores.items():

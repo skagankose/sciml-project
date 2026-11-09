@@ -30,7 +30,9 @@ outputs/
   baselines/released/                   # rbbench eval-released (pipeline check, decisions D20)
     released_check.json                 # pinned checkpoints and forward, ours / paper protocol / published, verdict
     <model>/one_step_<split>.parquet    # per window: the one_step_<label>.parquet columns plus
-                                        #   paper_valid_vrmse_* and paper_test_vrmse_* (paper-era protocols)
+                                        #   normalised_vrmse_* (the paper's protocol) and raw_input_vrmse_*
+                                        #   (v1.0.1 test-set diagnostic); job 59224204 wrote them as
+                                        #   paper_valid_vrmse_* and paper_test_vrmse_*
 tables/ main_results.csv, per_seed_results.csv, resource_use.csv, gpu_hours.csv, missing_runs.csv
 figures/ fig1…fig7 (.pdf, .png)
 ```

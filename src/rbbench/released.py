@@ -34,15 +34,17 @@ RELEASED = {
 # The Well commit (best-validation checkpoint after 12 h on one H100). They were computed with the
 # paper-era code (the_well v1.0.x, read at tag v1.0.1; decisions D20):
 # * valid: training-time "short validation" (20 shuffled batches of 64 windows), in normalised units;
-# * test: a full pass after training. The public v1.0.1 builds `test_dataset` without normalisation (fixed
-#   in v1.1.0), but emulating that gives CNextU-Net 9.99 against 0.67, so the paper's runs normalised it.
-# Neither emulated protocol reproduces these values (D20); they are a bar for our scores, not a target.
+# * test: a full pass after training, in normalised units. These checkpoints reproduce it on the full test
+#   set: CNextU-Net 0.6688, TFNO 0.6634 (job 59224204, D20). The public v1.0.1 builds `test_dataset` without
+#   normalisation (fixed in v1.1.0), but emulating that gives 9.99 and 1.18, so the paper's runs did not.
+# The valid values are not reproduced (0.70 / 0.68 on every window): one random 1,280-window draw per epoch,
+# with the best epoch picked on it. The Hugging Face model cards list these valid values without a split.
 PUBLISHED_VRMSE = {
     "cnext_unet": {"valid": 0.4807, "test": 0.6699},
     "tfno": {"valid": 0.8568, "test": 0.6566},
 }
-# The paper-era protocol each published split corresponds to (columns of evaluate.one_step_rows).
-PAPER_PROTOCOL = {"valid": "paper_valid", "test": "paper_test"}
+# The paper-era protocol, for both published splits: the `normalised_*` columns of evaluate.one_step_rows.
+PAPER_PROTOCOL = "normalised"
 
 # Until the_well commit e430160 (2025-11-17, "actually use the TFNO blocks") the TFNO wrapper called its FNO
 # blocks without keeping their output, so the paper's TFNO, and this checkpoint (uploaded 2025-03-28), is

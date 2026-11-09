@@ -287,20 +287,19 @@ def cmd_eval_released(args):
             df.to_parquet(out / name / f"one_step_{split}.parquet", index=False)
             published = PUBLISHED_VRMSE[name][split]
             ours = float(df["vrmse_mean"].mean())
-            protocol = PAPER_PROTOCOL[split]
-            paper = float(df[f"{protocol}_vrmse_mean"].mean())
+            paper = float(df[f"{PAPER_PROTOCOL}_vrmse_mean"].mean())
             rel = (paper - published) / published
             as_good = ours <= published
             passed &= as_good
             results.setdefault(name, {})[split] = {
                 "vrmse_mean": ours, **{f"vrmse_{f}": float(df[f"vrmse_{f}"].mean()) for f in FIELDS},
-                "paper_valid_vrmse_mean": float(df["paper_valid_vrmse_mean"].mean()),
-                "paper_test_vrmse_mean": float(df["paper_test_vrmse_mean"].mean()),
-                "paper_protocol": protocol, "n_windows": len(df), "n_trajectories": int(df.traj_id.nunique()),
+                "normalised_vrmse_mean": float(df["normalised_vrmse_mean"].mean()),
+                "raw_input_vrmse_mean": float(df["raw_input_vrmse_mean"].mean()),
+                "paper_protocol": PAPER_PROTOCOL, "n_windows": len(df), "n_trajectories": int(df.traj_id.nunique()),
                 "published_vrmse_mean": published, "at_least_as_good": as_good,
                 "reproduction_relative_difference": rel, "reproduced": abs(rel) <= args.tolerance,
             }
-            print(f"{name:11s} {split:5s} ours {ours:.4f} | paper protocol ({protocol}) {paper:.4f} vs published "
+            print(f"{name:11s} {split:5s} ours {ours:.4f} | paper protocol ({PAPER_PROTOCOL}) {paper:.4f} vs published "
                   f"{published:.4f} ({100 * rel:+.1f}%{', reproduced' if abs(rel) <= args.tolerance else ''}) | "
                   f"ours <= published: {'yes' if as_good else 'NO'}  ({len(df)} windows)")
     verdict = passed if complete else None
@@ -323,8 +322,10 @@ def cmd_compare_paper(args):
 
     The reference is the released checkpoint scored by eval-released on the same windows with the same code:
     on valid and test, ours <= released in physical units (our protocol) and in normalised units (the paper's
-    validation protocol). The published values are reported only: the paper's own released CNextU-Net scores
-    0.70 in normalised units against its published 0.48, so they cannot be a like-for-like bar.
+    protocol). The published values are reported only. On test the released checkpoints reproduce them in
+    normalised units (within 1%), so that check is in effect against the published value. The published
+    valid values come from one random draw (the released CNextU-Net scores 0.70 against its published 0.48),
+    so they cannot be a like-for-like bar.
     """
     from rbbench.evaluate import evaluate_one_step, model_predictor
     from rbbench.manifests import provenance, sha256_file
@@ -358,22 +359,24 @@ def cmd_compare_paper(args):
         df = evaluate_one_step({"run": predict}, dataset_dir, split, cfg["task"]["n_steps_input"], cfg["eval"],
                                device, args.max_trajectories, paper_protocols=True)["run"]
         df.to_parquet(out_dir / f"paper_compare_{args.label}_{split}.parquet", index=False)
-        r = {key: float(df[f"{key}_mean"].mean()) for key in ("vrmse", "paper_valid_vrmse", "paper_test_vrmse")}
+        r = {key: float(df[f"{key}_mean"].mean()) for key in ("vrmse", "normalised_vrmse", "raw_input_vrmse")}
         published = PUBLISHED_VRMSE[name][split]
         ref = released.get(split, {})
-        released_ours, released_norm = ref.get("vrmse_mean"), ref.get("paper_valid_vrmse_mean")
+        released_ours, released_norm = ref.get("vrmse_mean"), ref.get("normalised_vrmse_mean")
         checks = {}
         if released_ours is not None and released_norm is not None:
             checks["physical units <= released"] = r["vrmse"] <= released_ours
-            checks["normalised units <= released"] = r["paper_valid_vrmse"] <= released_norm
+            checks["normalised units <= released"] = r["normalised_vrmse"] <= released_norm
         passed &= all(checks.values())
-        results[split] = {**r, "released_checkpoint": {"vrmse": released_ours, "paper_valid_vrmse": released_norm},
+        results[split] = {**r, "released_checkpoint": {"vrmse": released_ours, "normalised_vrmse": released_norm},
                           "published_vrmse_mean": published, "checks": checks, "n_windows": len(df)}
         if checks:
             refs = f"released {released_ours:.4f} / {released_norm:.4f}"
+        elif ref:
+            refs = "released: released_check.json predates the normalised_* columns; rerun eval-released"
         else:
             refs = "released: not evaluated yet"
-        print(f"{name:11s} {args.label} {split:5s} ours {r['vrmse']:.4f} physical / {r['paper_valid_vrmse']:.4f} "
+        print(f"{name:11s} {args.label} {split:5s} ours {r['vrmse']:.4f} physical / {r['normalised_vrmse']:.4f} "
               f"normalised | {refs} | published {published:.4f} | "
               + (", ".join(f"{k}: {'yes' if v else 'NO'}" for k, v in checks.items()) or "not judged"))
     complete = args.max_trajectories is None and all(results[sp]["checks"] for sp in args.splits)
@@ -700,8 +703,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--size", default="full", choices=["full", "tiny"], help="tiny is for tests only")
     sp.add_argument("--override", action="append", default=[])
     sp.add_argument("--tolerance", type=float, default=0.10,
-                    help="paper-protocol VRMSE within this relative difference of the published value counts as "
-                         "reproduced (reported, not the pass criterion)")
+                    help="normalised-units VRMSE (the paper's protocol) within this relative difference of the "
+                         "published value counts as reproduced (reported, not the pass criterion)")
     sp.add_argument("--max-trajectories", type=int, help="per split; a partial run is not a pipeline check")
     sp.add_argument("--allow-unverified-data", action="store_true")
     sp.set_defaults(func=cmd_eval_released)

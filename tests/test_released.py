@@ -98,10 +98,15 @@ def test_eval_released_command(dataset_dir, fake_fetch, tmp_path):
             r = record["results"][name][split]
             assert r["n_windows"] == len(list_trajectories(dataset_dir, split)) * (24 - 4)  # every window
             assert r["published_vrmse_mean"] == released.PUBLISHED_VRMSE[name][split]
-            assert r["paper_protocol"] == released.PAPER_PROTOCOL[split]
+            assert r["paper_protocol"] == released.PAPER_PROTOCOL == "normalised"
             assert r["at_least_as_good"] == (r["vrmse_mean"] <= r["published_vrmse_mean"])
+            # reproduction is judged in normalised units on both splits (the published test values are)
+            rel = (r["normalised_vrmse_mean"] - r["published_vrmse_mean"]) / r["published_vrmse_mean"]
+            assert r["reproduction_relative_difference"] == pytest.approx(rel)
+            assert r["reproduced"] == (abs(rel) <= 0.10)
             df = pd.read_parquet(tmp_path / "out" / "baselines" / "released" / name / f"one_step_{split}.parquet")
-            assert {"vrmse_mean", "paper_valid_vrmse_mean", "paper_test_vrmse_mean"} <= set(df.columns)
+            assert {"vrmse_mean", "normalised_vrmse_mean", "raw_input_vrmse_mean"} <= set(df.columns)
+            assert r["normalised_vrmse_mean"] == pytest.approx(df.normalised_vrmse_mean.mean())
     assert record["checkpoints"]["tfno"]["repo_id"] == "local/tfno" and record["provenance"]["git"]
     assert record["checkpoints"]["tfno"]["forward"] == released.PAPER_FORWARD["tfno"]
     assert record["checkpoints"]["cnext_unet"]["forward"] == "pinned the_well"
@@ -130,15 +135,15 @@ def test_paper_forward_skips_the_fno_blocks(fake_fetch):
 
 
 def test_paper_protocols(dataset_dir):
-    """Persistence has known answers: on raw input it returns the raw last frame, so the paper-test score
+    """Persistence has known answers: on raw input it returns the raw last frame, so the raw-input score
     equals ours; VRMSE is scale-invariant, so the normalised-units score matches too (healthy variance)."""
     cfg = load_config("cnext_unet", "smoke", "tiny", [GRID])
     plain = evaluate_one_step({"p": Persistence()}, dataset_dir, "valid", 4, cfg["eval"], torch.device("cpu"))["p"]
     both = evaluate_one_step({"p": Persistence()}, dataset_dir, "valid", 4, cfg["eval"], torch.device("cpu"),
                              paper_protocols=True)["p"]
     pd.testing.assert_frame_equal(plain, both[plain.columns])  # our scores are unchanged
-    assert np.allclose(both.paper_test_vrmse_mean, both.vrmse_mean, rtol=1e-5)
-    assert np.allclose(both.paper_valid_vrmse_mean, both.vrmse_mean, rtol=1e-3)
+    assert np.allclose(both.raw_input_vrmse_mean, both.vrmse_mean, rtol=1e-5)
+    assert np.allclose(both.normalised_vrmse_mean, both.vrmse_mean, rtol=1e-3)
 
 
 def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
@@ -164,7 +169,11 @@ def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
 
     ref = tmp_path / "out" / "baselines" / "released"
     ref.mkdir(parents=True)
-    worse = {"vrmse_mean": 1.0e9, "paper_valid_vrmse_mean": 1.0e9}  # a reference any model beats
+    old = {"vrmse_mean": 1.0e9, "paper_valid_vrmse_mean": 1.0e9}  # written before the rename (job 59224204)
+    atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {"valid": old, "test": old}}})
+    assert main(args) == 0  # an outdated reference is reported, not judged
+    assert json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())["passed"] is None
+    worse = {"vrmse_mean": 1.0e9, "normalised_vrmse_mean": 1.0e9}  # a reference any model beats
     atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {"valid": worse, "test": worse}}})
     assert main(args) == 0
     record = json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())
@@ -172,9 +181,9 @@ def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
         assert record["results"][split]["checks"] == {"physical units <= released": True,
                                                       "normalised units <= released": True}
     assert record["passed"] is True  # the published values are reported, never the bar
-    better = {"vrmse_mean": 0.0, "paper_valid_vrmse_mean": 0.0}
+    better = {"vrmse_mean": 0.0, "normalised_vrmse_mean": 0.0}
     atomic_write_json(ref / "released_check.json", {"results": {"cnext_unet": {"valid": better, "test": better}}})
     assert main(args) == 1
     assert json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())["passed"] is False
     df = pd.read_parquet(run / "evaluations" / "paper_compare_4h_valid.parquet")
-    assert {"vrmse_mean", "paper_valid_vrmse_mean", "paper_test_vrmse_mean"} <= set(df.columns)
+    assert {"vrmse_mean", "normalised_vrmse_mean", "raw_input_vrmse_mean"} <= set(df.columns)

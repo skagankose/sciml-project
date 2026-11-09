@@ -22,7 +22,7 @@ Rules:
 | B Upstream audit | shapes, parameter counts, random init, gradients; `docs/upstream_audit.md` | **passed 2026-10-22** (Mac CPU; 512×128 forward on CPU) |
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
-| D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
+| D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20). In normalised units (the paper's protocol) the published **test** values are reproduced: 0.669 / 0.663 vs 0.670 / 0.657 (found 2026-11-09) |
 | R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark done (persistent, 8 workers: ~98 samples/s from `/pub`). **Postponed until after the Nov 12 check-in (owner, 2026-11-08)**; run ids now `…-9dfed09a`/`…-bb6db502` (D24) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
@@ -119,6 +119,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     0.481 / 0.670, 0.857 / 0.657).
     * Neither paper protocol reproduces the published values (valid 0.70 / 0.68; raw-input test 9.99 / 1.18).
       So the published test values did not come from the public test-set bug, and my first reading was wrong.
+      (Wrong for test: normalised units reproduce the test values; see 2026-11-09.)
     * `compare-paper` now judges our runs against the released checkpoint scored identically, not against
       the published values.
   * First profiling job: `compare_upstream.py` passed on the real data (rollout max abs diff 0.0 for every Well
@@ -172,3 +173,15 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Starting the core runs fixes warmup 500 and the time-cosine schedule (D6), and the `eval` section, which
     is part of the run hash (D15).
   * Milestone 2 written up in `docs/checkin_2026-11-12.md`. Next: the six 10% runs, on the owner's go-ahead.
+* 2026-11-09 (later): the released checkpoints reproduce the paper's **test** numbers. Job 59224204's output
+  already held it: on the full test set, in normalised units, CNextU-Net scores 0.6688 (published 0.6699) and
+  TFNO 0.6634 (0.6566). The 2026-11-08 reading scored test only with raw inputs, so it missed this.
+  * The published valid values are still not reproduced (0.70 / 0.68): one random draw per epoch. The
+    Hugging Face model cards list those valid values (0.4807, 0.8568) without naming a split.
+  * Our physical-unit scores (0.224 / 0.300) are lower only because of the units: VRMSE's eps damps velocity
+    on the nearly still first ~50 frames; from frame 50 on both units agree to four digits (D20).
+  * Code: the diagnostic columns are now `normalised_vrmse_*` and `raw_input_vrmse_*` (were `paper_valid_*`
+    and `paper_test_*`), and `eval-released` judges reproduction in normalised units on both splits.
+    `compare-paper` refuses to judge against a `released_check.json` with the old names, so
+    `eval-released` must be rerun before the replication is judged. The D2 criterion is unchanged.
+  * D20, F11, the methodology, README and check-in notes corrected.

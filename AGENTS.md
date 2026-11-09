@@ -25,8 +25,8 @@ Rules:
 | D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
 | R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark done (persistent, 8 workers: ~98 samples/s from `/pub`). **Postponed until after the Nov 12 check-in (owner, 2026-11-08)**; run ids now `…-9dfed09a`/`…-bb6db502` (D24) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
-| F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; the learning-rate search (`tasks/lr_search.jsonl`, 9 runs) is the real-data mini-run for all three models |
-| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7). Step times measured cached reads (D23); the real ones come from the search runs (`select-lr` pilot timings). Budgets count GPU time, not data waits (D24) |
+| F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; real-data runs on A100 (the learning-rate search, job 59374848): loss decreases for every model, preempted runs saved their state (tasks 6, 7), resume pending |
+| G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7). **Step times measured in the search** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19); data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts still to run on real data |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
 | I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **needs owner approval**; `tasks/train.jsonl` is out of date until the search's rates are in `main.yaml` (D7); budgets are 1 h/4 h, but `make-sweep` defaults still give 36 rows: pass the core grid explicitly |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
@@ -154,3 +154,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
        timings). Rates now live in each experiment's `model_overrides`: The Well's in `replication.yaml`, the
        search's in `main.yaml`. `tasks/train.jsonl` is regenerated after the search.
     * `train_a100.sbatch` allows 10 h (AViT needs ~7 h of real time for 4 h of GPU time).
+* 2026-11-08 (night): learning-rate search (job array 59374848), 4 of 9 runs finished. Validation VRMSE:
+  CNextU-Net 0.841 (1e-4), 0.469 (5e-4); TFNO 0.358 (5e-4), 0.302 (1e-3, top of the grid).
+  * Tasks 2 and 3 died at 02:55 UTC from a `/pub` error (`Errno 70 Communication error on send`), not
+    divergence. Tasks 6 and 7 were preempted. Task 8 is queued. Resubmit 2, 3, 6 and 7.
+  * GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19. Between stalls the loader keeps up with every model
+    on 10%; waits are `/pub` stalls of 3–21 min that hit both nodes at once (D24, D23).
+  * `select-lr` now reports unfinished runs (progress, preempted or stopped), takes timings from them too,
+    estimates real time with and without stalls, and writes `lr_search.md` and two figures. Results and
+    caveats are in `docs/checkin_2026-11-12.md`.
+  * The transfer node `hpc3-xfer` accepts rsync without a new login, so `cluster/pull.sh` works from the
+    agent's shell.

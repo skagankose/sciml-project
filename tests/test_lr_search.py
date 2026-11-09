@@ -120,6 +120,69 @@ def test_select_lr(tasks_dir, tmp_path, capsys):
     n10 = len(json.loads((tasks_dir / subset_filename(0.1)).read_text())["trajectory_ids"])
     assert t["epochs_4h_f010"] == pytest.approx(28800 * 64 / (n10 * 27440 / 140))
     assert (out / "lr_search" / "lr_search.csv").exists() and (out / "lr_search" / "pilot_timings.csv").exists()
+    table = (out / "lr_search" / "lr_search.md").read_text()
+    assert "| CNextU-Net | 5e-4 | complete (chosen) | **0.300** |" in table and "| TFNO | 1e-3 | diverged |" in table
+    for name in ("lr_search_training_loss", "lr_search_val_vrmse"):
+        assert (out / "lr_search" / f"{name}.png").stat().st_size > 0
+
+
+def _metrics(run, rows):
+    cols = ["event", "attempt", "step", "epoch", "train_seconds", "data_wait_seconds", "wall_seconds", "lr", "loss",
+            "samples_seen"]
+    lines = [",".join(cols)] + [",".join(str(r.get(c, "")) for c in cols) for r in rows]
+    (run / "train_metrics.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_unfinished_runs_report_progress_and_curves(tasks_dir, tmp_path, capsys):
+    rows = make_sweep("lr_search", tasks_dir, models=("avit",), repo_root=tmp_path)
+    manifest = tmp_path / "lr.jsonl"
+    write_jsonl(rows, manifest)
+    out = tmp_path / "outputs"
+    lo, mid, hi = rows
+    # 1e-4: preempted after 200 steps of 0.2 GPU s; a 30 s storage stall between steps 100 and 150, otherwise
+    # 0.01 s of waiting per step
+    run = out / "runs" / lo["run_id"]
+    run.mkdir(parents=True)
+    atomic_write_json(run / "provenance.json", {"attempts": [{"wall_seconds": 100.0, "end_status": "preempted"}],
+                                                "n_train_windows": 27440, "n_train_trajectories": 140})
+    waits = {50: 0.5, 100: 1.0, 150: 31.0, 200: 31.5}
+    _metrics(run, [{"event": "train", "attempt": 1, "step": k, "train_seconds": 0.2 * k, "data_wait_seconds": w,
+                    "loss": 1.0 / k, "samples_seen": 64 * k} for k, w in waits.items()])
+    # 5e-4: crashed (no end status), then resumed from step 100 and preempted again at step 150: steps 100 and
+    # 150 are logged twice and the later attempt counts
+    run = out / "runs" / mid["run_id"]
+    run.mkdir(parents=True)
+    atomic_write_json(run / "provenance.json", {"attempts": [{}, {"wall_seconds": 50.0, "end_status": "preempted"}],
+                                                "n_train_windows": 27440, "n_train_trajectories": 140})
+    first = [{"event": "train", "attempt": 1, "step": k, "train_seconds": 0.2 * k, "data_wait_seconds": 0,
+              "loss": 9.0, "samples_seen": 64 * k} for k in (50, 100, 150)]
+    second = [{"event": "train", "attempt": 2, "step": k, "train_seconds": 0.2 * k, "data_wait_seconds": 0,
+               "loss": 1.0 / k, "samples_seen": 64 * k} for k in (100, 150)]
+    _metrics(run, first + second)
+    # 1e-3: the job died before its first step
+    (out / "runs" / hi["run_id"]).mkdir(parents=True)
+
+    assert main(["select-lr", "--manifest", str(manifest), "--output-root", str(out),
+                 "--tasks-dir", str(tasks_dir)]) == 1
+    text = capsys.readouterr().out
+    assert "preempted after 0.7 GPU min (200 steps)" in text
+    sel = json.loads((out / "lr_search" / "selection.json").read_text())
+    res = {r["lr"]: r for r in sel["results"]}
+    assert res[5e-4]["status"] == "preempted" and res[5e-4]["steps"] == 150
+    assert res[1e-3]["status"] == "stopped before training" and "steps" not in res[1e-3]
+    assert res[1e-4]["median_wait_s_per_step"] == pytest.approx(0.01)
+
+    from rbbench.lr_search import training_curves
+    curves = training_curves(rows, out)
+    assert [loss for _, loss in curves[mid["task_index"]]] == [9.0, 1 / 100, 1 / 150]
+
+    # timings come from unfinished runs too: 0.2 GPU s/step from both; the mean wait includes the stall,
+    # the no-stall estimate uses the median
+    t = sel["pilot_timings"][0]
+    assert t["runs"] == 2 and t["runs_complete"] == 0 and t["gpu_s_per_step"] == pytest.approx(0.2)
+    assert t["wait_s_per_step"] == pytest.approx((31.5 / 200 + 0) / 2)
+    assert t["median_wait_s_per_step"] == pytest.approx(0.005)
+    assert t["est_wall_hours_4h_no_stalls"] == pytest.approx(4 * 0.205 / 0.2)
 
 
 def test_select_lr_refuses_a_core_manifest(tasks_dir, tmp_path):

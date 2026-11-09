@@ -162,8 +162,12 @@ D24). About 3 GPU-h of training on `free-gpu`; with waits for data, AViT's runs 
 sbatch --array=0-8 --time=01:30:00 --export=ALL,MANIFEST=tasks/lr_search.jsonl cluster/slurm/train_a100.sbatch
 ```
 
-If a task is preempted, resubmit only that index (`--array=<i>`); never run two copies of one task. When all
-nine have finished (CPU only, seconds, on the login node):
+If a task is preempted (exit code 3) or killed by a storage error (exit code 1 with `Errno 70 Communication
+error on send` in its log), resubmit only those indices, e.g. `--array=2,3,6,7`; finished tasks exit at once
+and partial ones resume. Never include a task that is still queued or running: two copies of one task would
+write the same run folder. `sacct -j <jobid> --format=JobID%16,State,ExitCode,Elapsed` shows each task's state.
+`select-lr` can run at any time (CPU only, seconds, on the login node); it chooses a model's rate once all
+its rates have finished:
 
 ```bash
 python -m rbbench select-lr --manifest tasks/lr_search.jsonl
@@ -171,8 +175,10 @@ python -m rbbench select-lr --manifest tasks/lr_search.jsonl
 
 It prints each run's validation VRMSE (the selection criterion), loss and timing, the pilot timings (GPU seconds per step, share of time
 waiting for data, steps and epochs per budget, real hours needed for 4 h), each model's rate, and the
-`model_overrides` block for `configs/experiments/main.yaml`. Results are in `outputs/lr_search/`. Paste the
-output to the agent: the rates go into `main.yaml` on the Mac and `tasks/train.jsonl` is regenerated.
+`model_overrides` block for `configs/experiments/main.yaml`. Results are in `outputs/lr_search/`, with a
+Markdown table (`lr_search.md`, VRMSE per field) and two figures (validation VRMSE against the rate; training
+loss against GPU time per rate). On the Mac, `cluster/pull.sh` then `OUTPUT_ROOT=outputs python -m rbbench
+select-lr` gives the same. The rates go into `main.yaml` on the Mac and `tasks/train.jsonl` is regenerated.
 
 ## 4. Feasibility on real data **[gate: owner approval of pilot GPU time]**
 

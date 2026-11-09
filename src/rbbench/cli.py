@@ -529,7 +529,8 @@ def cmd_select_lr(args):
     """Learning-rate search results, each model's rate (validation VRMSE only) and the pilot timings."""
     import pandas as pd
 
-    from rbbench.lr_search import choose, overrides_yaml, pilot_timings, run_results
+    from rbbench.lr_search import (choose, markdown_table, overrides_yaml, pilot_timings, plot_lr_search,
+                                   run_results, training_curves)
     from rbbench.manifests import atomic_write_json
     from rbbench.sweep import read_jsonl
 
@@ -545,6 +546,9 @@ def cmd_select_lr(args):
     pd.DataFrame(timings).to_csv(out_dir / "pilot_timings.csv", index=False)
     atomic_write_json(out_dir / "selection.json", {"manifest": args.manifest, "chosen": chosen,
                                                    "results": results, "pilot_timings": timings})
+    (out_dir / "lr_search.md").write_text(markdown_table(results, chosen) + "\n")
+    figures = [] if args.no_figures else plot_lr_search(results, training_curves(rows, _output_root(args)), chosen,
+                                                       out_dir)
 
     print("Learning-rate search (chosen by validation VRMSE at the search budget; lower is better)")
     for r in results:
@@ -552,6 +556,11 @@ def cmd_select_lr(args):
             print(f"  {r['model']:<11} lr {r['lr']:.0e}  val VRMSE {r['val_vrmse']:.4f}  val loss {r['val_loss']:.4f}"
                   f"  {r['steps']} steps  {r['gpu_s_per_step']:.3f} GPU s/step  "
                   f"+{r['wait_s_per_step']:.3f} s data wait  {r['wall_hours']:.2f} h wall")
+        elif r["status"] == "diverged":
+            print(f"  {r['model']:<11} lr {r['lr']:.0e}  diverged" + (f" at step {r['steps']}" if r.get("steps") else ""))
+        elif r.get("steps"):
+            print(f"  {r['model']:<11} lr {r['lr']:.0e}  {r['status']} after {r['gpu_minutes']:.1f} GPU min "
+                  f"({r['steps']} steps); resubmit its task index to finish")
         else:
             print(f"  {r['model']:<11} lr {r['lr']:.0e}  {r['status']}")
     print("\nPilot timings (study budgets; GPU time counts, data waits do not: D24)")
@@ -560,7 +569,8 @@ def cmd_select_lr(args):
                            if k.startswith("epochs_4h"))
         print(f"  {t['model']:<11} {t['gpu_s_per_step']:.3f} GPU s/step ({t['gpu_samples_per_s']:.0f} samples/s), "
               f"waiting {100 * t['wait_fraction_of_wall']:.0f}% of wall; 1h: {t['steps_1h']:.0f} steps, "
-              f"4h: {t['steps_4h']:.0f} steps ({epochs}), 4h needs ~{t['est_wall_hours_4h']:.1f} h wall")
+              f"4h: {t['steps_4h']:.0f} steps ({epochs}), 4h needs ~{t['est_wall_hours_4h']:.1f} h wall "
+              f"(~{t['est_wall_hours_4h_no_stalls']:.1f} h without storage stalls)")
     print("\nChosen")
     for model, c in chosen.items():
         if c["lr"] is None:
@@ -568,7 +578,9 @@ def cmd_select_lr(args):
         else:
             edge = "  (at the edge of the grid)" if c["at_grid_edge"] else ""
             print(f"  {model:<11} lr {c['lr']:.0e}{edge}")
-    print(f"\nFor configs/experiments/main.yaml:\n{overrides_yaml(chosen)}\n-> {out_dir}")
+    print(f"\nFor configs/experiments/main.yaml:\n{overrides_yaml(chosen)}\n-> {out_dir} "
+          f"(lr_search.csv, lr_search.md, pilot_timings.csv, selection.json"
+          + "".join(f", {Path(f).name}" for f in figures if f.endswith(".png")) + ")")
     return 0 if all(c["lr"] is not None for c in chosen.values()) else 1
 
 
@@ -709,6 +721,7 @@ def build_parser() -> argparse.ArgumentParser:
     common(sp, data=False, out=True, exp=False)
     sp.add_argument("--manifest", default=str(REPO_ROOT / "tasks" / "lr_search.jsonl"))
     sp.add_argument("--tasks-dir", default=str(REPO_ROOT / "tasks"))
+    sp.add_argument("--no-figures", action="store_true", help="skip the two figures (matplotlib)")
     sp.set_defaults(func=cmd_select_lr)
 
     sp = sub.add_parser("bench-data", help="data-loading throughput alone (no model), upstream vs persistent reader")

@@ -57,6 +57,11 @@ validation data before training. Deferred on 2026-10-30; **run, one rate per mod
   it is out of date and `train-task` refuses it.
 * *Known bias:* a 20 min search can favour rates that learn fast early over ones that are best at 4 h. It is
   the same for every model.
+* *Results so far (2026-11-08, 4 of 9 runs; `docs/checkin_2026-11-12.md`):* validation VRMSE CNextU-Net
+  0.841 (1e-4) and 0.469 (5e-4); TFNO 0.358 (5e-4) and 0.302 (1e-3). The larger rate wins so far for every
+  model, and TFNO's best is at the top of the grid. Widening the grid is the owner's call. If it is widened,
+  the new rates go into a separate manifest (`sweep` is part of the config hash, so editing
+  `lr_search.yaml`'s `lrs` would change every search run's id).
 * If a model needs gradient accumulation to reach the shared batch size, it is recorded. No test-set tuning.
 * *Replication of the paper (owner request, 2026-11-08):* our trained CNextU-Net and TFNO must be at least as
   good as the paper's (D20). To compare like with like, the two models use the rates The Well's own sweep
@@ -307,6 +312,9 @@ per step and TFNO at 7.8 s (later 47 s), at batch 64, against 1.42 s and 0.55 s 
   * AViT would get about half its compute rate. With a fixed training time per run that handicaps AViT in
     the core study. **Open before the core sweep:** read the data from node-local disk (depends on the A100
     nodes' local disk size) or measure the shortfall and report it.
+    *Measured 2026-11-08 (D24):* on the A100 nodes, the loader keeps up with AViT on the 10% subset between
+    storage stalls, and budgets count GPU time, so neither step is needed for the 10% runs. The 100% runs
+    (10× more data per epoch) are checked in their first logs.
 * The core manifests were regenerated (only the hash changed); the partial runs under the old hashes are
   void.
 
@@ -325,6 +333,19 @@ measure our storage.
   The real waits come from the search runs (`rbbench select-lr`, pilot timings).
 * The key is part of the config hash, so the manifests were regenerated (replication run ids now
   `…-9dfed09a` and `…-bb6db502`); earlier partial runs are void.
+* *Measured in the learning-rate search (2026-11-08, job array 59374848, A100 nodes `hpc3-gpu-l54-05/06`):*
+  * GPU seconds per step at batch 64: CNextU-Net 1.19, TFNO 0.55, AViT 0.19, within 1% across runs. These
+    replace the D7 profile's 1.42 and 0.38 s, which timed whole steps with cached reads.
+  * Between stalls the loader keeps up with every model on the 10% subset. The median wait per logging
+    interval is about 0, AViT included at ~330 samples/s (fresh reads in epoch 0 too). So an A100 node reads
+    `/pub` well above the ~98 samples/s that `bench-data` measured on a CPU node (D23).
+  * All the waiting came from `/pub` stalls of 3–21 min that hit runs on both nodes at the same moments (TFNO
+    at ~03:26 UTC, AViT at ~04:28 and ~04:47 UTC). They cost 5–30 min per 20 min run. At 02:55 UTC the same
+    trouble killed two runs outright with `OSError: [Errno 70] Communication error on send` (an HDF5 open in a
+    loader worker; a Python import). Neither is divergence: no `FAILED.json`, and they resume on resubmission.
+  * Consequence: budgets are unaffected. Real time is ~4 h for a 4 h budget without stalls, and up to ~2–3×
+    at the stall rate seen that day. `select-lr` reports both estimates: mean wait, and median wait per
+    interval.
 
 **D21 — Backup plan (deferred).** If storage, queue time or pilot timings show the plan is too costly, the
 data size is reduced for all models equally.

@@ -5,7 +5,8 @@ outputs/
   audit/dataset_audit.json              # rbbench inspect-dataset (gates physics diagnostics)
   pilots/feasibility.csv                # rbbench profile (one row per model x precision x batch)
   pilots/compare_upstream.json          # scripts/compare_upstream.py
-  lr_search/{lr_search.csv,pilot_timings.csv,selection.json}   # rbbench select-lr (decisions D7, D24)
+  lr_search/{lr_search.csv,lr_search.md,pilot_timings.csv,selection.json,
+            lr_search_training_loss.{pdf,png},lr_search_val_vrmse.{pdf,png}}   # rbbench select-lr (D7, D24)
   runs/<model>/f<010|030|100>/s<seed>/<subset8>-<config8>/      # run_id
     resolved_config.yaml                # full config; its hash is in the task row
     provenance.json                     # per attempt: git commit/dirty, packages, GPU, Slurm ids, host,

@@ -208,3 +208,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     * Task 1 (CNextU-Net 10% s1): at 12:38, after 860 s.
     * Task 4 (TFNO 10% s0): at 12:40, during startup.
     * Resubmit indices 0, 1 and 4 once squeue no longer lists them.
+  * The owner resubmitted them as array 59403878 (rows 0, 1, 4, `%1`), alongside 59398100 (rows 5, 8, 9
+    pending). The pipeline-check rerun is job 59403844 (`--time=04:00:00`). All waited with `ReqNodeNotAvail`:
+    the backfill scheduler had planned the free A100 nodes (sinfo `mix-`) for higher-priority jobs. The only
+    reservation is the maintenance window on 2026-12-14 and 12-15, after the report is due.

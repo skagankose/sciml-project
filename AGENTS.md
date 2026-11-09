@@ -197,3 +197,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     dry-runs report false differences). Rule: do not push while array tasks are queued.
   * Resubmitted as array 59398100 (rows 0, 1, 4, 5, 8, 9, `%1`) at `f42b2e2`; task 0 started 10:33 on
     hpc3-gpu-l54-04. The pipeline-check rerun with the paper rollouts (job 59397615) started 10:33.
+  * Job 59397615 reached its 2 h limit at 12:32 during the test split.
+    * Valid finished at 11:54. Its rollouts from frame 0, in normalised units, over steps 6–12 / 13–30:
+      CNextU-Net 39 / 39 and TFNO 155 / 196 (paper: >10). Velocity produces all of it; buoyancy and pressure
+      stay below 0.5 (D20).
+    * `released_a100.sbatch` now allows 4 h and unbuffers stdout. It is not pushed: the training array is
+      queued, so rerun with `sbatch --time=04:00:00`.
+  * Free-gpu preempted three training tasks. The array does not retry them, but their state is saved.
+    * Task 0 (CNextU-Net 10% s0): at 11:52, after 1543 s of training.
+    * Task 1 (CNextU-Net 10% s1): at 12:38, after 860 s.
+    * Task 4 (TFNO 10% s0): at 12:40, during startup.
+    * Resubmit indices 0, 1 and 4 once squeue no longer lists them.

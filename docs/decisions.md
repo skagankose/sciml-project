@@ -296,7 +296,7 @@ normalised units (the paper's protocol). The published values are reported only.
 checkpoint reproduces the published value in normalised units to 1% (2026-11-09), so that check is in effect a
 check against the paper's test number.
 
-*Rollouts (Table 3), added 2026-11-09; result pending the next `eval-released` run.* The paper reports test
+*Rollouts (Table 3), added 2026-11-09; valid split done, test pending a rerun.* The paper reports test
 VRMSE averaged over rollout steps 6–12 and 13–30, with rollouts "initiated from the beginning of the
 simulation" (Section 4). For `rayleigh_benard` every model, CNextU-Net and TFNO included, is ">10" in both
 windows. Our study's rollouts start at frames 20, 80 and 140 (D15), so they cannot be compared with these.
@@ -306,10 +306,24 @@ windows. Our study's rollouts start at frames 20, 80 and 140 (D15), so they cann
 * Scores per step: VRMSE in normalised units (the paper's) and in physical units (ours), averaged per window
   over steps and trajectories (`released.paper_rollout_summary`). Per-step rows are in
   `<model>/paper_rollout_<split>.parquet`.
-* Reported, not judged: on test, "reproduced" means both normalised-unit window means are above 10. The
-  bound is weak. In normalised units, one-step velocity VRMSE on windows that start in the first 20 frames
-  already averages 8.7–11.4 for these checkpoints (job 59224204), so a rollout from frame 0 is expected to
-  exceed 10.
+* Reported, not judged: on test, "reproduced" means both normalised-unit window means are above 10.
+* Valid split (job 59397615, all 175 trajectories), window means over steps and trajectories:
+
+  | Window | CNextU-Net, normalised | CNextU-Net, physical | TFNO, normalised | TFNO, physical |
+  |---|---|---|---|---|
+  | steps 6–12 | 39.0 | 9.98 | 155 | 40.0 |
+  | steps 13–30 | 39.0 | 18.5 | 196 | 84.8 |
+
+  * Both checkpoints are above 10 in the paper's units, as published.
+  * The velocity components produce all of it: buoyancy and pressure stay at 0.08–0.49 in both windows for
+    both models, while velocity_x and velocity_y score 64–431. From frame 0 the fluid is nearly still, so
+    the true velocity has almost no spatial variance and any velocity error is large relative to it.
+  * The normalised score peaks near step 15 (CNextU-Net 44, TFNO 297) and falls as convection develops.
+  * So ">10" says that VRMSE is ill-conditioned at the start of an RB simulation. It does not rank the
+    models.
+  * Job 59397615 reached its 2 h limit during the test split (valid took 81 min with startup). Its log lost
+    the valid lines because Python buffers stdout. `released_a100.sbatch` now allows 4 h and sets
+    `PYTHONUNBUFFERED=1`.
 * Window definition: v1.0.1 logs log-spaced windows `np.linspace(0, log T, 5)` of a T-step rollout. With
   T = 30 they are the slices 5:12 and 12:30, which are steps 6–12 and 13–30 (1-based). The v1.0.1 default
   T = 100 would give 3:10 and 10:31, so the paper's runs presumably used 30 steps. We use the paper's stated

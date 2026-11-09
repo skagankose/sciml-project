@@ -275,6 +275,23 @@ per step and TFNO at 7.8 s (later 47 s), at batch 64, against 1.42 s and 0.55 s 
 * *Needed rate at batch 64 so that compute, not I/O, sets the pace:* CNextU-Net about 45 samples/s
   (235 MB/s), TFNO about 116 (610 MB/s), AViT about 170 (890 MB/s). `rbbench bench-data` measures what
   `/pub` delivers, on a CPU node.
+* *Measured (`bench-data` on a 16-core `free` node, batch 64, 15 timed batches per row):*
+
+  | loader | 4 workers | 8 workers | 15 workers |
+  |---|---|---|---|
+  | upstream | 24.5 samples/s (129 MB/s) | 80.7 (423) | 56.8 (298) |
+  | persistent | 33.8 (177) | 97.7 (512) | 69.9 (366) |
+
+  * Persistent handles are 1.2–1.4× faster at equal workers. The remaining limit is `/pub` itself: at best
+    about 0.5 GB/s into one node, and 15 readers were slower than 8. Each row times only 10–30 s of reads,
+    so single rows are noisy, but no setting reaches TFNO's or AViT's rate.
+  * The first replication attempt had 4 workers with the upstream loader (about 25 samples/s here). The
+    training jobs now have 8 CPUs, so 7 workers: CNextU-Net is compute-bound, and TFNO should run at about
+    0.65 s per step against 0.55 s, roughly 85% of its compute rate. That is acceptable for the
+    replication, whose TFNO bar (the released checkpoint, D20) never trained its FNO blocks.
+  * AViT would get about half its compute rate. With a fixed training time per run that handicaps AViT in
+    the core study. **Open before the core sweep:** read the data from node-local disk (depends on the A100
+    nodes' local disk size) or measure the shortfall and report it.
 * The core manifests were regenerated (only the hash changed); the partial runs under the old hashes are
   void.
 

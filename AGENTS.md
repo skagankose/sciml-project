@@ -23,7 +23,7 @@ Rules:
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
 | D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20) |
-| R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark next |
+| R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark done (persistent, 8 workers: ~98 samples/s from `/pub`); restart next |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | code + CPU tests done; A100 pilot not run |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile done 2026-11-08** (batch 8–64, fp32/bf16, all ok except TFNO bf16 by design); batch 64 fp32 chosen (D7) **Step times measured cached reads (D23); re-profile after the loader fix** |
@@ -140,3 +140,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
       `runtime` section, more workers and a profiler that reads fresh windows.
     * Manifests regenerated. Replication run IDs are now `…-3b7ecf6f` (CNextU-Net) and `…-7d6f032d` (TFNO).
     * Next: `rbbench bench-data` on a CPU node, then restart the replication.
+  * `bench-data` result: the persistent loader is 1.2–1.4× faster than upstream. `/pub` delivers about
+    0.5 GB/s into one node at best (97.7 samples/s with 8 workers; 15 workers were slower). With 7 workers,
+    CNextU-Net is compute-bound and TFNO runs at ~85% of its compute rate, which is enough for the
+    replication. AViT would run at ~half its rate, so the core sweep first needs node-local data or a
+    measured shortfall (D23).

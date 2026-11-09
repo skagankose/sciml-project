@@ -47,7 +47,7 @@ def test_rates_per_experiment():
     assert load_config("tfno", "replication")["optim"]["lr"] == 1e-4
     for m in CORE:
         cfg = load_config(m, "main")
-        assert "model_overrides" not in cfg and cfg["optim"]["lr"] == 5e-4  # until the search is done
+        assert "model_overrides" not in cfg and cfg["optim"]["lr"] == 1e-3  # the search's choice (D7, 2026-11-09)
 
 
 def test_model_overrides_touch_only_their_model(tmp_path):
@@ -58,6 +58,7 @@ def test_model_overrides_touch_only_their_model(tmp_path):
     d = tmp_path / "configs"
     shutil.copytree(CONFIG_DIR, d)
     exp = d / "experiments" / "main.yaml"
+    exp.write_text("model_overrides: {}\n")
     before = {m: config_hash(load_config(m, config_dir=d)) for m in CORE}
     exp.write_text("model_overrides:\n  avit:\n    optim:\n      lr: 1.0e-3\n")
     after = {m: config_hash(load_config(m, config_dir=d)) for m in CORE}

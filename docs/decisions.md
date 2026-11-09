@@ -27,7 +27,10 @@ To verify on HPC3: that `stats.yaml` matches the train split (the audit records 
 
 **D5 — Objective.** One-step, teacher-forced, full-state (not residual) prediction, MSE in normalised units
 with equal field weights (upstream uses MSE with equal weights). AdamW (β = 0.9/0.999, weight decay 1e-4 as
-upstream) on all parameters, no gradient clipping (as upstream).
+upstream) on all parameters, no gradient clipping (as upstream). The paper's text (Appendix E.1) says "the PyTorch default WD of .01",
+but The Well's `configs/optimizer/adam.yaml` has 1e-4 both at v1.0.1 and at `e63dec8` (read 2026-11-08); we
+follow the code. Likewise its `rayleigh_benard` data config has batch 64, where the text says the batch was set
+to fill GPU memory.
 
 **D6 — Learning-rate schedule under a wall-clock budget (PENDING confirmation).** Warmup in optimizer steps,
 then cosine decay over *cumulative training seconds* towards the final 4 h milestone. The total step count is

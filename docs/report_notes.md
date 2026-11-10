@@ -9,11 +9,50 @@ can be written from it (owner, 2026-11-10). Numbers come from the job outputs na
 * The tables below are copies of those outputs on the date given; rerun the script for current values.
 * Decisions and their reasons stay in `docs/decisions.md` (D-numbers); this file records what was observed.
 
-## 1. Pipeline check: The Well's released checkpoints (gate D2)
+## 1. Pipeline check: The Well's released checkpoints (milestone 1, gate D2)
 
-Released CNextU-Net and TFNO `rayleigh_benard` checkpoints from Hugging Face, pinned by revision and sha256,
-scored on every window of the valid and test splits (175 trajectories, 34,300 one-step windows per split).
-Final run: job 59407152 (paid `gpu` partition, A100, commit f42b2e2, 2026-11-09).
+### Summary for the report
+
+We validated our data and evaluation pipeline by running The Well's own trained models through it, with no
+training. The released CNextU-Net and TFNO checkpoints reproduce the paper's test results:
+* **One-step test VRMSE** (Table 2): CNextU-Net 0.6688 against the published 0.6699 (−0.2%), TFNO 0.6634
+  against 0.6566 (+1.0%).
+* **Rollouts from frame 0** (Table 3): above 10 in both windows (steps 6–12 and 13–30), as published:
+  CNextU-Net 36 / 35, TFNO 142 / 169.
+* **Not reproduced: the validation values** (Table 5). The paper scored validation on a random draw of 20
+  batches per epoch, which cannot be recomputed. On every validation window the released checkpoints score
+  0.70 (CNextU-Net, published 0.48) and 0.68 (TFNO, published 0.86).
+
+Scope: this validates data loading, normalisation, windowing, the model forward passes and the metric. It
+does not validate our training; that is the separate replication (24 h runs, postponed by the owner).
+
+### How the check was done
+
+1. **Checkpoints.** The released `rayleigh_benard` checkpoints of CNextU-Net
+   (`polymathic-ai/UNetConvNext-rayleigh_benard`, revision c5fa0f7) and TFNO (`polymathic-ai/TFNO-rayleigh_benard`,
+   revision 7d35135) from Hugging Face, pinned by revision and sha256. Loaded into our model classes and
+   checked bitwise-equal to upstream's.
+2. **Data.** The same dataset as the paper: server files dated 2024-12-05, the official splits, and the
+   v1.0.1 normalisation statistics (`stats.yaml` identical to ours). Read through our pipeline
+   (`PersistentWellDataset`), whose samples are bitwise-identical to upstream `WellDataset`'s.
+3. **Upstream comparison** (`scripts/compare_upstream.py`, real data, 2026-11-08): our rollouts match
+   upstream's exactly (max abs difference 0.0 for every model), and our VRMSE equals upstream's exactly and
+   NumPy's to 1e-7.
+4. **Scoring.** Every window of the valid and test splits (175 trajectories, 34,300 one-step windows each),
+   with the same code our trained models are scored with. Two protocols: ours (physical units) and the
+   paper's (normalised units). Plus the paper's rollout: 30 steps from frame 0 of every trajectory.
+5. **Runs.** Job 59154129 (2026-11-07) found the TFNO mismatch, job 59224204 (2026-11-08) passed, and job
+   59407152 (2026-11-09, paid `gpu` partition, A100, commit f42b2e2) is the final run with the rollouts.
+
+What we had to find out on the way (D20):
+* The paper's test values are in normalised units. Physical units give lower scores (0.224, 0.300), only
+  because VRMSE's eps damps velocity in the first ~50 frames, where the fluid is nearly still. From frame 50
+  on, both units agree to four digits.
+* The released TFNO needs its paper-era forward pass. The Well's code then skipped TFNO's Fourier blocks (an
+  upstream bug, fixed in e430160 on 2025-11-17), so the released TFNO is in effect a per-pixel MLP. With the
+  current forward it scores ~10. Upstream issue #49 notes outdated paper numbers and Hub checkpoints.
+* The owner's pass criterion (2026-11-08) was "ours ≤ published" in our units; it passed for both models
+  and splits.
 
 ### One-step VRMSE (Table 2 of the paper)
 
@@ -31,8 +70,6 @@ Final run: job 59407152 (paid `gpu` partition, A100, commit f42b2e2, 2026-11-09)
   eps damps velocity there, so our scores are lower. From frame 50 on, both units agree to four digits.
 * The released TFNO only works with its paper-era forward pass, which skipped the FNO blocks (upstream bug,
   fixed in e430160 on 2025-11-17). It is in effect a per-pixel MLP. With today's forward it scores ~10 (D20).
-* Earlier runs: job 59154129 (2026-11-07, TFNO under the current forward: mismatch) and job 59224204
-  (2026-11-08, passed; the test reproduction in normalised units was found in its output on 2026-11-09).
 
 ### Rollouts from frame 0 (Table 3 of the paper)
 
@@ -78,7 +115,63 @@ model in both windows.
 * Job 59407152 ran on the paid partition with 4 cores: 36 SU per hour, so ~100 SU for ~2.7 h (2 × ~80 min);
   `sacct` will give the exact value.
 
-## 2. Learning-rate search (2026-11-08 to 11-09)
+## 2. Budgets fixed from pilot timings (milestone 2)
+
+### Summary for the report
+
+Done before the 10% runs, and the 10% runs confirmed the predictions.
+* **Budgets:** 1 h and 4 h of training on one A100 (from the abstract), counted as GPU training time only
+  (owner, 2026-11-08; D24). The data-loading benchmark showed that shared storage (`/pub`) delivers ~98
+  samples/s into one node, while AViT can use 170–330 per second of GPU time. A wall-clock budget would have
+  given AViT about half its steps, so the comparison would partly measure our storage. Waiting is logged
+  and reported separately.
+* **Batch 64 and fp32 for all models** (The Well's batch size): the profile showed it fits in A100 80 GB
+  memory for every model. TFNO cannot use bf16 (no bf16 FFT in torch; D8).
+* **Learning rate 1e-3 for all models**, from an equal-budget search on validation data.
+* **Job settings:** 8 cores (7 data-loading workers) per job; job time limit 10 h, then 14 h on the paid
+  partition, because real time exceeds the GPU budget.
+
+### Pilots
+
+* **Profile** (2026-11-08, batch 8–64, fp32 and bf16): batch 64 fits every model in fp32 (peak allocated
+  memory CNextU-Net 58.7 GB, TFNO 44.9, AViT 7.4, ConvLSTM 23.6).
+* **Data-loading benchmark** (`rbbench bench-data`, CPU node, 2026-11-08): our persistent loader is 1.2–1.4×
+  faster than upstream's. `/pub` delivers about 0.5 GB/s, 97.7 samples/s with 8 workers, into one node; 15
+  workers were slower.
+* **The first replication attempt** (2026-11-08) was I/O-bound: 5.75–47 s per step instead of 0.55–1.42,
+  because upstream `WellDataset` reopens the HDF5 file for every sample. Fixed with `PersistentWellDataset`
+  (D23).
+* **Learning-rate search** (below): its 9 runs gave the step times used to plan the budgets.
+
+### Pilot predictions against the 10% runs
+
+| batch 64, fp32, A100 | CNextU-Net | TFNO | AViT |
+|---|---|---|---|
+| GPU seconds per step: pilot / 10% runs | 1.19 / 1.19 | 0.55 / 0.55 | 0.19 / 0.19 |
+| Steps in 4 h: pilot / 10% runs | 12,080 / 12,122–12,194 | 26,170 / 26,339–26,352 | 74,320 / in progress |
+| Epochs in 4 h on 10% data: pilot / 10% runs | 28 / 28 | 61 / 61 | 173 / ~172 (projected) |
+| Real hours for 4 h: pilot estimate / 10% runs | ~6.0 / 5.2–6.0 | ~8.0 / 6.9–7.1 | ~9.7 / ~13.5 (projected) |
+
+* GPU step times and steps per budget matched the pilots to within 1%. Every run stopped within 1 s of its
+  4 h budget (14,400.0–14,400.7 s).
+* Real time matched for CNextU-Net and TFNO. AViT took longer than predicted, because the storage stalls
+  were longer and more frequent than during the pilots.
+* The budgets were unaffected, since they count GPU time; the cost was (SU are charged on wall time).
+
+### Storage stalls (`/pub`)
+
+* Between stalls the data loader keeps up with every model: the median wait per logged interval is 0.
+* Nearly all waiting comes from stalls of 5–22 min. AViT seed 0: 13 stalls over 5 min, 3.3 of its 3.6 h
+  of waiting. TFNO seed 0: 13 stalls, 2.0 of 2.5 h.
+* The stalls hit every running job at the same moments, on different nodes (hpc3-gpu-l54-03, -05 and -06).
+  So they are a property of the shared filesystem, not of one node. Examples (Pacific time, 2026-11-09):
+  17:34–17:41 (four runs), 22:42–23:04 (four runs), then every 20–40 min until AViT's crash at 02:44.
+* Stalls grew longer (15–22 min instead of 5–8) after both AViT runs started at 21:14. Our logs cannot tell
+  whether our own reads contributed.
+* A copy of the 10% subset on each node's local disk (140 trajectories × 200 frames × 512 × 128 × 4 fields in
+  float32, ~29 GB) would remove this dependency. It is not implemented yet.
+
+### Learning-rate search (2026-11-08 to 11-09)
 
 Equal-budget search, one rate per model (D7). 20 min of GPU training each, 10% data, seed 0, batch 64, fp32,
 on free-gpu. Arrays 59374848, 59390860 and 59393014. Details are in `outputs/lr_search/lr_search.md`.

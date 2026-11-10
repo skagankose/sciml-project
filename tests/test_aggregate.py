@@ -38,3 +38,29 @@ def test_missing_seed_is_visible():
         "sigma": [0.0] * 2, "step": [1] * 2, "seed": [0, 2], "value": [1.0, 1.5], "run_id": ["a", "c"],
     })
     assert summary_table(df).iloc[0]["n_seeds"] == 2
+
+
+def test_paper_protocol_table_sets_references_beside_our_runs():
+    from rbbench.aggregate import paper_protocol_table
+
+    rows = []
+    for model in ("cnext_unet", "avit"):
+        for seed, v in ((0, 0.5), (1, 0.7)):
+            rows += [{"model": model, "fraction": 0.1, "budget": "4h", "seed": seed, "sigma": 0.0, "step": 1,
+                      "metric": "paper_one_step_normalised_vrmse_mean", "value": v},
+                     {"model": model, "fraction": 0.1, "budget": "4h", "seed": seed, "sigma": 0.0, "step": None,
+                      "metric": "paper_rollout_normalised_vrmse_steps_13-30", "value": 10 * v},
+                     {"model": model, "fraction": 0.1, "budget": "4h", "seed": seed, "sigma": 0.0, "step": 1,
+                      "metric": "one_step_vrmse_mean", "value": v}]
+    released = {"results": {"cnext_unet": {"test": {
+        "normalised_vrmse_mean": 0.6688,
+        "paper_rollout": {"window_vrmse_mean": {"normalised": {"6:12": 36.1, "13:30": 34.7}}}}}}}
+    t = paper_protocol_table(summary_table(pd.DataFrame(rows)), released)
+    assert set(t.metric) == {"paper_one_step_normalised_vrmse_mean", "paper_rollout_normalised_vrmse_steps_13-30"}
+    one = t[(t.metric == "paper_one_step_normalised_vrmse_mean")].set_index("model")
+    assert one.loc["cnext_unet", "mean"] == pytest.approx(0.6) and one.loc["cnext_unet", "n_seeds"] == 2
+    assert one.loc["cnext_unet", "published"] == "0.6699" and one.loc["cnext_unet", "released_checkpoint"] == 0.6688
+    assert one.loc["avit", "published"] == "" and np.isnan(one.loc["avit", "released_checkpoint"])
+    roll = t[t.metric == "paper_rollout_normalised_vrmse_steps_13-30"].set_index("model")
+    assert roll.loc["cnext_unet", "published"] == "> 10" and roll.loc["cnext_unet", "released_checkpoint"] == 34.7
+    assert list(t.model[:2]) == ["cnext_unet", "avit"]  # fixed model order, not by value

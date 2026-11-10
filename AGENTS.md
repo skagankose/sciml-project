@@ -29,12 +29,12 @@ Rules:
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile 2026-11-08; step times from the search 2026-11-09** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19; batch 64 fp32, D7). Data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts on real data run in the first evaluation |
-| H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending |
+| H Evaluation | metric tests; deterministic noise; physics self-checks on real data | code + synthetic tests done; real-data checks pending. Rollout starts frozen 2026-11-10 (D15: `[20, 80, 140]` plus the paper's protocol, owner); cohort file to generate |
 | I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **10% runs started 2026-11-09 by the owner** (rows 0, 1, 4, 5, 8, 9, commit f42b2e2; on the paid `gpu` partition, class account, from 2026-11-09 with owner approval); the 100% rows need owner approval. Rates fixed 2026-11-09 (1e-3 for all, D7). `eval` in common.yaml is hashed: do not edit it from now on (D15). Do not push while array tasks are queued (see 2026-11-09 log) |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
 
-Values still PENDING are listed in `docs/decisions.md`: batch size, learning rate, precision, schedule, rollout
-starts and the primary threshold. The study design follows the final abstract (2026-10-30). Where the code
+The only value still PENDING in `docs/decisions.md` is the primary failure threshold (D16, chosen on validation);
+batch size, learning rate, precision, schedule and rollout starts are fixed. The study design follows the final abstract (2026-10-30). Where the code
 still differs from it, and which items are deferred, is in `docs/abstract_alignment.md`.
 
 ## Progress log
@@ -245,3 +245,15 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     rollouts. Provenance now records `SLURM_CPUS_PER_TASK`.
   * The released rollouts' ">10" comes from low Rayleigh numbers. On test, steps 13–30, CNextU-Net's median
     is 69 at Ra = 1e6 and 1.7 at Ra = 1e10; only 34% of Ra = 1e10 trajectories exceed 10.
+  * Owner (2026-11-10): report the 10% results also exactly as the paper did, and keep the rollout starts
+    `[20, 80, 140]` (D15, option A). The mid-project report uses the 10% / 4 h runs; like-for-like
+    comparisons with the paper come later.
+    * Every evaluation now also scores the paper's protocol: normalised one-step VRMSE on every test window,
+      and the 30-step rollout from frame 0 with window means over steps 6–12 and 13–30. It reuses the frames
+      already read, so there is no extra data reading.
+    * `aggregate` writes `tables/paper_protocol.csv` (ours, mean ± std over seeds, beside the published value
+      and the released checkpoint scored by `eval-released`).
+    * Tests cover that the in-pass rollout equals `eval-released`'s and the table's references.
+    * Not pushed: AViT (rows 8, 9) is queued. Next: `make-cohort --out outputs/eval_cohort.json` on the login
+      node (safe while training runs); after AViT, commit the cohort, push, evaluate row 0 and the
+      persistence baseline, then the other rows.

@@ -125,13 +125,24 @@ over exactly the 4 input frames, so in rollouts ConvLSTM sees the same 4-frame w
 4 + 196-frame window, then every one-step window and every rollout start is cut from it in memory. This uses
 the upstream parser and normalization while avoiding re-reading ~37 GB per checkpoint.
 
-**D15 — Rollout cohort (PENDING).** All 175 test trajectories × start indices `[20, 80, 140]`, 30 steps.
+**D15 — Rollout cohort (decided by the owner 2026-11-10).** All 175 test trajectories × start indices `[20, 80, 140]`, 30 steps.
 Very early starts are near the conduction state, where target variance is tiny and VRMSE is ill-conditioned. The
 start list must be frozen on the *validation* split before any test evaluation, then `tasks/eval_cohort.json`
 is generated once and never changed (its hash is checked).
 *2026-11-09:* `eval` in `common.yaml` is part of every run's config hash, so it stays as it is now that the
 core runs have started. If validation calls for other starts, they go into the cohort file only (a
 `make-cohort` option, still to add), never into `common.yaml`.
+*2026-11-10, owner: keep `[20, 80, 140]` and add the paper's protocol (option A of three).* On validation, the
+released checkpoints' one-step VRMSE (physical units) by start frame is 1.65 / 1.36 / 0.71 / 0.23 / 0.08 /
+≤ 0.06 for CNextU-Net, over frames 0–9 / 10–19 / 20–29 / 30–39 / 40–49 / 50+. So start 20 tests the onset of
+convection and 80 and 140 developed convection, with VRMSE well conditioned. Each start is reported separately.
+* The alternatives were the paper's frame 0 only, which mostly measures spurious velocity in a nearly still
+  fluid (D20), and later starts such as 50/100/150, which need a code change because the starts are hashed.
+* Every evaluation also scores the paper's protocol (D20): one-step VRMSE in normalised units on every test
+  window, and a 30-step rollout from frame 0 of every trajectory, averaged over steps 6–12 and 13–30.
+  `rbbench aggregate` puts these in `tables/paper_protocol.csv`, next to the published values and the
+  released checkpoints scored by the same code. The frame-0 rollout reuses the frames already read, so it
+  adds no data reading.
 
 **D16 — Failure horizon.** First step whose field-mean VRMSE exceeds the threshold; rollouts that never cross
 are right-censored, summarised with Kaplan–Meier survival and median. Thresholds 1.0 / 2.0 (primary) with 5.0
@@ -304,7 +315,7 @@ windows. Our study's rollouts start at frames 20, 80 and 140 (D15), so they cann
   autoregressive on normalised data, as the paper-era trainer did (v1.0.1 neither normalises nor
   denormalises inside a rollout). It reads only the first 34 frames of each trajectory.
 * Scores per step: VRMSE in normalised units (the paper's) and in physical units (ours), averaged per window
-  over steps and trajectories (`released.paper_rollout_summary`). Per-step rows are in
+  over steps and trajectories (`paper.paper_rollout_windows`; the published values and windows are in `src/rbbench/paper.py`). Per-step rows are in
   `<model>/paper_rollout_<split>.parquet`.
 * Reported, not judged: on test, "reproduced" means both normalised-unit window means are above 10.
 * Job 59407152 (all 175 trajectories per split), window means over steps and trajectories:

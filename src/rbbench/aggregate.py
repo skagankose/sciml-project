@@ -1,7 +1,8 @@
 """One command from copied run outputs to report tables and figures (runs on the Mac).
 
 Reads tasks/train.jsonl, each run's COMPLETE.json, provenance.json and evaluations/, and writes
-tables/{main_results,per_seed_results,resource_use,gpu_hours,missing_runs}.csv and figures/*.{pdf,png}.
+tables/{main_results,per_seed_results,paper_protocol,resource_use,gpu_hours,missing_runs}.csv and
+figures/*.{pdf,png}.
 Every number keeps its run_id, so it can be traced to commit, seed, manifest and raw file.
 """
 
@@ -96,6 +97,15 @@ def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
                 for name, v in d["one_step"].items():
                     if name.startswith("vrmse"):
                         recs.append({**key, "metric": f"one_step_{name}", "sigma": s, "step": 1, "value": v})
+            paper = d.get("paper_protocol")
+            if paper:
+                for name, v in paper.items():
+                    if name.startswith("one_step_normalised_vrmse"):
+                        recs.append({**key, "metric": f"paper_{name}", "sigma": s, "step": 1, "value": v})
+                for units, windows in paper["rollout"]["window_vrmse_mean"].items():
+                    for window, v in windows.items():
+                        recs.append({**key, "metric": f"paper_rollout_{units}_vrmse_steps_{window.replace(':', '-')}",
+                                     "sigma": s, "step": None, "value": np.nan if v is None else v})
             for step, v in d["rollout_vrmse_mean_at"].items():
                 recs.append({**key, "metric": "rollout_vrmse_mean", "sigma": s, "step": int(step), "value": v})
             for thr, f in d["failure"].items():
@@ -122,6 +132,48 @@ def summary_table(per_seed: pd.DataFrame) -> pd.DataFrame:
     )
     out["per_seed"] = seeds.values
     return out
+
+
+PAPER_TABLE_METRICS = (
+    "paper_one_step_normalised_vrmse_mean",
+    "paper_rollout_normalised_vrmse_steps_6-12", "paper_rollout_normalised_vrmse_steps_13-30",
+    "paper_rollout_physical_vrmse_steps_6-12", "paper_rollout_physical_vrmse_steps_13-30",
+)
+
+
+def paper_protocol_table(summary: pd.DataFrame, released_check: dict | None) -> pd.DataFrame:
+    """Our runs under The Well's protocol (Tables 2 and 3, test split; D20), next to the published values and to
+    the released checkpoints scored by the same code (`eval-released`)."""
+    from rbbench.paper import PUBLISHED_ROLLOUT_ABOVE, PUBLISHED_VRMSE
+
+    if summary.empty:
+        return summary
+    d = summary[summary.metric.isin(PAPER_TABLE_METRICS) & (summary.sigma == 0)].copy()
+    released = (released_check or {}).get("results", {})
+
+    def published(r) -> str:
+        if r.model not in PUBLISHED_VRMSE:
+            return ""
+        if r.metric == "paper_one_step_normalised_vrmse_mean":
+            return f"{PUBLISHED_VRMSE[r.model]['test']:g}"
+        return f"> {PUBLISHED_ROLLOUT_ABOVE:g}" if "_normalised_" in r.metric else ""
+
+    def released_value(r) -> float:
+        test = released.get(r.model, {}).get("test", {})
+        if r.metric == "paper_one_step_normalised_vrmse_mean":
+            return test.get("normalised_vrmse_mean", np.nan)
+        units = "normalised" if "_normalised_" in r.metric else "physical"
+        window = r.metric.rsplit("_steps_", 1)[1].replace("-", ":")
+        v = test.get("paper_rollout", {}).get("window_vrmse_mean", {}).get(units, {}).get(window)
+        return np.nan if v is None else v
+
+    d["published"] = [published(r) for r in d.itertuples()]
+    d["released_checkpoint"] = [released_value(r) for r in d.itertuples()]
+    order = {m: i for i, m in enumerate(PAPER_TABLE_METRICS)}
+    d = d.sort_values(["metric", "model", "fraction", "budget"], key=lambda c: c.map(order) if c.name == "metric"
+                      else c.map({m: i for i, m in enumerate(MODEL_NAMES)}) if c.name == "model" else c)
+    return d[["metric", "model", "fraction", "budget", "mean", "std", "n_seeds", "per_seed", "published",
+              "released_checkpoint"]].reset_index(drop=True)
 
 
 def resource_table(loaded: list[dict]) -> pd.DataFrame:
@@ -450,6 +502,9 @@ def aggregate(tasks_path: Path, output_root: Path, tables_dir: Path, figures_dir
     gpu_hours = gpu_hours_table(rows, output_root)
     per_seed.to_csv(tables_dir / "per_seed_results.csv", index=False)
     summary.to_csv(tables_dir / "main_results.csv", index=False)
+    released_path = output_root / "baselines" / "released" / "released_check.json"
+    paper_protocol_table(summary, read_json(released_path) if released_path.exists() else None).to_csv(
+        tables_dir / "paper_protocol.csv", index=False)
     resources.to_csv(tables_dir / "resource_use.csv", index=False)
     gpu_hours.to_csv(tables_dir / "gpu_hours.csv", index=False)
     pd.DataFrame({"problem": problems}).to_csv(tables_dir / "missing_runs.csv", index=False)

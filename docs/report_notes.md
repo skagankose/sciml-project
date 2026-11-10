@@ -228,6 +228,22 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
 * AViT (to 1.7 h): training loss still falling (~0.0045), validation 0.37 / 0.48 at 1.5 h.
 * The two seeds agree closely in training loss for every model. Validation differs more at 1 h than at 4 h.
 
+### Evaluation protocol for the mid-project report (owner, 2026-11-10)
+
+* Each run is scored at its 1 h and 4 h checkpoints on all 175 test trajectories in two ways:
+  1. **The paper's protocol** (The Well, Tables 2 and 3): one-step VRMSE in normalised units on every test
+     window (34,300), and a 30-step rollout from frame 0 of every trajectory, averaged over steps 6–12 and
+     13–30. `tables/paper_protocol.csv` sets our runs (mean ± std over two seeds) beside the published value
+     and the released checkpoint scored by our code.
+  2. **The study's protocol:** one-step VRMSE in physical units, and rollouts from frames 20, 80 and 140
+     (convection onset, developed, late; D15), each 30 steps, with the failure horizon, Nusselt number and
+     kinetic-energy spectra.
+* The mid-project numbers come from 10% data and 4 h budgets, so they are not a replication of the paper
+  (which trained on 100% data for longer, at 5e-4 / 1e-4). The owner will make like-for-like comparisons
+  later.
+* AViT is not among the paper's `rayleigh_benard` baselines (FNO, TFNO, U-net, CNextU-net), so it has no
+  published reference.
+
 ## 4. Compute and cost
 
 * RCIC rates: paid partitions charge 32 SU per GPU-hour plus 1 SU per core-hour of wall time (40 SU/h for a

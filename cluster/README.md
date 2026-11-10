@@ -234,7 +234,20 @@ HPC3_USER=<UCInetID> bash cluster/pull.sh        # outputs without checkpoints
 python -m rbbench aggregate                      # tables/ and figures/
 ```
 
-`eval-task` evaluates every milestone of a run (1 h and 4 h) in one pass. The core evaluation is clean only
+The cohort must be frozen first (D15). Generating it under `outputs/` keeps the git tree clean, so it can run
+while training tasks are queued: `source cluster/env.sh && python -m rbbench make-cohort --out
+outputs/eval_cohort.json` (login node, seconds), then pull it, copy it to `tasks/eval_cohort.json`, commit and
+push. On the paid partition (owner, 2026-11-09), evaluate one run first, because `eval-task` had not run on
+real data before:
+
+```bash
+sbatch -p gpu -A eecs195221_class_gpu --array=0 cluster/slurm/eval_a100.sbatch
+sbatch -p gpu -A eecs195221_class_gpu --array=0 --export=ALL,BASELINE=1 cluster/slurm/eval_a100.sbatch
+sbatch -p gpu -A eecs195221_class_gpu --array=1,4,5,8,9 cluster/slurm/eval_a100.sbatch   # after row 0 passes
+```
+
+`eval-task` evaluates every milestone of a run (1 h and 4 h) in one pass, including the paper's protocol
+(normalised one-step VRMSE and the rollout from frame 0; D15, D20). The core evaluation is clean only
 (`eval.noise_sigmas: [0.0]`). `tables/gpu_hours.csv` sums the measured training attempts and evaluation passes
 per run and in total (decisions D22); compare its TOTAL row with `sacct` for the billed time.
 

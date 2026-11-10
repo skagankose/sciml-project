@@ -14,9 +14,11 @@ def test_smoke_all_models(tmp_path):
     assert len(rows) == 4
     main_results = pd.read_csv(tmp_path / "tables" / "main_results.csv")
     assert set(main_results.model) == {"cnext_unet", "tfno", "avit", "convlstm"}
-    assert {"one_step_vrmse_mean", "rollout_vrmse_mean", "nusselt_rel_err", "log_spectral_error"} <= set(
-        main_results.metric
-    )
+    assert {"one_step_vrmse_mean", "rollout_vrmse_mean", "nusselt_rel_err", "log_spectral_error",
+            "paper_one_step_normalised_vrmse_mean", "paper_rollout_normalised_vrmse_steps_6-12",
+            "paper_rollout_normalised_vrmse_steps_13-30"} <= set(main_results.metric)
+    paper = pd.read_csv(tmp_path / "tables" / "paper_protocol.csv")
+    assert set(paper.model) == {"cnext_unet", "tfno", "avit", "convlstm"} and paper["mean"].notna().all()
     for run in (tmp_path / "outputs" / "runs").glob("*/*/*/*"):
         assert (run / "COMPLETE.json").exists()
         assert (run / "evaluations" / "EVAL_COMPLETE_4h.json").exists()

@@ -20,10 +20,12 @@ outputs/
     evaluations/
       EVAL_COMPLETE_<label>.json        # label = 1h | 4h; cohort hash, metric version, checkpoint sha,
                                         #   pass {wall_seconds, labels, device} shared by one evaluation pass
-      clean_<label>.json                # one-step + rollout + failure + Nusselt + spectra + latency summary
+      clean_<label>.json                # one-step + rollout + failure + Nusselt + spectra + latency summary,
+                                        #   and paper_protocol (The Well's Tables 2 and 3; D15, D20)
       noise_<sigma>_<label>.json        # noise extension only: the same for each sigma > 0 (no one-step)
       one_step_<label>.parquet          # per test window
       rollout_<label>.parquet           # per trajectory x start x sigma x step
+      paper_rollout_<label>.parquet     # the paper's rollout from frame 0, per trajectory x step
       physics_<label>.parquet           # Nusselt (volume, wall) and log-spectral error per rollout step
       spectra_<label>.parquet           # mean E(k) per regime x sigma x step x {pred, true}
   baselines/persistence/evaluations/    # same files with label "na"
@@ -37,14 +39,24 @@ outputs/
                                         #   traj_id, rayleigh, prandtl, step, vrmse_* (physical units),
                                         #   normalised_vrmse_*; window means under results.<model>.<split>
                                         #   .paper_rollout in released_check.json
-tables/ main_results.csv, per_seed_results.csv, resource_use.csv, gpu_hours.csv, missing_runs.csv
+tables/ main_results.csv, per_seed_results.csv, paper_protocol.csv, resource_use.csv, gpu_hours.csv,
+        missing_runs.csv
 figures/ fig1…fig7 (.pdf, .png)
 ```
 
 ## Key columns
 
-* `one_step_<label>.parquet`: `traj_id, rayleigh, prandtl, start, vrmse_<field>…, vrmse_mean`. Here `start`
-  is the first context frame; the target is frame `start + 4`.
+* `one_step_<label>.parquet`: `traj_id, rayleigh, prandtl, start, vrmse_<field>…, vrmse_mean`, and the same
+  prediction in normalised units, `normalised_vrmse_<field>…, normalised_vrmse_mean` (the paper's protocol).
+  Here `start` is the first context frame; the target is frame `start + 4`.
+* `paper_rollout_<label>.parquet`: `traj_id, rayleigh, prandtl, step, vrmse_<field>…, vrmse_mean,
+  normalised_vrmse_<field>…, normalised_vrmse_mean`; 30 clean steps from frames 0–3 of every test trajectory.
+  `clean_<label>.json` → `paper_protocol` holds the normalised one-step mean and the window means over steps
+  6–12 and 13–30 in both units.
+* `paper_protocol.csv`: `metric, model, fraction, budget, mean, std, n_seeds, per_seed, published,
+  released_checkpoint`, for the normalised one-step VRMSE and the rollout windows (test split). `published` is
+  the paper's value (CNextU-Net and TFNO only); `released_checkpoint` is The Well's checkpoint scored by
+  `eval-released` with the same code.
 * `rollout_<label>.parquet`: `traj_id, rayleigh, prandtl, start, sigma, step (1-based), vrmse_<field>…,
   vrmse_mean`. Step 1 is frame `start + 4`.
 * `physics_<label>.parquet`: `nu_pred, nu_true, nu_wall_bottom_true, nu_wall_top_true, nu_wall_bottom_pred,

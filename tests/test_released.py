@@ -9,7 +9,7 @@ import pytest
 import torch
 from safetensors.torch import save_model
 
-from rbbench import released
+from rbbench import paper, released
 from rbbench.cli import main
 from rbbench.config import load_config
 from rbbench.data import full_trajectory_dataset, list_trajectories, load_trajectory
@@ -88,8 +88,30 @@ def test_one_step_matches_the_main_evaluation(dataset_dir, tmp_path):
     cohort = make_cohort(dataset_dir, cfg["eval"], 4, total)
     evaluate({"p": Persistence()}, cfg, dataset_dir, cohort, tmp_path, torch.device("cpu"))
     main_rows = pd.read_parquet(tmp_path / "one_step_p.parquet")
-    alone = evaluate_one_step({"p": Persistence()}, dataset_dir, "test", 4, cfg["eval"], torch.device("cpu"))["p"]
+    alone = evaluate_one_step({"p": Persistence()}, dataset_dir, "test", 4, cfg["eval"], torch.device("cpu"),
+                              normalised=True)["p"]
     pd.testing.assert_frame_equal(main_rows, alone)
+
+
+def test_main_evaluation_includes_the_paper_protocol(dataset_dir, tmp_path):
+    """Our runs are also scored as the paper scored (Tables 2 and 3): the in-pass rollout from frame 0 equals the
+    standalone one used for the released checkpoints, and the summary's numbers come from those rows."""
+    cfg = load_config("cnext_unet", "smoke", "tiny", [GRID])
+    _, total = full_trajectory_dataset(dataset_dir, "test")
+    cohort = make_cohort(dataset_dir, cfg["eval"], 4, total)
+    summary = evaluate({"p": Persistence()}, cfg, dataset_dir, cohort, tmp_path, torch.device("cpu"))["p"]
+    in_pass = pd.read_parquet(tmp_path / "paper_rollout_p.parquet")
+    alone = evaluate_paper_rollouts({"p": Persistence()}, dataset_dir, "test", 4, paper.PAPER_ROLLOUT_STEPS,
+                                    torch.device("cpu"))["p"]
+    pd.testing.assert_frame_equal(in_pass, alone)
+    protocol = summary["by_sigma"]["0"]["paper_protocol"]
+    one = pd.read_parquet(tmp_path / "one_step_p.parquet")
+    assert protocol["one_step_normalised_vrmse_mean"] == pytest.approx(one.normalised_vrmse_mean.mean())
+    assert protocol["rollout"]["start_frame"] == 0 and protocol["rollout"]["steps"] == total - 4
+    assert protocol["rollout"]["n_trajectories"] == len(cohort["trajectories"])
+    assert protocol["rollout"]["window_vrmse_mean"] == paper.paper_rollout_windows(in_pass)
+    clean = json.loads((tmp_path / "clean_p.json").read_text())
+    assert clean["paper_protocol"] == protocol
 
 
 def test_eval_released_command(dataset_dir, fake_fetch, tmp_path):
@@ -104,8 +126,8 @@ def test_eval_released_command(dataset_dir, fake_fetch, tmp_path):
         for split in ("valid", "test"):
             r = record["results"][name][split]
             assert r["n_windows"] == len(list_trajectories(dataset_dir, split)) * (24 - 4)  # every window
-            assert r["published_vrmse_mean"] == released.PUBLISHED_VRMSE[name][split]
-            assert r["paper_protocol"] == released.PAPER_PROTOCOL == "normalised"
+            assert r["published_vrmse_mean"] == paper.PUBLISHED_VRMSE[name][split]
+            assert r["paper_protocol"] == paper.PAPER_PROTOCOL == "normalised"
             assert r["at_least_as_good"] == (r["vrmse_mean"] <= r["published_vrmse_mean"])
             # reproduction is judged in normalised units on both splits (the published test values are)
             rel = (r["normalised_vrmse_mean"] - r["published_vrmse_mean"]) / r["published_vrmse_mean"]
@@ -188,14 +210,14 @@ def test_paper_rollout_summary_windows():
     """Steps 6-12 and 13-30, 1-based and inclusive; the published bound is judged on test only."""
     rows = [{"traj_id": t, "step": k, "normalised_vrmse_mean": 20.0 if k >= 6 else 0.0, "vrmse_mean": float(k)}
             for t in ("a", "b") for k in range(1, 31)]
-    s = released.paper_rollout_summary(pd.DataFrame(rows), "test")
+    s = paper.paper_rollout_summary(pd.DataFrame(rows), "test")
     assert s["steps"] == 30 and s["n_trajectories"] == 2 and s["reproduced"] is True
     assert s["window_vrmse_mean"]["physical"] == {"6:12": 9.0, "13:30": 21.5}
     for r in rows:
         if 6 <= r["step"] <= 12:
             r["normalised_vrmse_mean"] = 10.0
-    assert released.paper_rollout_summary(pd.DataFrame(rows), "test")["reproduced"] is False  # not above 10
-    assert released.paper_rollout_summary(pd.DataFrame(rows), "valid")["reproduced"] is None
+    assert paper.paper_rollout_summary(pd.DataFrame(rows), "test")["reproduced"] is False  # not above 10
+    assert paper.paper_rollout_summary(pd.DataFrame(rows), "valid")["reproduced"] is None
 
 
 def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
@@ -217,7 +239,7 @@ def test_compare_paper_command(dataset_dir, tiny_cfg, tmp_path):
     assert main(args) == 0  # no released reference yet: reported, not judged
     record = json.loads((run / "evaluations" / "paper_compare_4h.json").read_text())
     assert record["passed"] is None and record["released_reference"] is None
-    assert record["results"]["valid"]["published_vrmse_mean"] == released.PUBLISHED_VRMSE["cnext_unet"]["valid"]
+    assert record["results"]["valid"]["published_vrmse_mean"] == paper.PUBLISHED_VRMSE["cnext_unet"]["valid"]
 
     ref = tmp_path / "out" / "baselines" / "released"
     ref.mkdir(parents=True)

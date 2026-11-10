@@ -5,7 +5,9 @@ Each test trajectory is read once (upstream loader, normalised) and used for:
   * autoregressive rollouts from the frozen cohort starts, clean and with initial-window
     noise at each sigma (identical draws for all models),
   * Nusselt numbers at every rollout step and horizontal KE spectra at selected steps,
-    in physical units, only if the dataset audit passed its physics checks.
+    in physical units, only if the dataset audit passed its physics checks,
+  * the paper's protocol (The Well, Tables 2 and 3; decisions D20): one-step VRMSE in normalised units, and a
+    30-step rollout from frame 0 of every trajectory scored over steps 6-12 and 13-30.
 Several checkpoints of one run can share the pass, so the data is read once.
 `evaluate_one_step` runs the same one-step code on any split without a rollout cohort; the
 released-checkpoint pipeline check uses it.
@@ -39,6 +41,7 @@ from rbbench.manifests import atomic_write_json, now_utc, read_json, sha256_json
 from rbbench.metrics import physics
 from rbbench.metrics.well_metric import vrmse
 from rbbench.noise import perturb_window, sigma_key, wall_rows
+from rbbench.paper import PAPER_ROLLOUT_STEPS, paper_rollout_windows
 from rbbench.rollout import rollout
 
 Predictor = Callable[[torch.Tensor], torch.Tensor]
@@ -134,14 +137,15 @@ def _physical(norm, t: torch.Tensor) -> torch.Tensor:
 
 def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tensor, base: dict, n_in: int,
                   stride: int, batch_size: int, device: torch.device, norm,
-                  paper_protocols: bool = False) -> list[dict]:
+                  paper_protocols: bool = False, normalised: bool = False) -> list[dict]:
     """VRMSE (physical units) of every `stride`-th one-step window of one normalised trajectory.
 
-    `paper_protocols` adds the paper-era scores used for the released checkpoints (decisions D20):
-    `normalised_*` scores the prediction in normalised units against the normalised target, as the paper did
-    (on the full test set it reproduces the published test values);
-    `raw_input_*` feeds the raw (physical) window, as the public the_well v1.0.1 test set would, and scores
-    the raw output against the raw target (diagnostic only: it does not give the published test values).
+    `normalised` adds `normalised_*`: the same prediction scored in normalised units against the normalised
+    target, as the paper did (on the full test set it reproduces the published test values). It needs no
+    extra forward pass.
+    `paper_protocols` (the released-checkpoint check, decisions D20) adds `normalised_*` and `raw_input_*`,
+    which feeds the raw (physical) window, as the public the_well v1.0.1 test set would, and scores the raw
+    output against the raw target (diagnostic only: it does not give the published test values).
     """
     rows = []
     starts = list(range(0, traj.shape[0] - n_in, stride))
@@ -152,8 +156,9 @@ def one_step_rows(predict: Predictor, traj: torch.Tensor, traj_phys: torch.Tenso
         pred = _physical(norm, out)
         true = torch.stack([traj_phys[s + n_in] for s in chunk])
         scores = {"vrmse": vrmse(pred, true).numpy()}
-        if paper_protocols:
+        if paper_protocols or normalised:
             scores["normalised_vrmse"] = vrmse(out, torch.stack([traj[s + n_in] for s in chunk]).float()).numpy()
+        if paper_protocols:
             raw = torch.stack([traj_phys[s:s + n_in] for s in chunk]).to(device)
             scores["raw_input_vrmse"] = vrmse(predict(raw).cpu(), true).numpy()
         for j, s in enumerate(chunk):
@@ -248,9 +253,15 @@ def evaluate(
         if latency_window is None:
             latency_window = traj[None, :n_in]
 
-        # one-step windows
+        # one-step windows, in physical units and (the paper's) normalised units
         for lab, predict in predictors.items():
-            rows[lab]["one_step"] += one_step_rows(predict, traj, traj_phys, base, n_in, stride, bs, device, norm)
+            rows[lab]["one_step"] += one_step_rows(predict, traj, traj_phys, base, n_in, stride, bs, device, norm,
+                                                   normalised=True)
+
+        # the paper's rollout (Table 3): from frame 0, clean, on normalised data; the frames are already read
+        paper_frames = traj[:n_in + min(PAPER_ROLLOUT_STEPS, traj.shape[0] - n_in)]
+        for lab, predict in predictors.items():
+            rows[lab]["paper_rollout"] += paper_rollout_rows(predict, paper_frames, base, n_in, device, norm)
 
         # rollouts (all sigmas batched together; identical noise for every predictor)
         reference_physics: dict[int, dict] = {}
@@ -339,6 +350,7 @@ def evaluate_one_step(
     device: torch.device,
     max_trajectories: int | None = None,
     paper_protocols: bool = False,
+    normalised: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """One-step VRMSE of every window of one split for each predictor, reading the data once."""
     fd, _ = full_trajectory_dataset(dataset_dir, split, n_steps_input)
@@ -352,7 +364,7 @@ def evaluate_one_step(
         for lab, predict in predictors.items():
             rows[lab] += one_step_rows(predict, traj, traj_phys, base, n_steps_input,
                                        eval_cfg["one_step_window_stride"], eval_cfg["batch_size"], device, fd.norm,
-                                       paper_protocols)
+                                       paper_protocols, normalised)
     return {lab: pd.DataFrame(r) for lab, r in rows.items()}
 
 
@@ -442,6 +454,18 @@ def summarize(lab, tables, ecfg, sigmas, horizon, latency, cohort, cfg, physics_
                 "n_windows": len(one),
             }
             entry["latency"] = latency
+            paper = tables.get("paper_rollout")
+            if paper is not None and len(paper):
+                entry["paper_protocol"] = {
+                    "description": "The Well's protocol (Tables 2 and 3; D20): one-step VRMSE in normalised units "
+                                   "on every test window; rollout from frame 0, window means over steps and "
+                                   "trajectories",
+                    "one_step_normalised_vrmse_mean": float(one["normalised_vrmse_mean"].mean()),
+                    **{f"one_step_normalised_vrmse_{f}": float(one[f"normalised_vrmse_{f}"].mean()) for f in FIELDS},
+                    "rollout": {"start_frame": 0, "steps": int(paper.step.max()),
+                                "n_trajectories": int(paper.traj_id.nunique()),
+                                "window_vrmse_mean": paper_rollout_windows(paper)},
+                }
         if phys_df is not None and len(phys_df):
             p = phys_df[phys_df.sigma == s]
             entry["nusselt"] = {

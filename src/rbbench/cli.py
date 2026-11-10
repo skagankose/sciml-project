@@ -265,14 +265,13 @@ def cmd_eval_released(args):
     from rbbench.data import FIELDS
     from rbbench.evaluate import evaluate_one_step, evaluate_paper_rollouts, model_predictor
     from rbbench.manifests import provenance
-    from rbbench.released import (
+    from rbbench.paper import (
         PAPER_PROTOCOL,
         PAPER_ROLLOUT_STEPS,
         PUBLISHED_VRMSE,
-        fetch,
-        load_released,
         paper_rollout_summary,
     )
+    from rbbench.released import fetch, load_released
 
     device = _device(args.device)
     dataset_dir = _dataset_dir(args)
@@ -352,7 +351,7 @@ def cmd_compare_paper(args):
     """
     from rbbench.evaluate import evaluate_one_step, model_predictor
     from rbbench.manifests import provenance, sha256_file
-    from rbbench.released import PUBLISHED_VRMSE
+    from rbbench.paper import PUBLISHED_VRMSE
     from rbbench.sweep import get_task
 
     device = _device(args.device)
@@ -555,8 +554,15 @@ def cmd_select_lr(args):
     """Learning-rate search results, each model's rate (validation VRMSE only) and the pilot timings."""
     import pandas as pd
 
-    from rbbench.lr_search import (choose, markdown_table, overrides_yaml, pilot_timings, plot_lr_search,
-                                   run_results, training_curves)
+    from rbbench.lr_search import (
+        choose,
+        markdown_table,
+        overrides_yaml,
+        pilot_timings,
+        plot_lr_search,
+        run_results,
+        training_curves,
+    )
     from rbbench.manifests import atomic_write_json
     from rbbench.sweep import read_jsonl
 

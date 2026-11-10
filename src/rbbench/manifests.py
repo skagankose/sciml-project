@@ -172,6 +172,7 @@ def slurm_info() -> dict:
     keys = (
         "SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID", "SLURM_JOB_PARTITION",
         "SLURM_JOB_ACCOUNT", "SLURM_JOB_NODELIST", "SLURM_RESTART_COUNT", "SLURM_JOB_GPUS",
+        "SLURM_CPUS_PER_TASK",  # paid partitions charge 1 SU per core-hour on top of 32 per GPU-hour
         "CUDA_VISIBLE_DEVICES",
     )
     return {k: os.environ.get(k) for k in keys if os.environ.get(k) is not None}

@@ -13,6 +13,8 @@ Rules:
 5. Never edit code on HPC3: change it on the Mac, test, commit, then push.
 6. When an upstream API is uncertain, read the pinned source and add a test.
 7. Before every push, run `pytest -q` and `python -m rbbench smoke --device cpu --synthetic --grid 64 32 --steps 3 --all-models`.
+8. Record every finding (results, cost, run time, training curves, incidents) in `docs/report_notes.md` as it
+   happens, for the final report; `scripts/findings.py` regenerates its tables and figures (owner, 2026-11-10).
 
 ## Gates
 
@@ -223,7 +225,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Four 10% runs completed their 4 h. Tasks 0 and 1 resumed from their free-gpu attempts. Short-validation
     VRMSE (64 windows) at 1 h / 4 h:
     * CNextU-Net: s0 1.04 / 0.167, s1 0.77 / 0.178.
-    * TFNO: s0 0.49 / 0.310, s1 0.52 / 0.325.
+    * TFNO: s0 0.51 / 0.310, s1 0.52 / 0.325.
     * Wall time per run: CNextU-Net 4.7 h, TFNO 6.9–7.1 h (TFNO waited 9–10 ks for data).
   * Both AViT runs (tasks 8 and 9) crashed at 02:44 on `/pub` `Errno 70`, at the same moment on two nodes.
     * They had trained 5941 s and 6048 s. `checkpoint_1h.pt` exists, and `last_resume.pt` was saved at 02:19.
@@ -236,3 +238,10 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     * CNextU-Net: 1.65 (frames 0–9), 1.36 (10–19), 0.71 (20–29), 0.23 (30–39), 0.08 (40–49), ≤ 0.06 from 50.
     * TFNO: 1.38, 0.94, 0.49, 0.21, 0.17, then 0.17–0.25.
     * So start 20 falls in convection onset; 80 and 140 fall in developed convection.
+  * The owner resubmitted AViT (rows 8, 9) on the paid partition.
+  * Findings log (owner): `docs/report_notes.md` collects every result, cost, run time, training curve and
+    incident for the final report (rule 8). `scripts/findings.py` rebuilds `outputs/findings/` from the pulled
+    outputs: `runs.csv`, `attempts.csv` (SU estimates), training curves, time breakdown and the released
+    rollouts. Provenance now records `SLURM_CPUS_PER_TASK`.
+  * The released rollouts' ">10" comes from low Rayleigh numbers. On test, steps 13–30, CNextU-Net's median
+    is 69 at Ra = 1e6 and 1.7 at Ra = 1e10; only 34% of Ra = 1e10 trajectories exceed 10.

@@ -321,8 +321,10 @@ windows. Our study's rollouts start at frames 20, 80 and 140 (D15), so they cann
     both models, while velocity_x and velocity_y score 64–431. From frame 0 the fluid is nearly still, so
     the true velocity has almost no spatial variance and any velocity error is large relative to it.
   * The normalised score peaks near step 15 (CNextU-Net 44, TFNO 297) and falls as convection develops.
-  * So ">10" says that VRMSE is ill-conditioned at the start of an RB simulation. It does not rank the
-    models.
+  * So ">10" mainly reflects that VRMSE is ill-conditioned at the start of an RB simulation. The models
+    still differ (test: CNextU-Net 35–36, TFNO 142–169). The score measures how much spurious velocity a
+    model adds to a nearly still fluid, mostly at low Rayleigh numbers, more than how well it tracks
+    developed convection.
   * Job 59397615 reached its 2 h limit during the test split (valid took 81 min with startup), and its log
     lost the valid lines because Python buffers stdout. `released_a100.sbatch` now allows 4 h and sets
     `PYTHONUNBUFFERED=1`. The rerun (job 59407152, paid `gpu` partition) gave the same valid values and

@@ -65,8 +65,9 @@ model in both windows.
 
   At low Ra convection starts later, so frames 4–34 are still nearly still and VRMSE stays ill-conditioned.
   At Ra = 1e10 most CNextU-Net rollouts are below 10 by steps 13–30.
-* So ">10" says more about where the rollouts start than about the models. Our study's rollouts start at
-  frames 20, 80 and 140 instead (D15).
+* So ">10" says more about where the rollouts start than about the models. The models still differ
+  (CNextU-Net about 4× lower than TFNO), but mostly in how much spurious velocity they add to a nearly
+  still fluid at low Ra. Our study's rollouts start at frames 20, 80 and 140 instead (D15).
 * Figures: `outputs/findings/released_paper_rollout_test.{pdf,png}` (and `_valid`): field mean in both
   units with the middle 50% of trajectories, and the four fields separately.
 

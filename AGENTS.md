@@ -22,7 +22,7 @@ Rules:
 | B Upstream audit | shapes, parameter counts, random init, gradients; `docs/upstream_audit.md` | **passed 2026-10-22** (Mac CPU; 512×128 forward on CPU) |
 | C HPC3 env | `check.sbatch` passes on a real A100; no env/caches in `$HOME` | **passed 2026-11-07** (job 59080323, after the TFNO fp32-only fix; first check 98/99, D8) |
 | D Data | 3 splits verified (`rbbench_complete_*.json`); audit physics checks pass | download job 59080236 completed 2026-11-07 (all splits verified by the script). **passed 2026-11-07**: 1400/175/175 trajectories; audit physics checks pass with `physics.y_grid: gauss` (the stored y is a uniform placeholder, D18) |
-| D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20). In normalised units (the paper's protocol) the published **test** values are reproduced: 0.669 / 0.663 vs 0.670 / 0.657 (found 2026-11-09) |
+| D2 Pipeline check | Released CNextU-Net and TFNO through our pipeline score at least as well as published (owner, 2026-11-08) | **passed 2026-11-08** (job 59224204): CNextU-Net 0.234/0.224, TFNO 0.305/0.300 vs published 0.481/0.670, 0.857/0.657; released TFNO with its paper-era forward (D20). In normalised units (the paper's protocol) the published **test** values are reproduced: 0.669 / 0.663 vs 0.670 / 0.657 (found 2026-11-09). The paper's rollouts from frame 0 (Table 3, ">10") are reproduced on test: CNextU-Net 36 / 35, TFNO 142 / 169 over steps 6–12 / 13–30 (job 59407152, 2026-11-09) |
 | R Replication | our CNextU-Net and TFNO, trained as long as the paper (24 h on an A100), at least as good as the released checkpoints scored identically (`compare-paper`) | `tasks/replication.jsonl` ready 2026-11-08; first attempt I/O-bound and stopped (D23); loader fixed, manifest regenerated; data benchmark done (persistent, 8 workers: ~98 samples/s from `/pub`). **Postponed until after the Nov 12 check-in (owner, 2026-11-08)**; run ids now `…-9dfed09a`/`…-bb6db502` (D24) |
 | E Subsets | S10 ⊂ S30 ⊂ S100, no leakage, counts per regime, identical hashes on rerun | real manifests committed 2026-11-07: nested, no leakage, 4/12/40 per regime; rerun-hash check pending |
 | F Training engine | real-data mini-run per model on A100; resume and skip; loss decreases | **passed 2026-11-09** on A100 (the learning-rate search): loss decreases for every model, no divergence; runs resumed after `/pub` errors, preemption and a kill during a save |
@@ -217,3 +217,22 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     SU left). Wall time is charged, so `/pub` waits cost SUs. These cover 1.6–2.7× the training time
     (`data_wait_seconds`), so expect roughly 6–11 h and 240–440 SU per run, about 2,000 SU in all. The
     rows run in parallel with `--time=14:00:00`. The 100% rows still need separate approval.
+* 2026-11-10: results of the paid jobs (array 59407148, job 59407152, commit f42b2e2).
+  * Pipeline-check rerun passed. On test, both one-step values are reproduced in normalised units and the
+    paper's ">10" rollouts are reproduced (D20).
+  * Four 10% runs completed their 4 h. Tasks 0 and 1 resumed from their free-gpu attempts. Short-validation
+    VRMSE (64 windows) at 1 h / 4 h:
+    * CNextU-Net: s0 1.04 / 0.167, s1 0.77 / 0.178.
+    * TFNO: s0 0.49 / 0.310, s1 0.52 / 0.325.
+    * Wall time per run: CNextU-Net 4.7 h, TFNO 6.9–7.1 h (TFNO waited 9–10 ks for data).
+  * Both AViT runs (tasks 8 and 9) crashed at 02:44 on `/pub` `Errno 70`, at the same moment on two nodes.
+    * They had trained 5941 s and 6048 s. `checkpoint_1h.pt` exists, and `last_resume.pt` was saved at 02:19.
+    * AViT is data-bound: 30% of its wall time is compute, 12.9 ks of 20 ks is waiting for data.
+    * The remaining ~2.35 h of training needs ~8 h of wall time per run.
+  * Paid wall time so far: ~35 h of training and ~2.5 h of pipeline check, about 1,500 SU. Finishing AViT
+    and evaluating all six runs adds roughly 900 SU.
+  * Evaluation needs `tasks/eval_cohort.json`, and D15 (rollout starts) is still to be frozen on
+    validation. On valid, the released checkpoints' one-step VRMSE (physical) by start frame is:
+    * CNextU-Net: 1.65 (frames 0–9), 1.36 (10–19), 0.71 (20–29), 0.23 (30–39), 0.08 (40–49), ≤ 0.06 from 50.
+    * TFNO: 1.38, 0.94, 0.49, 0.21, 0.17, then 0.17–0.25.
+    * So start 20 falls in convection onset; 80 and 140 fall in developed convection.

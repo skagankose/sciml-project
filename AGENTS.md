@@ -282,3 +282,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Correction: the model puts too much energy in the smallest scales (ratio ~50 to ~500 above k_x ≈ 100),
     not too little. The log spectral error is dominated by those near-empty bins. `aggregate`'s fig6 now
     drops the Nyquist mode. 136 tests pass; smoke passes.
+  * Architecture details for the report: `docs/architectures.md` (all GELU; AdamW 1e-4 weight decay as The
+    Well's code; ours vs the paper and the released checkpoints).
+  * Numerical-solver baseline (owner request; D25). The data are Dedalus's Rayleigh–Bénard example at 512 × 128,
+    so the solver restarts from the models' last input frame:
+    * Code: `rbbench.solver_grid` (NumPy grids and spectral resampling), `rbbench.solver_dedalus` (driver),
+      `scripts/solver_rollouts.py` (env `rb-dedalus`, with `--selftest`), and `rbbench eval-solver` (scored with
+      the models' code; parity test with persistence).
+    * Jobs: `cluster/setup_dedalus.sh`, `solver_cpu.sbatch` (35 regimes × 3 starts, 3 resolutions, free
+      partition), `solver_score_cpu.sbatch`; figures `solver_vs_models_rollout`, `solver_cost_accuracy`.
+    * `pull.sh` leaves the raw rollouts on HPC3 (nearly copies of the test data; rule 2).
+    * Dedalus could not be installed on the Mac (no conda), so its side is checked only by the HPC3 self-test.

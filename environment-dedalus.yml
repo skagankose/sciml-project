@@ -1,0 +1,13 @@
+# Dedalus env for the numerical-solver baseline on HPC3 (cluster/setup_dedalus.sh). conda-forge only.
+# Separate from `well-rb`: Dedalus needs MPI and FFTW, the models need CUDA torch; neither env needs the other.
+name: rb-dedalus
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - dedalus>=3.0.2,<3.1
+  - mpich
+  - numpy
+  - scipy
+  - h5py
+  - pyyaml

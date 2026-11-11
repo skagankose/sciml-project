@@ -564,3 +564,135 @@ def eval_spectra_ratio(evals: pd.DataFrame, outputs: Path, label: str, stem: Pat
     fig.tight_layout(rect=(0, 0.06, 1, 0.94))
     return _finish(fig, stem)
 
+
+
+# --- numerical solver (Dedalus) against the models -------------------------------------------------------
+
+SOLVER_STYLE = {"512x128": {"color": INK, "marker": "P"}, "256x64": {"color": "#6f6e69", "marker": "X"},
+                "128x32": {"color": "#a8a7a2", "marker": "D"}}
+
+
+def _solvers(outputs: Path) -> dict[str, Path]:
+    """Scored solver resolutions (outputs/baselines/solver_<res>/evaluations), finest first."""
+    base = outputs / "baselines"
+    found = {d.parent.name.removeprefix("solver_"): d for d in sorted(base.glob("solver_*/evaluations"))
+             if (d / "rollout_na.parquet").exists()} if base.exists() else {}
+    return dict(sorted(found.items(), key=lambda kv: -int(kv[0].split("x")[0])))
+
+
+def _subset(df: pd.DataFrame, keys: set) -> pd.DataFrame:
+    idx = pd.MultiIndex.from_frame(df[["traj_id", "start"]])
+    return df[idx.isin(list(keys))]
+
+
+def solver_rollout_comparison(evals: pd.DataFrame, outputs: Path, label: str, stem: Path) -> list[str]:
+    solvers = _solvers(outputs)
+    if not solvers:
+        return []
+    plt = _plt()
+    from matplotlib.lines import Line2D
+
+    rolls = {res: pd.read_parquet(d / "rollout_na.parquet") for res, d in solvers.items()}
+    keys = set(map(tuple, next(iter(rolls.values()))[["traj_id", "start"]].drop_duplicates().values))
+    models = _load(evals, "rollout", label) if not evals.empty else {}
+    persist = _persistence(outputs, "rollout")
+    starts = sorted({k[1] for k in keys})
+    names = {20: "convection onset", 80: "developed", 140: "late"}
+    fig, axes = plt.subplots(1, len(starts), figsize=(3.6 * len(starts) + 0.6, 3.6), sharey=True, squeeze=False)
+    handles, diverged = [], {}
+    for ax, start in zip(axes[0], starts):
+        for model in _models(models):
+            st = STYLE[model]
+            mine = [_subset(t[(t.start == start) & (t.sigma == 0)], keys) for t in models[model]]
+            mean, _, _ = _seed_mean(mine, "step", "vrmse_mean")
+            ax.plot(mean.index, mean.values, color=st["color"], lw=1.8)
+        if persist is not None:
+            g = _subset(persist[(persist.start == start) & (persist.sigma == 0)], keys).groupby("step").vrmse_mean.mean()
+            ax.plot(g.index, g.values, color=PERSIST["color"], lw=1.3, ls=":")
+        for res, roll in rolls.items():
+            st = SOLVER_STYLE.get(res, {"color": MUTED, "marker": "o"})
+            r = roll[(roll.start == start) & (roll.sigma == 0)]
+            bad = r.groupby("traj_id").vrmse_mean.apply(lambda s: not np.isfinite(s).all())
+            diverged[res] = diverged.get(res, 0) + int(bad.sum())
+            good = r[~r.traj_id.isin(bad[bad].index)]
+            g = good.groupby("step").vrmse_mean.mean()
+            ax.plot(g.index, g.values, color=st["color"], lw=1.6, marker=st["marker"], ms=3.5, markevery=5)
+        ax.set_yscale("log")
+        ax.set_title(f"start frame {start} ({names.get(int(start), '')})", fontsize=9, color=INK)
+        ax.set_xlabel("rollout step")
+        _style_axes(ax)
+    axes[0][0].set_ylabel("test VRMSE, physical units (field mean)")
+    n = len({k[0] for k in keys})
+    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.8, label=f"{STYLE[m]['label']} ({label}, 10% data)")
+                for m in _models(models)]
+    handles += [Line2D([], [], color=SOLVER_STYLE.get(r, {}).get("color", MUTED), lw=1.6,
+                       marker=SOLVER_STYLE.get(r, {}).get("marker", "o"),
+                       label=f"Dedalus {r}" + (f" ({diverged[r]} diverged, left out)" if diverged.get(r) else ""))
+                for r in rolls]
+    if persist is not None:
+        handles.append(Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence"))
+    fig.legend(handles=handles, loc="lower center", ncol=min(len(handles), 4), fontsize=7, frameon=False,
+               bbox_to_anchor=(0.5, -0.08))
+    fig.suptitle(f"Numerical solver against the models on the same {n} test trajectories (one per regime): mean "
+                 "over trajectories", fontsize=10, color=INK)
+    fig.tight_layout(rect=(0, 0.1, 1, 0.94))
+    return _finish(fig, stem)
+
+
+def solver_cost_accuracy(evals: pd.DataFrame, outputs: Path, label: str, stem: Path) -> list[str]:
+    solvers = _solvers(outputs)
+    if not solvers:
+        return []
+    plt = _plt()
+
+    rolls = {res: pd.read_parquet(d / "rollout_na.parquet") for res, d in solvers.items()}
+    runs = {res: pd.read_parquet(d / "runs_na.parquet") for res, d in solvers.items()
+            if (d / "runs_na.parquet").exists()}
+    keys = set(map(tuple, next(iter(rolls.values()))[["traj_id", "start"]].drop_duplicates().values))
+    starts = sorted({k[1] for k in keys})
+    points = []  # (start, name, seconds, error, color, marker)
+    models = _load(evals, "rollout", label) if not evals.empty else {}
+    for model in _models(models):
+        lat = []
+        for _, e in evals[(evals.model == model) & (evals.label == label)].iterrows():
+            p = e.dir / f"clean_{label}.json"
+            if p.exists():
+                lat.append(json.loads(p.read_text())["latency"]["ms_per_rollout"] / 1000)
+        for start in starts:
+            mine = [_subset(t[(t.start == start) & (t.sigma == 0)], keys) for t in models[model]]
+            err = float(np.mean([m.vrmse_mean.mean() for m in mine]))
+            points.append((start, f"{STYLE[model]['label']} {label}", float(np.mean(lat)) if lat else np.nan, err,
+                           STYLE[model]["color"], STYLE[model]["marker"]))
+    pj = outputs / "baselines" / "persistence" / "evaluations" / "clean_na.json"
+    persist = _persistence(outputs, "rollout")
+    if persist is not None and pj.exists():
+        sec = json.loads(pj.read_text())["latency"]["ms_per_rollout"] / 1000
+        for start in starts:
+            err = float(_subset(persist[(persist.start == start) & (persist.sigma == 0)], keys).vrmse_mean.mean())
+            points.append((start, "persistence", sec, err, PERSIST["color"], "o"))
+    for res, roll in rolls.items():
+        st = SOLVER_STYLE.get(res, {"color": MUTED, "marker": "o"})
+        for start in starts:
+            r = roll[(roll.start == start) & (roll.sigma == 0)]
+            fin = r.groupby("traj_id").vrmse_mean.apply(lambda s: np.isfinite(s).all())
+            err = float(r[r.traj_id.isin(fin[fin].index)].vrmse_mean.mean()) if fin.any() else np.nan
+            sec = float(runs[res][runs[res].start == start].seconds_per_rollout.median()) if res in runs else np.nan
+            points.append((start, f"Dedalus {res}", sec, err, st["color"], st["marker"]))
+    fig, axes = plt.subplots(1, len(starts), figsize=(3.8 * len(starts) + 0.6, 3.7), sharex=True, sharey=True,
+                             squeeze=False)
+    for ax, start in zip(axes[0], starts):
+        for s, name, sec, err, color, marker in points:
+            if s != start or not np.isfinite(sec) or not np.isfinite(err):
+                continue
+            ax.plot(sec, err, marker=marker, color=color, ms=7, ls="none")
+            ax.annotate(name, (sec, err), xytext=(5, 3), textcoords="offset points", fontsize=6.5, color=INK)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_title(f"start frame {start}", fontsize=9, color=INK)
+        ax.set_xlabel("seconds per 30-step rollout")
+        _style_axes(ax)
+    axes[0][0].set_ylabel("mean VRMSE over the 30 steps")
+    fig.suptitle("Cost against accuracy. Models and persistence: one A100, batch 1 (training cost not included); "
+                 "Dedalus: one CPU core, including setup", fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    return _finish(fig, stem)

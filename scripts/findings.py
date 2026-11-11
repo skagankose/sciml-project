@@ -28,6 +28,9 @@ and figures, each as .pdf and .png:
     eval_rollout_by_start_<label>_test           rollouts from starts 20 / 80 / 140 against persistence
     eval_paper_rollout_4h_test                   the paper's frame-0 rollouts: ours, released, persistence
     eval_spectra_ratio_4h_test                   predicted / true kinetic-energy spectrum by wavenumber
+  numerical solver (after `rbbench eval-solver`)
+    solver_vs_models_rollout_4h_test             Dedalus at 3 resolutions vs models and persistence, same rollouts
+    solver_cost_accuracy_4h_test                 seconds per rollout against mean VRMSE, per start frame
 The learning-rate search has its own figures from `rbbench select-lr` (outputs/lr_search/); tables and the
 paper-protocol table come from `rbbench aggregate`. Prints the run table as Markdown.
 
@@ -380,6 +383,10 @@ def main() -> int:
         for lab in sorted(set(evals.label)):
             written += figs.eval_rollout_by_start(evals, outputs, lab, out / f"eval_rollout_by_start_{lab}_test")
         written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_ratio_4h_test")
+
+    # the numerical solver (Dedalus) against the models, once `rbbench eval-solver` has scored its rollouts
+    written += figs.solver_rollout_comparison(evals, outputs, "4h", out / "solver_vs_models_rollout_4h_test")
+    written += figs.solver_cost_accuracy(evals, outputs, "4h", out / "solver_cost_accuracy_4h_test")
 
     cols = {"manifest": "manifest", "task_index": "row", "model": "model", "fraction": "data", "seed": "seed",
             "lr": "lr", "status": "status", "attempts": "attempts", "partitions": "partition",

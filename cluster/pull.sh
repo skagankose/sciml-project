@@ -13,6 +13,9 @@ SRC=${SRC:-/pub/$HPC3_USER/projects/well-rb-four-families}
 cd "$(dirname "$0")/.."
 
 CKPT=(--exclude '*.pt' --exclude '*.pt.tmp')
+# raw solver rollouts stay on HPC3: at 512 x 128 they are nearly copies of the test data (rule 2); their
+# scored tables come back under outputs/baselines/solver_<res>/
+SKIP=(--exclude '/solver/')
 PULL_OUTPUTS=$(( $# == 0 ))
 for arg in "$@"; do
     case "$arg" in
@@ -25,6 +28,6 @@ for arg in "$@"; do
 done
 if [ "$PULL_OUTPUTS" -eq 1 ]; then
     mkdir -p outputs
-    rsync -rlt ${CKPT[@]+"${CKPT[@]}"} "hpc3-xfer:$SRC/outputs/" outputs/
+    rsync -rlt "${SKIP[@]}" ${CKPT[@]+"${CKPT[@]}"} "hpc3-xfer:$SRC/outputs/" outputs/
     echo "pulled outputs from hpc3:$SRC"
 fi

@@ -239,6 +239,19 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
   1 h to 0.161 / 0.167 at 4 h, with bumps at 1.5 h and 2.5 h (seed 1) while the learning rate is still high.
 * The two seeds agree closely in training loss for every model. Validation differs more at 1 h than at 4 h.
 
+### Model architectures and training recipe
+
+Full tables in `docs/architectures.md`. In short: all three are The Well's implementations at `e63dec8`, from
+random initialisation, 18.6–19.3M parameters, 16 input channels (4 frames × 4 fields) → 4 output channels.
+* Activation: GELU in all three. Normalisation: LayerNorm (CNextU-Net; plus an L2 normalisation before each
+  resampling), none (TFNO), GroupNorm and LayerNorm with QK-norm (AViT).
+* Optimizer: AdamW (0.9, 0.999), weight decay 1e-4, no clipping, MSE in normalised units, batch 64, fp32: as
+  The Well's code. Learning rate 1e-3 for all (our search) where the paper used 5e-4 / 1e-4; warmup then cosine
+  to 0 over the 4 h clock where the paper decays to 0.1 · lr over 200 epochs and stops at 12 h.
+* Same as the released checkpoints: CNextU-Net in every respect; TFNO in configuration but not in forward pass
+  (the paper's and the released TFNO skipped its Fourier layers, ours runs them; D20); AViT has no released
+  `rayleigh_benard` checkpoint and is widened 384 → 432 (D3).
+
 ### Evaluation protocol for the mid-project report (owner, 2026-11-10)
 
 * Each run is scored at its 1 h and 4 h checkpoints on all 175 test trajectories in two ways:
@@ -392,6 +405,8 @@ its evaluation is pulled.
 | 3 | `eval_rollout_by_start_{1h,4h}_test` | rollouts from frames 20 / 80 / 140 against persistence |
 | 3 | `eval_paper_rollout_4h_test` | the paper's frame-0 rollouts: ours, released, persistence |
 | 3 | `eval_spectra_ratio_4h_test` | predicted / true kinetic-energy spectrum by wavenumber |
+| Solver (D25) | `solver_vs_models_rollout_4h_test` | Dedalus at 512 × 128, 256 × 64, 128 × 32 against the models and persistence, same 105 rollouts |
+| Solver | `solver_cost_accuracy_4h_test` | seconds per rollout against mean VRMSE, per start frame |
 | 3 | `rbbench aggregate`: `figures/fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (`fig1`, data scaling, needs the 100% runs) |
 
 ## 7. Open items
@@ -407,9 +422,28 @@ its evaluation is pulled.
 * The 1 h checkpoint is taken mid-schedule (learning rate still 0.85e-3 of 1e-3; `training_curves`), so it
   measures a 4 h run after 1 h, not a 1 h budget. CNextU-Net's is worse than persistence (0.852). Reporting
   it as is, or giving the 1 h budget its own runs or schedule, is an owner decision for the revised plan.
+* Numerical-solver baseline (section 8): build `rb-dedalus` and pass the self-test, then the rollouts at three
+  resolutions and `eval-solver`.
 * The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
   section 3).
 * Report one-step VRMSE split into onset (frames < 50) and developed convection (≥ 50) next to the
   all-window mean, since the mean is dominated by the onset (section 3).
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
   (the full training set cannot stay in a node's page cache), unless the data moves to node-local disk.
+
+## 8. Numerical-solver baseline (extension, owner request 2026-11-11; D25)
+
+* Question: how do the trained models compare with solving the PDE numerically, in accuracy and in run time?
+* The data come from Dedalus, and the setup is Dedalus's own Rayleigh–Bénard example (same equations, boundary
+  conditions, gauge, initial noise, output every 0.25). The stored 512 × 128 grid is Dedalus's grid at scale 1.
+  So the solver can restart from the same frame the models see and predict the same 30 frames.
+* Plan: 35 trajectories (one per regime) × starts 20 / 80 / 140 = 105 rollouts, at 512 × 128 (the data's
+  resolution), 256 × 64 and 128 × 32; one CPU core each on the free partition (no SUs). Scored with the models'
+  code; models compared on the same 105 rollouts.
+* Expected: at 512 × 128 the solver reproduces the data up to float32 storage and step-sequence differences
+  amplified by chaos (high Ra). The coarse runs show at what cost a solver matches the models' accuracy, the
+  comparison McGreivy & Hakim (2024) recommend.
+* Cost reference: The Well reports 6,000–50,000 s per 200-frame simulation (~60 h on 12 × 64 cores in all);
+  30 frames is 15% of a simulation.
+* Status (2026-11-11): code and tests done on the Mac (Dedalus itself is not installed there); the HPC3 env,
+  self-test and runs are pending. Results go here.

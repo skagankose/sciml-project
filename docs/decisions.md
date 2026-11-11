@@ -439,3 +439,35 @@ data size is reduced for all models equally.
 `rbbench aggregate` writes them per run and in total to `tables/gpu_hours.csv`. Queue time and the ~1 min of
 environment setup per job are not included; `sacct` reports Slurm's billed time for comparison. Profiling, the
 pipeline check and the learning-rate search are not runs in the task file, so they are read from `sacct`.
+
+**D25 — Numerical-solver baseline (owner request, 2026-11-11; extension, CPU only).** The data were generated with
+Dedalus (README at `e63dec8`), and the setup is Dedalus 3's `ivp_2d_rayleigh_benard` example line for line: same
+equations, κ = (Ra Pr)^-1/2, ν = (Ra/Pr)^-1/2, b(0) = 1, b(1) = 0, no-slip walls, ∫p = 0, 4 × 1 box,
+initial noise damped by y(1 − y), output every 0.25. The stored grid is Dedalus's grid at scale 1: Chebyshev–Gauss
+nodes in y (D18) and a RealFourier x grid without a Nyquist mode (the data's Nyquist energy is ~10^-19).
+* *What runs.* `scripts/solver_rollouts.py` (env `rb-dedalus`) restarts the same solver (RK222, 3/2 dealiasing,
+  CFL safety 0.5, step ≤ 0.125) from frame s + 3, the last frame the models see, and integrates over the same
+  30 output intervals the models predict, landing exactly on each stored output time. Only b and u carry state
+  (p and the tau variables are solved for in each stage; RK222 keeps no history). The first step comes from the
+  initial velocity (half the CFL estimate), because Dedalus's CFL returns its initial step for the first ~10
+  iterations. One CPU core per rollout, serial.
+* *Cohort.* The first cohort trajectory of each of the 35 regimes × starts 20 / 80 / 140 = 105 rollouts per
+  resolution, a subset of the models' 525, chosen before seeing any solver result. Models are compared on the
+  same 105.
+* *Resolutions.* 512 × 128 (the data's) and two coarsenings, 256 × 64 and 128 × 32, to trace the solver's
+  cost–accuracy curve (McGreivy & Hakim 2024, "Weak baselines and reporting biases lead to overoptimism in machine
+  learning for fluid-related partial differential equations", Nature Machine Intelligence 6: compare ML
+  surrogates against a numerical method at equal accuracy or equal cost, not only against the data's own
+  resolution). States move between resolutions by spectral truncation or zero-padding (`rbbench.solver_grid`),
+  as Dedalus changes resolution, and predictions are scored at 512 × 128.
+* *Scoring.* `rbbench eval-solver` (env `well-rb`) uses the models' code: upstream VRMSE in physical units,
+  Nusselt number, spectra (`tests/test_solver.py`: persistence scored this way equals `evaluate`'s). A
+  diverged rollout scores inf from its first missing step (a failure); a timed-out one NaN.
+* *What it measures.* At 512 × 128 the restart differs from the original run only by float32 storage of the
+  state and a different step sequence, so its error is the dataset's own reproducibility limit, which chaos
+  amplifies at high Ra. The coarse runs show how cheaply a solver reaches the models' accuracy.
+* *Cost comparison.* Solver: wall seconds per rollout on one core (build + stepping), core-hours. Models:
+  `ms_per_rollout` at batch 1 on the A100, plus the training cost (GPU-hours) that inference amortises. The
+  hardware differs (CPU core vs A100), so both wall time and SU-equivalents (1 SU per core-hour, 32 per GPU-hour)
+  are reported. The Well reports 6,000–50,000 s per simulation of 200 frames, ~60 h in all on 12 × 64 cores.
+* *Free partition only.* No SUs; the preemptible jobs resume rollout by rollout.

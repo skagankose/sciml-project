@@ -253,3 +253,20 @@ per run and in total (decisions D22); compare its TOTAL row with `sacct` for the
 
 Keep the checkpoints on HPC3 until the figures are final. Copy anything irreplaceable to CRSP or the Mac,
 because `/pub` is not backed up.
+
+## 7. Numerical-solver baseline (Dedalus; CPU, free partition, no SUs; D25)
+
+```bash
+# once: the rb-dedalus env, ending with the solver self-test ("passed": true)
+sbatch cluster/slurm/setup_dedalus_cpu.sbatch
+# rollouts: 35 regimes x starts 20/80/140, one core per task; resubmit to resume after preemption
+sbatch --array=0-34 cluster/slurm/solver_cpu.sbatch                          # 512x128, the data's resolution
+sbatch --array=0-34 --export=ALL,RES=256x64 cluster/slurm/solver_cpu.sbatch
+sbatch --array=0-34 --export=ALL,RES=128x32 cluster/slurm/solver_cpu.sbatch
+# score with the models' metrics (well-rb env); rerun after more rollouts finish
+sbatch cluster/slurm/solver_score_cpu.sbatch
+```
+
+On the Mac: `cluster/pull.sh` brings the scored tables (`outputs/baselines/solver_<res>/`); the raw rollouts
+(`outputs/solver/`, ~2.5 GB at 512 x 128 and nearly copies of the test data) stay on HPC3. Then
+`scripts/findings.py` draws `solver_vs_models_rollout_4h_test` and `solver_cost_accuracy_4h_test`.

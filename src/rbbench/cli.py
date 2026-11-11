@@ -254,6 +254,19 @@ def cmd_eval_baseline(args):
     print(json.dumps(res["na"]["by_sigma"]["0"].get("one_step")))
 
 
+def cmd_eval_solver(args):
+    """Score the numerical-solver rollouts (scripts/solver_rollouts.py) like the models (rbbench.solver_eval)."""
+    from rbbench.config import load_config
+    from rbbench.solver_eval import score_all
+
+    cfg = load_config("cnext_unet", args.experiment)
+    out_root = _output_root(args)
+    solver_root = Path(args.solver_root) if args.solver_root else out_root / "solver"
+    res = score_all(solver_root, cfg, _dataset_dir(args), read_json(Path(args.cohort)), out_root,
+                    Path(args.audit) if args.audit else None)
+    print(json.dumps(res, indent=2))
+
+
 def cmd_eval_released(args):
     """Pipeline check (gate D2): The Well's released checkpoints on our data path.
 
@@ -723,6 +736,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)
     sp.set_defaults(func=cmd_eval_baseline)
+
+    sp = sub.add_parser("eval-solver", help="score the Dedalus solver rollouts with the models' metrics")
+    common(sp, out=True)
+    sp.add_argument("--solver-root", help="default <output root>/solver")
+    sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
+    sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
+    sp.set_defaults(func=cmd_eval_solver)
 
     sp = sub.add_parser("eval-released",
                         help="pipeline check: The Well's released CNextU-Net/TFNO checkpoints on our data path")

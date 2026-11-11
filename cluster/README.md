@@ -270,3 +270,12 @@ sbatch cluster/slurm/solver_score_cpu.sbatch
 On the Mac: `cluster/pull.sh` brings the scored tables (`outputs/baselines/solver_<res>/`); the raw rollouts
 (`outputs/solver/`, ~2.5 GB at 512 x 128 and nearly copies of the test data) stay on HPC3. Then
 `scripts/findings.py` draws `solver_vs_models_rollout_4h_test` and `solver_cost_accuracy_4h_test`.
+
+## 8. Flow snapshots for the report (CPU, free partition)
+
+```bash
+sbatch cluster/slurm/visualize_cpu.sbatch     # our 10% / 4 h / seed 0 models on two test trajectories
+```
+
+Writes `outputs/visuals/rollout_*.npz` (a few frames of the true flow and each model's rollout, ~5 MB each).
+After `cluster/pull.sh`, `scripts/findings.py` draws `snapshots_*` and `reports/sync_figures.sh` copies them.

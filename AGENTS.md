@@ -307,3 +307,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Mid-project report drafted as LaTeX: `reports/midproject.tex`, figures copied by `reports/sync_figures.sh`,
     compiles with `tectonic`. The 10% table has "pending" cells until the evaluations finish. `reports/` is not
     in git (the owner's abstract there is untracked too).
+  * Report draft extended (owner's review): training recipe against the paper (same activation GELU, optimizer
+    AdamW, loss, batch, precision; different rate, schedule, budget, data), time per run (measured 10%,
+    projected 100%, validation and test-evaluation time), spectra figure with the smallest scales marked
+    (`eval_spectra_4h_test`), and flow snapshots (`scripts/visualize_rollouts.py`, `visualize_cpu.sbatch`;
+    pending until it runs on HPC3 after the evaluations, since a push is needed).

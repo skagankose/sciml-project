@@ -27,7 +27,10 @@ and figures, each as .pdf and .png:
     eval_one_step_by_frame_test                  one-step VRMSE by window: ours 1 h / 4 h, released, persistence
     eval_rollout_by_start_<label>_test           rollouts from starts 20 / 80 / 140 against persistence
     eval_paper_rollout_4h_test                   the paper's frame-0 rollouts: ours, released, persistence
-    eval_spectra_ratio_4h_test                   predicted / true kinetic-energy spectrum by wavenumber
+    eval_spectra_4h_test                         spectra (one regime) and predicted / true by wavenumber
+  flow snapshots (from outputs/visuals/, scripts/visualize_rollouts.py)
+    snapshots_{buoyancy,velocity_y}_<rollout>    true flow and each model at rollout steps 1, 6, 12, 30
+    snapshots_buoyancy_error_<rollout>           |prediction - truth| of buoyancy, same layout
   compute (from outputs/sacct_skose.txt, if pulled)
     sacct_jobs.csv, sacct_summary.csv            billed SU, GPU-hours and queue waits per job / per purpose
     compute_timeline                             every GPU job: queue wait and run, by purpose and partition
@@ -385,7 +388,7 @@ def main() -> int:
         written += figs.eval_paper_rollout(evals, outputs, "4h", out / "eval_paper_rollout_4h_test")
         for lab in sorted(set(evals.label)):
             written += figs.eval_rollout_by_start(evals, outputs, lab, out / f"eval_rollout_by_start_{lab}_test")
-        written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_ratio_4h_test")
+        written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_4h_test")
 
     # Slurm accounting: billed SU, GPU-hours and queue waits of every job (sacct, run on HPC3 and pulled)
     sacct_path = outputs / "sacct_skose.txt"
@@ -402,6 +405,13 @@ def main() -> int:
         print("\n" + by.round(2).to_string(index=False))
         print(f"billed on paid partitions: {jobs.su.sum():,.0f} SU (jobs still running are counted up to now); "
               f"GPU-hours in all: {jobs.gpu_hours.sum():.1f}")
+
+    # flow snapshots: the true flow beside our models' rollouts (scripts/visualize_rollouts.py on HPC3)
+    for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
+        tag = npz.stem.removeprefix("rollout_")
+        for field in ("buoyancy", "velocity_y"):
+            written += figs.rollout_snapshots_figure(npz, field, out / f"snapshots_{field}_{tag}")
+        written += figs.rollout_snapshots_figure(npz, "buoyancy", out / f"snapshots_buoyancy_error_{tag}", errors=True)
 
     # the numerical solver (Dedalus) against the models, once `rbbench eval-solver` has scored its rollouts
     written += figs.solver_rollout_comparison(evals, outputs, "4h", out / "solver_vs_models_rollout_4h_test")

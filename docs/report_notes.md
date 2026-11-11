@@ -414,7 +414,8 @@ its evaluation is pulled.
 | 3 Evaluation | `eval_one_step_by_frame_test` | one-step VRMSE by window: ours 1 h / 4 h, released, persistence |
 | 3 | `eval_rollout_by_start_{1h,4h}_test` | rollouts from frames 20 / 80 / 140 against persistence |
 | 3 | `eval_paper_rollout_4h_test` | the paper's frame-0 rollouts: ours, released, persistence |
-| 3 | `eval_spectra_ratio_4h_test` | predicted / true kinetic-energy spectrum by wavenumber |
+| 3 | `eval_spectra_4h_test` | spectra for one regime (top) and predicted / true over all regimes (bottom); smallest scales shaded |
+| 3 | `snapshots_{buoyancy,velocity_y}_<rollout>`, `snapshots_buoyancy_error_<rollout>` | true flow beside each model's rollout at steps 1, 6, 12, 30 (needs `visualize_cpu.sbatch`) |
 | Solver (D25) | `solver_vs_models_rollout_4h_test` | Dedalus at 512 × 128, 256 × 64, 128 × 32 against the models and persistence, same 105 rollouts |
 | Solver | `solver_cost_accuracy_4h_test` | seconds per rollout against mean VRMSE, per start frame |
 | 3 | `rbbench aggregate`: `figures/fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (`fig1`, data scaling, needs the 100% runs) |

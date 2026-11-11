@@ -516,53 +516,83 @@ def eval_paper_rollout(evals: pd.DataFrame, outputs: Path, label: str, stem: Pat
     return _finish(fig, stem)
 
 
-def eval_spectra_ratio(evals: pd.DataFrame, outputs: Path, label: str, stem: Path) -> list[str]:
+SMALL_SCALES_K = 100.0  # k_x above which the 10% models' spectra depart from the truth (eval_spectra_*)
+
+
+def eval_spectra_ratio(evals: pd.DataFrame, outputs: Path, label: str, stem: Path,
+                       regime: tuple[float, float] = (1e8, 1.0)) -> list[str]:
+    """Top: absolute spectra for one regime (true, models, persistence). Bottom: predicted / true over all regimes.
+
+    The shaded band marks the smallest scales (k_x > SMALL_SCALES_K); left of it are the large and middle scales.
+    """
     tables = _load(evals, "spectra", label)
     if not tables:
         return []
     plt = _plt()
     from matplotlib.lines import Line2D
 
+    def clean(t: pd.DataFrame) -> pd.DataFrame:
+        return t[(t.sigma == 0) & (t.k_index > 0) & (t.k_index < t.k_index.max())]   # no mean, no Nyquist mode
+
     def ratio(t: pd.DataFrame) -> pd.DataFrame:
-        t = t[(t.sigma == 0) & (t.k_index > 0) & (t.k_index < t.k_index.max())]
+        t = clean(t)
         key = ["rayleigh", "prandtl", "step", "k_index", "k"]
         m = t[t.source == "pred"].merge(t[t.source == "true"], on=key, suffixes=("_p", "_t"))
         m["log_ratio"] = np.log10(m.energy_p / m.energy_t)
         return m
 
     persist = _persistence(outputs, "spectra")
-    steps = sorted(next(iter(tables.values()))[0].step.unique())
-    fig, axes = plt.subplots(1, len(steps), figsize=(3.6 * len(steps) + 0.6, 3.5), sharey=True, squeeze=False)
-    for ax, step in zip(axes[0], steps):
-        curves = {m: [ratio(t) for t in ts] for m, ts in tables.items()}
-        if persist is not None:
-            curves["persistence"] = [ratio(persist)]
-        for model, rs in curves.items():
+    sources = {m: ts for m, ts in tables.items()}
+    if persist is not None:
+        sources["persistence"] = [persist]
+    first = clean(next(iter(tables.values()))[0])
+    steps = sorted(first.step.unique())
+    regimes = sorted({(r, p) for r, p in zip(first.rayleigh, first.prandtl)})
+    ra, pr = regime if regime in regimes else regimes[len(regimes) // 2]
+    fig, axes = plt.subplots(2, len(steps), figsize=(3.6 * len(steps) + 0.6, 6.4), sharex=True, sharey="row",
+                             squeeze=False, gridspec_kw={"height_ratios": [1.1, 1]})
+    for j, step in enumerate(steps):
+        top, bottom = axes[0][j], axes[1][j]
+        truth = first[(first.source == "true") & (first.step == step) & (first.rayleigh == ra)
+                      & (first.prandtl == pr)].sort_values("k")
+        top.loglog(truth.k, truth.energy, color=INK, lw=2.2)
+        for model, ts in sources.items():
             st = STYLE[model]
-            per_seed = pd.concat([r[r.step == step].groupby("k").log_ratio.median() for r in rs], axis=1)
+            ls = ":" if model == "persistence" else "-"
+            spec = pd.concat([clean(t)[(clean(t).source == "pred") & (clean(t).step == step)
+                                       & (clean(t).rayleigh == ra) & (clean(t).prandtl == pr)]
+                              .set_index("k").energy for t in ts], axis=1).mean(axis=1)
+            top.loglog(spec.index, spec.values, color=st["color"], lw=1.4, ls=ls)
+            rs = [ratio(t) for t in ts]
+            med = pd.concat([r[r.step == step].groupby("k").log_ratio.median() for r in rs], axis=1).mean(axis=1)
             q_lo = pd.concat([r[r.step == step].groupby("k").log_ratio.quantile(0.25) for r in rs], axis=1).mean(axis=1)
             q_hi = pd.concat([r[r.step == step].groupby("k").log_ratio.quantile(0.75) for r in rs], axis=1).mean(axis=1)
-            med = per_seed.mean(axis=1)
-            ls = ":" if model == "persistence" else "-"
-            ax.fill_between(med.index, 10 ** q_lo, 10 ** q_hi, color=st["color"], alpha=0.12, lw=0)
-            ax.plot(med.index, 10 ** med, color=st["color"], lw=1.6, ls=ls)
-        ax.axhline(1, color=INK, lw=0.9)
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_title(f"rollout step {int(step)}", fontsize=9, color=INK)
-        ax.set_xlabel("horizontal wavenumber k_x")
-        _style_axes(ax)
-    axes[0][0].set_ylabel("E_pred(k_x) / E_true(k_x)")
+            bottom.fill_between(med.index, 10 ** q_lo, 10 ** q_hi, color=st["color"], alpha=0.12, lw=0)
+            bottom.plot(med.index, 10 ** med, color=st["color"], lw=1.6, ls=ls)
+        bottom.axhline(1, color=INK, lw=0.9)
+        for ax in (top, bottom):
+            ax.axvspan(SMALL_SCALES_K, truth.k.max() * 1.05, color=MUTED, alpha=0.08, lw=0)
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            _style_axes(ax)
+        top.set_title(f"rollout step {int(step)}", fontsize=9, color=INK)
+        bottom.set_xlabel("horizontal wavenumber k_x")
+    top_ylim = axes[0][0].get_ylim()
+    axes[0][0].text(SMALL_SCALES_K * 1.1, top_ylim[1] / 5, "smallest\nscales", fontsize=7, color=MUTED, va="top")
+    axes[0][0].text(2.0, top_ylim[0] * 5, "large and middle scales", fontsize=7, color=MUTED, va="bottom")
+    axes[0][0].set_ylabel(f"E(k_x), Ra = {ra:.0e}, Pr = {pr:g}")
+    axes[1][0].set_ylabel("E_pred / E_true, all 35 regimes")
     names = _models(tables) + (["persistence"] if persist is not None else [])
-    handles = [Line2D([], [], color=STYLE[m]["color"], lw=1.6, ls=":" if m == "persistence" else "-",
-                      label=STYLE[m]["label"]) for m in names]
+    handles = [Line2D([], [], color=INK, lw=2.2, label="true flow")]
+    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.6, ls=":" if m == "persistence" else "-",
+                       label=STYLE[m]["label"]) for m in names]
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7, frameon=False,
-               bbox_to_anchor=(0.5, -0.03))
-    fig.suptitle(f"Horizontal kinetic-energy spectrum, predicted over true ({label} checkpoints, 10% data). "
-                 "Line: median over the 35 regimes; band: middle 50%; 1 = exact; Nyquist mode omitted", fontsize=10, color=INK)
-    fig.tight_layout(rect=(0, 0.06, 1, 0.94))
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle(f"Horizontal kinetic-energy spectra ({label} checkpoints, 10% data). Top: one regime, mean over "
+                 "its rollouts. Bottom: predicted / true, median over regimes (band: middle 50%); 1 = exact",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.95))
     return _finish(fig, stem)
-
 
 
 # --- numerical solver (Dedalus) against the models -------------------------------------------------------
@@ -815,4 +845,65 @@ def compute_timeline_figure(jobs: pd.DataFrame, stem: Path) -> list[str]:
     ax.set_title(f"All {len(gpu)} GPU jobs (from sacct): {gpu.gpu_hours.sum():.0f} GPU-hours, "
                  f"{paid.su.sum():,.0f} SU billed on the paid partition", fontsize=9, color=INK)
     fig.tight_layout()
+    return _finish(fig, stem)
+
+
+# --- flow snapshots: truth against our models (scripts/visualize_rollouts.py) --------------------------------
+
+FIELD_LABELS = {"buoyancy": "buoyancy b", "pressure": "pressure p", "velocity_x": "horizontal velocity u",
+                "velocity_y": "vertical velocity w"}
+
+
+def rollout_snapshots_figure(npz: Path, field: str, stem: Path, steps=(1, 6, 12, 30), errors: bool = False
+                             ) -> list[str]:
+    """Rows: rollout steps; columns: the true flow and each model (or each model's absolute error)."""
+    plt = _plt()
+    from rbbench.solver_grid import LX, LY, gauss_nodes, x_grid
+
+    d = np.load(npz)
+    meta = json.loads(str(d["meta"]))
+    fields = meta["fields"]
+    fi = fields.index(field)
+    have = [int(s) for s in d["steps"]]
+    rows = [s for s in steps if s in have] or have
+    models = [m for m in MODEL_NAMES if m in d.files]
+    cols = models if errors else ["truth", *models]
+    truth = d["truth"][..., fi]
+    nx, ny = truth.shape[1:3]
+    x, y = x_grid(nx, LX), gauss_nodes(ny, LY)
+    if errors:
+        vmax = float(max(np.abs(d[m][..., fi] - truth).max() for m in models)) or 1.0
+        norm_kw, cmap = {"vmin": 0.0, "vmax": vmax}, "Blues"
+    elif field == "buoyancy":
+        norm_kw, cmap = {"vmin": 0.0, "vmax": 1.0}, "RdBu_r"
+    else:
+        lim = float(np.percentile(np.abs(truth - truth.mean()), 99.5)) or 1.0
+        c = 0.0 if field.startswith("velocity") else float(truth.mean())
+        norm_kw, cmap = {"vmin": c - lim, "vmax": c + lim}, "RdBu_r"
+    fig, axes = plt.subplots(len(rows), len(cols), figsize=(2.55 * len(cols) + 0.9, 0.78 * len(rows) + 1.0),
+                             squeeze=False)
+    mesh = None
+    for i, step in enumerate(rows):
+        k = have.index(step)
+        for j, col in enumerate(cols):
+            ax = axes[i][j]
+            img = (np.abs(d[col][k, ..., fi] - truth[k]) if errors else
+                   (truth[k] if col == "truth" else d[col][k, ..., fi]))
+            mesh = ax.pcolormesh(x, y, img.T, shading="nearest", cmap=cmap, rasterized=True, **norm_kw)
+            ax.set_aspect("equal")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for side in ax.spines.values():
+                side.set_visible(False)
+            if i == 0:
+                name = "true flow" if col == "truth" else STYLE[col]["label"]
+                ax.set_title(name + (" |error|" if errors else ""), fontsize=9, color=INK)
+            if j == 0:
+                ax.set_ylabel(f"step {step}", fontsize=8, color=INK)
+    cbar = fig.colorbar(mesh, ax=axes, fraction=0.015, pad=0.01)
+    cbar.ax.tick_params(labelsize=7, colors=MUTED)
+    what = f"absolute error in {FIELD_LABELS.get(field, field)}" if errors else FIELD_LABELS.get(field, field)
+    fig.suptitle(f"{what}: Ra = {meta['rayleigh']:.0e}, Pr = {meta['prandtl']:g}, rollout from frame "
+                 f"{meta['start']} (test trajectory), our {meta['label']} checkpoints, "
+                 f"{round(meta['fraction'] * 100)}% data, seed {meta['seed']}", fontsize=9, color=INK)
     return _finish(fig, stem)

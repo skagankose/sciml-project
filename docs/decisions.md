@@ -43,6 +43,11 @@ evaluations everywhere, and an override replaces the whole mapping rather than m
 * *Owner, 2026-11-11:* the 1 h results are reported as what they are, the 4 h run's checkpoint after 1 h of
   training with the learning rate still at ~85% of its peak, not as a separately tuned 1 h budget. If they do not
   make sense next to the 4 h results (e.g. in the 100% runs), dedicated 1 h runs may follow; not now.
+* *Owner, 2026-11-11 (later):* dedicated 1 h runs at 10% data, 3 models x 2 seeds, to compare with the 1 h
+  checkpoints of the 4 h runs. Same recipe (peak 1e-3, 500 warmup steps, compute clock), but the cosine reaches
+  0 at 1 h. Manifest `tasks/train_1h.jsonl`: `make-sweep --experiment main` with
+  `--override 'train.budgets_seconds={1h: 3600}'`. The override makes new run ids, so nothing clashes with the 4 h
+  runs. Whether the 100% runs also get dedicated 1 h runs is decided after these.
 
 **D7 — Learning rate and batch size (fixed 2026-11-09: batch 64, learning rate 1e-3 for every model).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on

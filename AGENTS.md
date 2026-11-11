@@ -335,3 +335,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Flow snapshots done (job 59482062, free CPU): CNextU-Net tracks the plumes, TFNO blurs them and grows a warm
     bottom layer, AViT shows patch-sized block artifacts. Added as Figures 6–7 of `reports/midproject.tex`.
   * Final `sacct` for the 10% study: 2,160 SU billed and 72.6 GPU-hours in all.
+* 2026-11-11 (night): the owner asked for dedicated 1 h runs at 10%. Until now the 1 h results were checkpoints
+  of the 4 h runs, with the learning rate at 85% of its peak.
+  * `tasks/train_1h.jsonl`: 6 rows, same recipe, cosine ending at 1 h, new run ids.
+  * Estimate: ~12 GPU-h of training wall time plus ~2.5 GPU-h of evaluation, about 600 SU on the paid partition.
+  * Commands are in `cluster/README.md` section 9.

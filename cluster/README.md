@@ -279,3 +279,14 @@ sbatch cluster/slurm/visualize_cpu.sbatch     # our 10% / 4 h / seed 0 models on
 
 Writes `outputs/visuals/rollout_*.npz` (a few frames of the true flow and each model's rollout, ~5 MB each).
 After `cluster/pull.sh`, `scripts/findings.py` draws `snapshots_*` and `reports/sync_figures.sh` copies them.
+
+## 9. Dedicated 1 h runs at 10% data (D6, owner 2026-11-11)
+
+`tasks/train_1h.jsonl` (6 rows: CNextU-Net, TFNO, AViT x seeds 0, 1). Each run takes 1 h of GPU training, with the
+cosine ending at 1 h.
+
+```bash
+sbatch -p gpu -A eecs195221_class_gpu --array=0-5 --time=05:00:00 --export=ALL,MANIFEST=tasks/train_1h.jsonl cluster/slurm/train_a100.sbatch
+# after they finish:
+sbatch -p gpu -A eecs195221_class_gpu --array=0-5 --time=02:00:00 --export=ALL,MANIFEST=tasks/train_1h.jsonl cluster/slurm/eval_a100.sbatch
+```

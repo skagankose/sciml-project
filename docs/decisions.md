@@ -440,7 +440,8 @@ data size is reduced for all models equally.
 environment setup per job are not included; `sacct` reports Slurm's billed time for comparison. Profiling, the
 pipeline check and the learning-rate search are not runs in the task file, so they are read from `sacct`.
 
-**D25 — Numerical-solver baseline (owner request, 2026-11-11; extension, CPU only).** The data were generated with
+**D25 — Numerical-solver baseline (owner request, 2026-11-11; extension, CPU only; deferred by the owner to the
+end of the project, after the 100% runs, the same day: not part of the mid-project report).** The data were generated with
 Dedalus (README at `e63dec8`), and the setup is Dedalus 3's `ivp_2d_rayleigh_benard` example line for line: same
 equations, κ = (Ra Pr)^-1/2, ν = (Ra/Pr)^-1/2, b(0) = 1, b(1) = 0, no-slip walls, ∫p = 0, 4 × 1 box,
 initial noise damped by y(1 − y), output every 0.25. The stored grid is Dedalus's grid at scale 1: Chebyshev–Gauss

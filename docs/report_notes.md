@@ -422,8 +422,8 @@ its evaluation is pulled.
 * The 1 h checkpoint is taken mid-schedule (learning rate still 0.85e-3 of 1e-3; `training_curves`), so it
   measures a 4 h run after 1 h, not a 1 h budget. CNextU-Net's is worse than persistence (0.852). Reporting
   it as is, or giving the 1 h budget its own runs or schedule, is an owner decision for the revised plan.
-* Numerical-solver baseline (section 8): build `rb-dedalus` and pass the self-test, then the rollouts at three
-  resolutions and `eval-solver`.
+* End of the project (not mid-project): the numerical-solver baseline (section 8): build `rb-dedalus`, pass the
+  self-test, run the rollouts at three resolutions, then `eval-solver`.
 * The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
   section 3).
 * Report one-step VRMSE split into onset (frames < 50) and developed convection (≥ 50) next to the
@@ -431,7 +431,7 @@ its evaluation is pulled.
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
   (the full training set cannot stay in a node's page cache), unless the data moves to node-local disk.
 
-## 8. Numerical-solver baseline (extension, owner request 2026-11-11; D25)
+## 8. Numerical-solver baseline (extension, owner request 2026-11-11; D25; end of the project)
 
 * Question: how do the trained models compare with solving the PDE numerically, in accuracy and in run time?
 * The data come from Dedalus, and the setup is Dedalus's own Rayleigh–Bénard example (same equations, boundary
@@ -445,5 +445,6 @@ its evaluation is pulled.
   comparison McGreivy & Hakim (2024) recommend.
 * Cost reference: The Well reports 6,000–50,000 s per 200-frame simulation (~60 h on 12 × 64 cores in all);
   30 frames is 15% of a simulation.
-* Status (2026-11-11): code and tests done on the Mac (Dedalus itself is not installed there); the HPC3 env,
-  self-test and runs are pending. Results go here.
+* Status (2026-11-11): code and tests done on the Mac (Dedalus itself is not installed there). The owner moved
+  the runs to the end of the project, after the 100% runs; they are not part of the mid-project report. The HPC3
+  env, self-test and runs are pending. Results go here.

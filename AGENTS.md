@@ -293,3 +293,5 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
       partition), `solver_score_cpu.sbatch`; figures `solver_vs_models_rollout`, `solver_cost_accuracy`.
     * `pull.sh` leaves the raw rollouts on HPC3 (nearly copies of the test data; rule 2).
     * Dedalus could not be installed on the Mac (no conda), so its side is checked only by the HPC3 self-test.
+  * Owner (2026-11-11): the numerical-solver runs move to the end of the project, after the 100% runs; they are
+    not part of the mid-project report. Code stays as committed; nothing has run on HPC3.

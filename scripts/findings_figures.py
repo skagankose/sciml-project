@@ -17,10 +17,9 @@ import numpy as np
 import pandas as pd
 
 from rbbench import MODEL_NAMES
-from rbbench.aggregate import INK, MUTED, STYLE, _save, _style_axes
+from rbbench.aggregate import INK, MUTED, ONSET_FRAMES, STYLE, _save, _style_axes
 
 PERSIST = STYLE["persistence"]
-ONSET_FRAMES = 50  # first input frame below which the fluid is still nearly at rest (D20)
 
 
 def _plt():

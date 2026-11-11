@@ -40,6 +40,9 @@ separately tuned 1 h run. (Budgets were 2 h/6 h before the final abstract.) The 
 (step, train_seconds), so resume is exact. The pilot compares this with a constant rate on validation only.
 The budgets live in `train.budgets_seconds` (`1h: 3600, 4h: 14400`); their labels name the checkpoints and
 evaluations everywhere, and an override replaces the whole mapping rather than merging into it.
+* *Owner, 2026-11-11:* the 1 h results are reported as what they are, the 4 h run's checkpoint after 1 h of
+  training with the learning rate still at ~85% of its peak, not as a separately tuned 1 h budget. If they do not
+  make sense next to the 4 h results (e.g. in the 100% runs), dedicated 1 h runs may follow; not now.
 
 **D7 — Learning rate and batch size (fixed 2026-11-09: batch 64, learning rate 1e-3 for every model).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on
@@ -145,8 +148,9 @@ convection and 80 and 140 developed convection, with VRMSE well conditioned. Eac
   adds no data reading.
 
 **D16 — Failure horizon.** First step whose field-mean VRMSE exceeds the threshold; rollouts that never cross
-are right-censored, summarised with Kaplan–Meier survival and median. Thresholds 1.0 / 2.0 (primary) with 5.0
-as sensitivity; the primary is chosen on validation (PENDING).
+are right-censored, summarised with Kaplan–Meier survival and median. Thresholds 1.0, 2.0 and 5.0.
+*Owner, 2026-11-11:* all three are reported side by side, with no primary threshold (this replaces "1.0 / 2.0
+primary, chosen on validation").
 
 **D17 — Noise (extension, evaluation only).** The core evaluation uses σ = 0 only (`eval.noise_sigmas: [0.0]`).
 The extension re-evaluates the same checkpoints with σ ∈ {0.01, 0.05, 0.10, 0.20} in normalised units, added
@@ -472,3 +476,13 @@ nodes in y (D18) and a RealFourier x grid without a Nyquist mode (the data's Nyq
   hardware differs (CPU core vs A100), so both wall time and SU-equivalents (1 SU per core-hour, 32 per GPU-hour)
   are reported. The Well reports 6,000–50,000 s per simulation of 200 frames, ~60 h in all on 12 × 64 cores.
 * *Free partition only.* No SUs; the preemptible jobs resume rollout by rollout.
+
+**D26 — One-step results split by phase (owner, 2026-11-11).** Besides the mean over all windows (the paper's
+protocol), one-step VRMSE is reported separately for convection onset (first input frame < 50) and developed
+convection (>= 50), in physical and normalised units. In the first 50 frames the fluid is still nearly at rest,
+every model's velocity error is large, and these windows dominate the all-window mean: on test, our 10% / 4 h
+CNextU-Net has a lower all-window mean than the released checkpoint (0.131 vs 0.224) only because of them; from
+frame 50 on the released checkpoint is ~25% better. `rbbench.aggregate.ONSET_FRAMES`; the per-seed and main tables
+carry `one_step_vrmse_mean_{onset,developed}` and `one_step_normalised_vrmse_mean_{onset,developed}`. Frame 50 is
+where the released checkpoints' error by window levels off (`released_one_step_by_frame_valid`, D20), chosen
+before any of our runs was evaluated on test.

@@ -31,6 +31,10 @@ STYLE = {
 }
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
+# One-step results are also reported for convection onset (first input frame < 50, when the fluid is still nearly
+# at rest and the all-window mean is dominated by it) and developed convection (>= 50) separately (D26).
+ONSET_FRAMES = 50
+
 
 def _load_run(row: dict, output_root: Path, labels: list[str]) -> tuple[list[dict], dict | None, list[str]]:
     run_dir = output_root / "runs" / row["run_id"]
@@ -85,6 +89,20 @@ def collect(tasks_path: Path, output_root: Path, labels=None):
     return rows, loaded, problems, expected
 
 
+def one_step_phase_records(one: pd.DataFrame, key: dict) -> list[dict]:
+    """Mean one-step VRMSE over onset windows (first input frame < ONSET_FRAMES) and developed ones (D26)."""
+    recs = []
+    onset = one.start < ONSET_FRAMES
+    for col, name in (("vrmse_mean", "one_step_vrmse_mean"),
+                      ("normalised_vrmse_mean", "one_step_normalised_vrmse_mean")):
+        if col not in one:
+            continue
+        for phase, mask in (("onset", onset), ("developed", ~onset)):
+            value = float(one.loc[mask, col].mean()) if mask.any() else np.nan
+            recs.append({**key, "metric": f"{name}_{phase}", "sigma": 0.0, "step": 1, "value": value})
+    return recs
+
+
 def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
     recs = []
     for m in loaded:
@@ -118,6 +136,9 @@ def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
                 recs.append({**key, "metric": "nusselt_rel_err", "sigma": s, "step": int(step), "value": v})
             for step, v in d.get("log_spectral_error_at", {}).items():
                 recs.append({**key, "metric": "log_spectral_error", "sigma": s, "step": int(step), "value": v})
+        one_step = m["run_dir"] / "evaluations" / f"one_step_{m['label']}.parquet"
+        if one_step.exists():
+            recs += one_step_phase_records(pd.read_parquet(one_step), key)
     return pd.DataFrame(recs)
 
 
@@ -347,34 +368,40 @@ def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFr
     written += _save(fig, figures_dir, "fig2_rollout_vrmse_vs_step")
     plt.close(fig)
 
-    # 3. survival (fraction of rollouts below threshold) vs step, recomputed from raw rollouts
-    thr_metrics = sorted({m for m in summary.metric if m.startswith("survival_thr")})
-    if thr_metrics:
-        thr = thr_metrics[0].replace("survival_thr", "")
-        fig, axes = plt.subplots(1, len(budgets), figsize=(4.2 * len(budgets), 3.2), sharey=True, squeeze=False)
-        for ax, b in zip(axes[0], budgets):
-            for m in models:
-                curves = []
-                for item in loaded:
-                    if item["row"]["model"] != m or item["label"] != b or item["row"]["fraction"] != full:
+    # 3. survival (fraction of rollouts below threshold) vs step, recomputed from raw rollouts; one row per
+    # threshold, all reported (D16, owner 2026-11-11)
+    thrs = sorted({m.replace("survival_thr", "") for m in summary.metric if m.startswith("survival_thr")}, key=float)
+    if thrs:
+        pivots = {}
+        for item in loaded:
+            if item["row"]["fraction"] != full:
+                continue
+            roll = pd.read_parquet(item["run_dir"] / "evaluations" / f"rollout_{item['label']}.parquet")
+            roll = roll[roll.sigma == 0]
+            pivots.setdefault((item["row"]["model"], item["label"]), []).append(
+                roll.pivot_table(index=["traj_id", "start"], columns="step", values="vrmse_mean"))
+        fig, axes = plt.subplots(len(thrs), len(budgets), figsize=(4.2 * len(budgets), 2.7 * len(thrs)),
+                                 sharex=True, sharey=True, squeeze=False)
+        for i, thr in enumerate(thrs):
+            for ax, b in zip(axes[i], budgets):
+                for m in models:
+                    curves = [kaplan_meier([failure_step(v.values, float(thr)) for _, v in piv.iterrows()],
+                                           piv.shape[1]) for piv in pivots.get((m, b), [])]
+                    if not curves:
                         continue
-                    roll = pd.read_parquet(item["run_dir"] / "evaluations" / f"rollout_{b}.parquet")
-                    roll = roll[roll.sigma == 0]
-                    piv = roll.pivot_table(index=["traj_id", "start"], columns="step", values="vrmse_mean")
-                    events = [failure_step(v.values, float(thr)) for _, v in piv.iterrows()]
-                    curves.append(kaplan_meier(events, piv.shape[1]))
-                if not curves:
-                    continue
-                c = np.mean(curves, axis=0)
-                st = STYLE[m]
-                ax.step(np.arange(0, len(c) + 1), np.r_[1.0, c], where="post", color=st["color"], lw=2,
-                        label=st["label"])
-            ax.set_ylim(-0.02, 1.02)
-            ax.set_title(f"{b}: rollouts with VRMSE <= {thr}", fontsize=9, color=INK)
-            ax.set_xlabel("rollout step")
-            _style_axes(ax)
-        axes[0][0].set_ylabel("surviving fraction (KM, seed mean)")
+                    c = np.mean(curves, axis=0)
+                    st = STYLE[m]
+                    ax.step(np.arange(0, len(c) + 1), np.r_[1.0, c], where="post", color=st["color"], lw=2,
+                            label=st["label"])
+                ax.set_ylim(-0.02, 1.02)
+                ax.set_title(f"{b}: rollouts with VRMSE <= {thr}", fontsize=9, color=INK)
+                if i == len(thrs) - 1:
+                    ax.set_xlabel("rollout step")
+                _style_axes(ax)
+            axes[i][0].set_ylabel("surviving fraction")
         axes[0][0].legend(fontsize=7, frameon=False)
+        fig.suptitle("Kaplan-Meier survival (seed mean); thresholds 1, 2 and 5 all reported (D16)", fontsize=10,
+                     color=INK)
         fig.tight_layout()
         written += _save(fig, figures_dir, "fig3_failure_survival")
         plt.close(fig)

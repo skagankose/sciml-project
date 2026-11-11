@@ -64,3 +64,19 @@ def test_paper_protocol_table_sets_references_beside_our_runs():
     roll = t[t.metric == "paper_rollout_normalised_vrmse_steps_13-30"].set_index("model")
     assert roll.loc["cnext_unet", "published"] == "> 10" and roll.loc["cnext_unet", "released_checkpoint"] == 34.7
     assert list(t.model[:2]) == ["cnext_unet", "avit"]  # fixed model order, not by value
+
+
+def test_one_step_is_split_into_onset_and_developed_windows():
+    """D26: one-step VRMSE is also reported for onset (first input frame < 50) and developed convection."""
+    import pandas as pd
+
+    from rbbench.aggregate import ONSET_FRAMES, one_step_phase_records
+
+    one = pd.DataFrame({"start": [0, 10, ONSET_FRAMES - 1, ONSET_FRAMES, 120],
+                        "vrmse_mean": [3.0, 2.0, 1.0, 0.2, 0.1],
+                        "normalised_vrmse_mean": [9.0, 6.0, 3.0, 0.2, 0.1]})
+    recs = {r["metric"]: r["value"] for r in one_step_phase_records(one, {"model": "m"})}
+    assert recs["one_step_vrmse_mean_onset"] == 2.0
+    assert abs(recs["one_step_vrmse_mean_developed"] - 0.15) < 1e-12
+    assert recs["one_step_normalised_vrmse_mean_onset"] == 6.0
+    assert all(r["step"] == 1 and r["sigma"] == 0.0 for r in one_step_phase_records(one, {}))

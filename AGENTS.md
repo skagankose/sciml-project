@@ -33,7 +33,7 @@ Rules:
 | I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **all six 10% runs complete 2026-11-11** (AViT after a resume, array 59428460). **10% runs started 2026-11-09 by the owner** (rows 0, 1, 4, 5, 8, 9, commit f42b2e2; on the paid `gpu` partition, class account, from 2026-11-09 with owner approval); the 100% rows need owner approval. Rates fixed 2026-11-09 (1e-3 for all, D7). `eval` in common.yaml is hashed: do not edit it from now on (D15). Do not push while array tasks are queued (see 2026-11-09 log) |
 | J Aggregation | one command → tables and figures, missing runs listed | code done (synthetic) |
 
-The only value still PENDING in `docs/decisions.md` is the primary failure threshold (D16, chosen on validation);
+Nothing is PENDING in `docs/decisions.md`: all three failure thresholds are reported (D16, owner 2026-11-11);
 batch size, learning rate, precision, schedule and rollout starts are fixed. The study design follows the final abstract (2026-10-30). Where the code
 still differs from it, and which items are deferred, is in `docs/abstract_alignment.md`.
 
@@ -295,3 +295,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     * Dedalus could not be installed on the Mac (no conda), so its side is checked only by the HPC3 self-test.
   * Owner (2026-11-11): the numerical-solver runs move to the end of the project, after the 100% runs; they are
     not part of the mid-project report. Code stays as committed; nothing has run on HPC3.
+  * Owner (2026-11-11), reporting the 10% results: the 1 h results are the 4 h run's checkpoint after 1 h (D6;
+    dedicated 1 h runs only if needed later), all three failure thresholds side by side (D16, no primary), and
+    one-step VRMSE also split into onset (< 50) and developed convection (D26). `aggregate` now writes the split
+    and draws all three thresholds in fig3. On row 0 (4 h): 0.369 onset, 0.050 developed (physical).

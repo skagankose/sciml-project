@@ -417,17 +417,14 @@ its evaluation is pulled.
 * Billed cost and queue times: run
   `sacct -u skose -S 2026-11-07 -X -P --format=JobID%20,JobName,Partition,Account,AllocTRES%60,Submit,Start,End,Elapsed,State,ExitCode > outputs/sacct_skose.txt`
   on HPC3 and pull it. Our logs record run time but not time spent queueing; `Submit` and `Start` give it.
-* D16: the primary failure threshold (1 or 2) is still to be chosen on validation. Until then, report all
-  three thresholds (1, 2, 5).
-* The 1 h checkpoint is taken mid-schedule (learning rate still 0.85e-3 of 1e-3; `training_curves`), so it
-  measures a 4 h run after 1 h, not a 1 h budget. CNextU-Net's is worse than persistence (0.852). Reporting
-  it as is, or giving the 1 h budget its own runs or schedule, is an owner decision for the revised plan.
+* Decided by the owner (2026-11-11): all three failure thresholds (1, 2, 5) are reported (D16); the 1 h results
+  are reported as the 4 h run's checkpoint after 1 h (learning rate still 0.85e-3; dedicated 1 h runs only if
+  they do not make sense next to the 4 h results, not now; D6); one-step results are split into onset
+  (frames < 50) and developed convection (D26).
 * End of the project (not mid-project): the numerical-solver baseline (section 8): build `rb-dedalus`, pass the
   self-test, run the rollouts at three resolutions, then `eval-solver`.
 * The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
   section 3).
-* Report one-step VRMSE split into onset (frames < 50) and developed convection (≥ 50) next to the
-  all-window mean, since the mean is dominated by the onset (section 3).
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
   (the full training set cannot stay in a node's page cache), unless the data moves to node-local disk.
 

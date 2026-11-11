@@ -312,3 +312,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     projected 100%, validation and test-evaluation time), spectra figure with the smallest scales marked
     (`eval_spectra_4h_test`), and flow snapshots (`scripts/visualize_rollouts.py`, `visualize_cpu.sbatch`;
     pending until it runs on HPC3 after the evaluations, since a push is needed).
+  * The owner reviewed `reports/midproject.tex` and marked "verification needed" points; all are now filled
+    from code and upstream sources. Sources:
+    * VRMSE formula: upstream `NRMSE(norm_mode="std")` at e63dec8.
+    * TFNO bug: introduced in the_well `2d8d7eaf` (2024-06-03), fixed in `e4301602` (2025-11-17); issue #49.
+    * Timer: per-step `perf_counter` from batch ready to `cuda.synchronize`.
+    * Validation sample: 64 evenly spaced windows, all 35 regimes, 28% onset; the search's 512 share 8.
+    * GPU-hour reconciliation: ~135–146 h without contingency.
+    * Paper schedule: The Well's configs at e63dec8.
+    * Wording: "alternative aggregate" became "physical-field VRMSE". The aggregation is identical; only eps acts
+      differently on physical vs normalised fields.

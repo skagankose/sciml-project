@@ -326,3 +326,9 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     writes `reports/figures/fig_*.pdf` at their printed size. No titles inside, shared axes, legend on top,
     neutral text. The learning-rate row is gone from the training figure. The spectra figure is now 3 panels,
     plus a new test-error-by-window figure. `reports/sync_figures.sh` rebuilds them.
+* 2026-11-11 (evening): all six 10% evaluations done and verified (12 checkpoints). Pushed 5d72d9a.
+  * The push also copied the untracked `reports/` to HPC3. Training refuses a dirty tree, so this must be fixed
+    before the 100% runs: commit `reports/` or exclude it from push.sh.
+  * Results aggregated (`outputs/tables/`) and written into `reports/midproject.tex` (Tables 5–7, figures with
+    all three models), `docs/report_notes.md` and the check-in notes. Flow snapshots wait for
+    `visualize_cpu.sbatch`.

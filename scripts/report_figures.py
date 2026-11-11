@@ -198,7 +198,7 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4
         handles.append(Line2D([], [], color=INK, lw=1.1, ls="--", label="released CNextU-Net (100%)"))
     if persist is not None:
         handles.append(Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence"))
-    fig.legend(handles=handles, loc="lower center", ncol=min(len(handles), 5), bbox_to_anchor=(0.5, 0.98))
+    fig.legend(handles=handles, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.98))
     fig.tight_layout()
     return save(fig, out, "fig_test_by_window")
 

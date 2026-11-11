@@ -193,7 +193,7 @@ on free-gpu. Arrays 59374848, 59390860 and 59393014. Details are in `outputs/lr_
 learning rate 1e-3, warmup 500 steps then cosine over the 4 h budget. The budget counts GPU training time
 only (D24); checkpoints at 1 h and 4 h. Parameters: CNextU-Net 18.58M, TFNO 19.28M, AViT 18.57M.
 
-### Status and time (2026-11-10, `outputs/findings/runs.csv`)
+### Status and time (2026-11-11: all six complete; `outputs/findings/runs.csv`)
 
 | Run | Status | Attempts | Training h | Data wait h | Other h | Wall h | GPU busy | Steps | Epochs | Val 1 h | Val 4 h | SU est. |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -201,11 +201,20 @@ only (D24); checkpoints at 1 h and 4 h. Parameters: CNextU-Net 18.58M, TFNO 19.2
 | CNextU-Net s1 | complete | 2 (free-gpu, gpu) | 4.00 | 0.81 | 0.37 | 5.18 | 77% | 12,194 | 28 | 0.772 | **0.178** | 191 |
 | TFNO s0 | complete | 1 (gpu) | 4.00 | 2.54 | 0.32 | 6.86 | 58% | 26,339 | 61 | 0.508 | **0.310** | 274 |
 | TFNO s1 | complete | 1 (gpu) | 4.00 | 2.82 | 0.32 | 7.14 | 56% | 26,352 | 61 | 0.524 | **0.325** | 286 |
-| AViT s0 | crashed at 1.65 h, resubmitted | 1 (gpu) | 1.65 | 3.58 | 0.34 | 5.57 | 30% | 30,800 | 71 | 0.468 | | 223 |
-| AViT s1 | crashed at 1.68 h, resubmitted | 1 (gpu) | 1.68 | 3.55 | 0.33 | 5.56 | 30% | 31,650 | 73 | 0.418 | | 222 |
+| AViT s0 | complete | 2 (gpu, gpu) | 4.00 | 6.07 | 0.99 | 11.07 | 36% | 74,978 | 175 | 0.468 | **0.161** | 443 |
+| AViT s1 | complete | 2 (gpu, gpu) | 4.00 | 7.32 | 0.89 | 12.20 | 33% | 75,060 | 175 | 0.418 | **0.167** | 488 |
 
 "Val" is the short validation during training (64 fixed validation windows, physical units), not the test
 evaluation. "Other" is startup, validation, checkpoint writes and steps replayed after a resume.
+
+* AViT's first attempts (array 59407148) crashed on `/pub` `Errno 70` after 1.65 / 1.68 h of training. The
+  second attempts (array 59428460, both on hpc3-gpu-l54-05) resumed from `last_resume.pt` at steps 28,249 /
+  29,105, replaying ~2,500 steps, and ran 5.5 / 6.6 h of wall time. Seed 1 started 4 h after seed 0, when a
+  second A100 came free.
+* The AViT runs span two commits (f42b2e2, then 4c0d3a8). Nothing on the training path changed between them
+  (only evaluation, aggregation and provenance code), and the config hash is the same (`f3560de7`).
+* After 4 h of GPU time AViT leads on short validation (0.161 / 0.167), just ahead of CNextU-Net (0.167 /
+  0.178); TFNO is at 0.310 / 0.325.
 
 ### Throughput and memory (A100 80 GB, batch 64, fp32)
 
@@ -215,9 +224,10 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
 | TFNO | 1.83 | 117 | 56.9 GB |
 | AViT | 5.2 | 333 | 8.8 GB |
 
-* In 4 h of GPU time at 10% data, CNextU-Net sees 28 epochs, TFNO 61 and AViT ~170 (projected).
+* In 4 h of GPU time at 10% data, CNextU-Net sees 28 epochs, TFNO 61 and AViT 175.
 * `/pub` delivers at most ~98 samples/s into one node (D23 benchmark). TFNO needs 117/s and AViT 333/s, so
-  both wait for data even without stalls. AViT spends ~70% of its wall time waiting.
+  both wait for data even without stalls. AViT spent 55–60% of its wall time waiting (6.1 / 7.3 h of
+  11.1 / 12.2 h); its GPU was busy 33–36% of the time.
 
 ### Training curves (`outputs/findings/training_curves_train_f010.{pdf,png}`)
 
@@ -225,7 +235,8 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
   to 1.04 / 0.77 at 1 h, then falls to 0.17–0.18 by 3.5 h. The 1 h checkpoint is taken while the learning
   rate is still high, so it is a mid-schedule checkpoint of a 4 h run, not a 1 h-budget run.
 * TFNO: training loss plateaus at ~0.013 after ~1.5 h; validation improves slowly to 0.31–0.33.
-* AViT (to 1.7 h): training loss still falling (~0.0045), validation 0.37 / 0.48 at 1.5 h.
+* AViT: training loss falls from ~0.0062 at 1 h to ~0.0031 at 4 h. Validation falls from 0.47 / 0.42 at
+  1 h to 0.161 / 0.167 at 4 h, with bumps at 1.5 h and 2.5 h (seed 1) while the learning rate is still high.
 * The two seeds agree closely in training loss for every model. Validation differs more at 1 h than at 4 h.
 
 ### Evaluation protocol for the mid-project report (owner, 2026-11-10)
@@ -244,16 +255,89 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
 * AViT is not among the paper's `rayleigh_benard` baselines (FNO, TFNO, U-net, CNextU-net), so it has no
   published reference.
 
+### First test results: CNextU-Net 10% seed 0 and persistence (2026-11-11)
+
+Jobs 59428461 (row 0, both checkpoints, 55 min) and 59428462 (persistence, 9.5 min), paid `gpu` partition,
+commit 4c0d3a8, cohort sha256 0e6dc760…; 34,300 one-step windows and 525 rollouts (175 × 3 starts) each.
+Persistence predicts the last input frame. The released checkpoint was scored on the same windows by
+`eval-released` (job 59407152). The other five runs are not evaluated yet.
+
+One-step VRMSE on every test window:
+
+| Model | Physical units (ours) | Normalised units (paper's protocol) |
+|---|---|---|
+| CNextU-Net 10%, 1 h checkpoint | 0.852 | 2.768 |
+| CNextU-Net 10%, 4 h checkpoint | **0.131** | 0.334 |
+| Released CNextU-Net (paper, 100% data) | 0.224 | 0.669 (published 0.670) |
+| Persistence | 0.199 | **0.202** |
+
+The same, by start frame (physical units; normalised units agree from frame 50 on):
+
+| Start frames | 0–9 | 10–19 | 20–29 | 30–39 | 40–49 | 50–99 | 100–195 | median |
+|---|---|---|---|---|---|---|---|---|
+| CNextU-Net 10%, 4 h | 0.745 | 0.569 | 0.320 | 0.134 | 0.076 | 0.063 | 0.043 | 0.048 |
+| Released CNextU-Net | 1.570 | 1.274 | 0.673 | 0.228 | 0.084 | **0.048** | **0.033** | **0.034** |
+| Persistence | **0.022** | **0.086** | **0.133** | 0.158 | 0.204 | 0.270 | 0.203 | 0.174 |
+
+* **The mean over all windows mixes two regimes, so "our 10% model beats the paper's" would be a wrong
+  reading.** Our model's lower mean comes from the first 50 frames, where the fluid is nearly still and every
+  model's velocity error is large. From frame 50 on, the released checkpoint (100% data, trained longer) is
+  ~25% better (0.048 vs 0.063; 0.033 vs 0.043), and its median is lower. That is the expected order, and it
+  also argues against any leakage, which would make ours better everywhere.
+* Persistence beats both models during convection onset (frames 0–29) and loses by 3–6× from frame 40 on.
+  Under the paper's protocol (normalised, all windows) persistence (0.202) beats our model (0.334) and the
+  paper's released model (0.669).
+* From frame 50 on, error grows ~7× with Rayleigh number: ours 0.015 / 0.019 / 0.036 / 0.067 / 0.112 for
+  Ra = 1e6 … 1e10 (released 0.018 / 0.017 / 0.025 / 0.045 / 0.085; persistence 0.098 … 0.351).
+* The 1 h checkpoint is worse than persistence overall (0.852): 6.6 on frames 0–9, 0.07–0.11 from frame 50.
+  It is a mid-schedule checkpoint (high learning rate), as the training curves showed.
+
+Rollouts from frame 0, the paper's Table 3 (mean VRMSE over steps 6–12 / 13–30, 175 trajectories):
+
+| Model | Normalised (paper's protocol) | Physical |
+|---|---|---|
+| CNextU-Net 10%, 1 h | 244 / 186 | 60.7 / 72.2 |
+| CNextU-Net 10%, 4 h | 14.0 / 28.6 | 3.8 / 13.6 |
+| Released CNextU-Net | 36.1 / 34.7 | 9.3 / 16.5 |
+| Released TFNO | 142 / 169 | 37.1 / 73.9 |
+| Persistence | **0.27 / 0.50** | **0.14 / 0.40** |
+| Paper (Table 3) | > 10 / > 10 | not reported |
+
+* Our 4 h model also lands in the paper's "> 10" range under its protocol. Persistence stays below 1: the
+  frame-0 protocol scores the onset, where copying the input is nearly exact.
+
+Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 6 / 12 / 30:
+
+| Start | CNextU-Net 10%, 4 h | Persistence |
+|---|---|---|
+| 20 (onset) | 0.434 / 0.700 / 0.985 / 1.719 | **0.118 / 0.378 / 0.499 / 0.677** |
+| 80 (developed) | **0.059 / 0.167 / 0.298 / 0.530** | 0.270 / 0.641 / 0.777 / 0.856 |
+| 140 (late) | **0.041 / 0.124 / 0.222 / 0.399** | 0.199 / 0.440 / 0.522 / 0.539 |
+
+* Starts 80 and 140: the model beats persistence at every step to 30. Start 20: persistence wins throughout.
+* Share of rollouts still below the error threshold at step 30 (all starts; the primary threshold, D16, is
+  still to be chosen on validation): threshold 1: 4 h 0.89, 1 h 0.002 (Kaplan–Meier median 17 steps),
+  persistence 0.94; threshold 2: 0.94 / 0.72 / 1.00; threshold 5: 0.99 / 0.78 / 1.00.
+* Log spectral error at steps 1 / 10 / 30: 4 h 0.80 / 1.12 / 1.32; persistence 0.14 / 0.63 / 1.45. The
+  model's one-step spectrum is already far off while its VRMSE is low, which suggests it smooths small
+  scales. To be checked on the spectra plots.
+* Nusselt relative error (mean) at steps 1 / 30: 4 h 0.27 / 2.62, persistence 0.20 / 1.27.
+* Latency (A100, batch 1): 8.3 ms per step, 249 ms per 30-step rollout, 2.5 GB reserved.
+
 ## 4. Compute and cost
 
 * RCIC rates: paid partitions charge 32 SU per GPU-hour plus 1 SU per core-hour of wall time (40 SU/h for a
   training job with 8 cores); free partitions cost nothing but can be preempted.
 * Account: the class allocation `eecs195221_class_gpu` (31,530 of 33,000 SU left on 2026-11-09, shared by the
   class), approved by the owner on 2026-11-09. The personal account `skose` has 1,000 SU.
-* Paid so far (estimate, 2026-11-10): 6 training attempts, 34.6 h, ~1,385 SU; pipeline check ~100 SU.
-  About 1,500 SU in all.
-* Expected to finish the 10% study: AViT ~8 h of wall time per run (~640 SU for both); evaluation of six
-  runs ~1 h each (~240 SU). Total ~2,400 SU, about 7% of the class allocation.
+* Paid so far (estimate, 2026-11-11): 8 training attempts, 46.8 h, ~1,870 SU (a lower bound: AViT's crashed
+  first attempts are timed to their last log line); pipeline check ~100 SU; evaluation of row 0 and
+  persistence ~45 SU. About 2,020 SU in all.
+* AViT's second attempts took 5.5 and 6.6 h of wall time (~485 SU), less than the ~8 h per run expected.
+* Expected to finish the 10% study: evaluation of the other five runs, ~1 h each (~200 SU). Total ~2,220 SU,
+  about 7% of the class allocation.
+* Queueing on the paid partition (8 A100s shared with other users): jobs waited with `Resources` /
+  `Priority` for hours; this costs no SUs.
 * Waiting for `/pub` is charged as wall time: about 40% of the paid training wall time so far.
 * Free-gpu work so far: environment checks, data download, three pipeline-check runs, profiling, the
   learning-rate search and the first 10% attempts. It cost no SUs but lost time to preemption and queueing.
@@ -278,8 +362,9 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
 
 ## 6. Open items
 
-* AViT 10% runs: resubmitted 2026-11-10; then evaluation of all six 10% runs (needs the D15 cohort decision).
-* Evaluation results (one-step and rollouts on test, failure horizon, Nusselt, spectra) go into a new
-  section here when they arrive.
+* Evaluate rows 1, 4, 5, 8, 9 (row 0 and persistence done 2026-11-11), then `rbbench aggregate` for the
+  tables (`paper_protocol.csv`, mean ± std over seeds) and add them to section 3.
+* Report one-step VRMSE split into onset (frames < 50) and developed convection (≥ 50) next to the
+  all-window mean, since the mean is dominated by the onset (section 3).
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
   (the full training set cannot stay in a node's page cache), unless the data moves to node-local disk.

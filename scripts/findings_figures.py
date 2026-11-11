@@ -695,3 +695,124 @@ def solver_cost_accuracy(evals: pd.DataFrame, outputs: Path, label: str, stem: P
                  "Dedalus: one CPU core, including setup", fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     return _finish(fig, stem)
+
+
+# --- Slurm accounting (sacct) -----------------------------------------------------------------------------
+
+# Arrays none of whose tasks wrote a run record, identified from the AGENTS.md progress log.
+KNOWN_ARRAYS = {
+    "59269977": "first replication try (stopped, I/O-bound; D23)",
+    "59369074": "learning-rate search",   # first submission, cancelled after 9 min
+    "59395480": "10% runs",               # refused a dirty tree during a push (2026-11-09)
+    "59403878": "10% runs",               # free-gpu resubmission, cancelled while pending
+    "59427099": "10% runs",               # AViT resubmission, cancelled while pending for the push
+}
+
+
+def _hours(elapsed: str) -> float:
+    """sacct Elapsed ([D-]HH:MM:SS) in hours."""
+    days, _, rest = elapsed.rpartition("-")
+    h, m, s = (int(x) for x in rest.split(":"))
+    return (int(days) if days else 0) * 24 + h + m / 60 + s / 3600
+
+
+def _tres(alloc: str) -> dict:
+    out = {}
+    for item in str(alloc).split(","):
+        if "=" in item:
+            k, v = item.split("=", 1)
+            out[k] = v
+    return out
+
+
+def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.DataFrame:
+    """One row per Slurm job (array task) with billed SU, GPU-hours, queue wait and what the job was for.
+
+    RCIC bills `billing` x elapsed hours on paid partitions (32 per GPU + 1 per core); free partitions cost 0.
+    Jobs cancelled before they started have no allocation and cost nothing.
+    """
+    df = pd.read_csv(path, sep="|", dtype=str)
+    rows = []
+    manifest_of = dict(zip(runs.run_id, runs.manifest)) if not runs.empty else {}
+    task_of = {}
+    if not attempts.empty:
+        for _, a in attempts.iterrows():
+            if isinstance(a.array_task, str) and a.array_task:
+                task_of[a.array_task] = manifest_of.get(a.run_id, "")
+            if pd.notna(a.job_id):
+                task_of.setdefault(str(a.job_id), manifest_of.get(a.run_id, ""))
+    for _, r in df.iterrows():
+        tres = _tres(r.AllocTRES)
+        started = isinstance(r.Start, str) and r.Start not in ("None", "Unknown")
+        ended = isinstance(r.End, str) and r.End not in ("None", "Unknown")
+        elapsed = _hours(r.Elapsed) if started else 0.0
+        billing = float(tres.get("billing", 0) or 0)
+        gpus = int(tres.get("gres/gpu", 0) or 0)
+        name = str(r.JobName)
+        what = {"rb4-setup": "environment", "rb4-check": "environment", "bash": "environment",
+                "rb4-download": "data", "rb4-audit": "data", "rb4-probe": "data", "rb4-subsets": "data",
+                "rb4-conv": "data", "rb4-bench": "data", "rb4-released": "pipeline check",
+                "rb4-profile": "profiling", "rb4-eval": "evaluation"}.get(name, name)
+        if name == "rb4-train":
+            m = task_of.get(str(r.JobID), "")
+            what = {"lr_search": "learning-rate search", "train": "10% runs"}.get(m, "training (other)")
+        queue = ((pd.Timestamp(r.Start) - pd.Timestamp(r.Submit)).total_seconds() / 3600 if started else np.nan)
+        rows.append({"job": r.JobID, "array": str(r.JobID).split("_")[0], "name": name, "what": what,
+                     "partition": r.Partition, "account": r.Account,
+                     "gpus": gpus, "cpus": int(tres.get("cpu", 0) or 0), "billing": billing,
+                     "submit": r.Submit, "start": r.Start if started else None, "end": r.End if ended else None,
+                     "elapsed_hours": elapsed, "queue_hours": queue, "state": r.State,
+                     "running": not ended and started,
+                     "su": billing * elapsed if r.Partition in ("gpu", "standard") else 0.0,
+                     "gpu_hours": gpus * elapsed})
+    out = pd.DataFrame(rows)
+    # tasks that never wrote a run record (failed at start, cancelled, preempted early) take their array's purpose
+    known = out[out.what.isin(["learning-rate search", "10% runs"])].groupby("array").what.first()
+    other = out.what == "training (other)"
+    out.loc[other, "what"] = (out.loc[other, "array"].map(known).fillna(out.loc[other, "array"].map(KNOWN_ARRAYS))
+                              .fillna("other training"))
+    return out.drop(columns="array")
+
+
+def compute_timeline_figure(jobs: pd.DataFrame, stem: Path) -> list[str]:
+    """Every GPU job: queue wait (light) and run (solid), coloured by purpose, paid jobs outlined."""
+    gpu = jobs[(jobs.gpus > 0) & jobs.start.notna()].copy()
+    if gpu.empty:
+        return []
+    plt = _plt()
+    import matplotlib.dates as mdates
+    from matplotlib.patches import Patch
+
+    colors = {"learning-rate search": "#1baf7a", "10% runs": "#2a78d6", "evaluation": "#eda100",
+              "pipeline check": "#eb6834", "profiling": "#8a6fd1", "environment": MUTED,
+              "first replication try (stopped, I/O-bound; D23)": "#a8a7a2", "other training": "#a8a7a2"}
+    gpu["t_submit"] = pd.to_datetime(gpu.submit)
+    gpu["t_start"] = pd.to_datetime(gpu.start)
+    gpu["t_end"] = gpu.t_start + pd.to_timedelta(gpu.elapsed_hours, unit="h")
+    gpu = gpu.sort_values("t_start").reset_index(drop=True)
+    fig, ax = plt.subplots(figsize=(10.0, 0.16 * len(gpu) + 1.8))
+    for i, r in gpu.iterrows():
+        y = len(gpu) - 1 - i
+        c = colors.get(r.what, MUTED)
+        ax.barh(y, (r.t_start - r.t_submit).total_seconds() / 86400, left=mdates.date2num(r.t_submit),
+                height=0.7, color=c, alpha=0.18, lw=0)
+        ax.barh(y, (r.t_end - r.t_start).total_seconds() / 86400, left=mdates.date2num(r.t_start), height=0.7,
+                color=c, edgecolor=INK if r.partition == "gpu" else "none", lw=0.8)
+        if r.state.startswith(("PREEMPTED", "FAILED", "TIMEOUT")):
+            ax.text(mdates.date2num(r.t_end), y, " " + r.state.split()[0].lower(), va="center", fontsize=5.5,
+                    color=MUTED)
+    ax.xaxis_date()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d\n%H:%M"))
+    ax.set_yticks([])
+    ax.set_xlabel("time (HPC3 local)")
+    _style_axes(ax)
+    ax.grid(False, axis="y")
+    handles = [Patch(color=c, label=k) for k, c in colors.items() if k in set(gpu.what)]
+    handles += [Patch(facecolor="white", edgecolor=INK, label="paid `gpu` partition (class account)"),
+                Patch(color=MUTED, alpha=0.18, label="waiting in the queue")]
+    ax.legend(handles=handles, fontsize=7, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3)
+    paid = gpu[gpu.partition == "gpu"]
+    ax.set_title(f"All {len(gpu)} GPU jobs (from sacct): {gpu.gpu_hours.sum():.0f} GPU-hours, "
+                 f"{paid.su.sum():,.0f} SU billed on the paid partition", fontsize=9, color=INK)
+    fig.tight_layout()
+    return _finish(fig, stem)

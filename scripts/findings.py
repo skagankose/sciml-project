@@ -28,6 +28,9 @@ and figures, each as .pdf and .png:
     eval_rollout_by_start_<label>_test           rollouts from starts 20 / 80 / 140 against persistence
     eval_paper_rollout_4h_test                   the paper's frame-0 rollouts: ours, released, persistence
     eval_spectra_ratio_4h_test                   predicted / true kinetic-energy spectrum by wavenumber
+  compute (from outputs/sacct_skose.txt, if pulled)
+    sacct_jobs.csv, sacct_summary.csv            billed SU, GPU-hours and queue waits per job / per purpose
+    compute_timeline                             every GPU job: queue wait and run, by purpose and partition
   numerical solver (after `rbbench eval-solver`)
     solver_vs_models_rollout_4h_test             Dedalus at 3 resolutions vs models and persistence, same rollouts
     solver_cost_accuracy_4h_test                 seconds per rollout against mean VRMSE, per start frame
@@ -383,6 +386,22 @@ def main() -> int:
         for lab in sorted(set(evals.label)):
             written += figs.eval_rollout_by_start(evals, outputs, lab, out / f"eval_rollout_by_start_{lab}_test")
         written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_ratio_4h_test")
+
+    # Slurm accounting: billed SU, GPU-hours and queue waits of every job (sacct, run on HPC3 and pulled)
+    sacct_path = outputs / "sacct_skose.txt"
+    if sacct_path.exists():
+        jobs = figs.sacct_table(sacct_path, attempts_df, runs_df)
+        jobs.to_csv(out / "sacct_jobs.csv", index=False)
+        written.append(str(out / "sacct_jobs.csv"))
+        written += figs.compute_timeline_figure(jobs, out / "compute_timeline")
+        by = jobs.groupby(["what", "partition"]).agg(jobs=("job", "size"), gpu_hours=("gpu_hours", "sum"),
+                                                      su=("su", "sum"), median_queue_h=("queue_hours", "median"),
+                                                      max_queue_h=("queue_hours", "max")).reset_index()
+        by.to_csv(out / "sacct_summary.csv", index=False)
+        written.append(str(out / "sacct_summary.csv"))
+        print("\n" + by.round(2).to_string(index=False))
+        print(f"billed on paid partitions: {jobs.su.sum():,.0f} SU (jobs still running are counted up to now); "
+              f"GPU-hours in all: {jobs.gpu_hours.sum():.1f}")
 
     # the numerical solver (Dedalus) against the models, once `rbbench eval-solver` has scored its rollouts
     written += figs.solver_rollout_comparison(evals, outputs, "4h", out / "solver_vs_models_rollout_4h_test")

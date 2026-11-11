@@ -112,8 +112,9 @@ model in both windows.
 
 * About 80 min per split (valid and test) on an A100, both models, one-step plus rollouts. Job 59397615
   (free-gpu, 2 h limit) timed out in the test split. `released_a100.sbatch` now allows 4 h.
-* Job 59407152 ran on the paid partition with 4 cores: 36 SU per hour, so ~100 SU for ~2.7 h (2 × ~80 min);
-  `sacct` will give the exact value.
+* Job 59407152 ran on the paid partition with 4 cores (36 SU per hour): 2 h 21 min, **84 SU billed**
+  (`sacct`), after 5.4 h in the queue. The earlier free-gpu passes (59154129, 59224204, 59397615) used
+  3.2 GPU-hours at no cost.
 
 ## 2. Budgets fixed from pilot timings (milestone 2)
 
@@ -352,20 +353,28 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
   training job with 8 cores); free partitions cost nothing but can be preempted.
 * Account: the class allocation `eecs195221_class_gpu` (31,530 of 33,000 SU left on 2026-11-09, shared by the
   class), approved by the owner on 2026-11-09. The personal account `skose` has 1,000 SU.
-* Paid so far (estimate, 2026-11-11): 8 training attempts, 46.8 h, ~1,870 SU (a lower bound: AViT's crashed
-  first attempts are timed to their last log line); pipeline check ~100 SU; evaluation of row 0 and
-  persistence ~45 SU. About 2,020 SU in all.
-* AViT's second attempts took 5.5 and 6.6 h of wall time (~485 SU), less than the ~8 h per run expected.
-* Expected to finish the 10% study: evaluation of the other five runs, ~1 h each (~200 SU). Total ~2,220 SU,
-  about 7% of the class allocation.
-* Queueing on the paid partition (8 A100s shared with other users): jobs waited with `Resources` /
-  `Priority` for hours; this costs no SUs.
-* Waiting for `/pub` is charged as wall time: about 40% of the paid training wall time so far.
-* Free-gpu work so far: environment checks, data download, three pipeline-check runs, profiling, the
-  learning-rate search and the first 10% attempts. It cost no SUs but lost time to preemption and queueing.
-* To do: record billed values with
-  `sacct -u skose -S 2026-11-07 -X -P --format=JobID%20,JobName,Partition,Account,AllocTRES%60,Elapsed,State,ExitCode > outputs/sacct_skose.txt`
-  on HPC3 and pull them.
+* **Billed (from `sacct`, 2026-11-11 09:47, `outputs/findings/sacct_jobs.csv`, `sacct_summary.csv`,
+  `compute_timeline`):** 2,059 SU on the paid partition, 70 GPU-hours in all (hours with a GPU allocated).
+  Billing = `billing` × elapsed hours, `billing` = 40 for 1 GPU + 8 cores (36 for 1 GPU + 4 cores).
+
+  | Purpose | Partition | Jobs | GPU-hours | SU billed | Queue wait, median / max |
+  |---|---|---|---|---|---|
+  | 10% runs | gpu (paid) | 9 | 47.7 | 1,907 | 2.8 h / 12.4 h |
+  | 10% runs (first attempts) | free-gpu | 10 | 2.2 | 0 | 1.7 h / 2.2 h |
+  | Evaluation (row 0, persistence; one running) | gpu | 4 | 1.7 | 67 | 14.0 h / 14.9 h |
+  | Pipeline check | gpu | 1 | 2.3 | 84 | 5.4 h |
+  | Pipeline check | free-gpu | 4 | 3.2 | 0 | 0.2 h |
+  | Learning-rate search | free-gpu | 16 | 9.3 | 0 | 2.4 h / 6.8 h |
+  | First replication try (stopped, D23) | free-gpu | 2 | 2.7 | 0 | 1.0 h / 1.9 h |
+  | Profiling, environment checks | free-gpu | 4 | 0.9 | 0 | 0.2 h |
+  | Data download, audit, subsets, setup | free (CPU) | 17 | 0 | 0 | ~0 |
+
+* My earlier estimates from the run logs (~2,020 SU) were within 2% of the billed value.
+* Queue waits on the paid partition are long: the AViT resubmission waited 8.5 h and 12.4 h, the evaluations
+  ~14 h (8 A100s shared with other users). Waiting in the queue costs no SUs but sets the schedule.
+* Waiting for `/pub` is charged as wall time: the 10% runs trained 24 GPU-hours but held 50 GPU-hours.
+* Free-gpu work cost no SUs but lost time to preemption (6 tasks), queueing and refused starts.
+* To finish the 10% study: four more evaluations, ~40 SU each.
 
 ## 5. Incidents and lessons
 
@@ -398,6 +407,7 @@ its evaluation is pulled.
 | 2 | `outputs/lr_search/lr_search_val_vrmse`, `lr_search_training_loss` | learning-rate search (from `rbbench select-lr`) |
 | 2 | `pilot_vs_actual_wall_time` | pilot predictions of wall time against the 10% runs |
 | 2 | `data_wait_timeline_lr_search_f010` | data waits and crashes during the search |
+| 2, 3 | `compute_timeline` | every GPU job from `sacct`: queue wait and run, by purpose, paid jobs outlined |
 | 3 Training | `training_curves_train_f010` | training loss, validation VRMSE and learning rate vs training hours |
 | 3 | `time_breakdown_train_f010` | wall time per run: training, waiting for data, other; SU |
 | 3 | `data_wait_timeline_train_f010` | cumulative data wait over UTC time, crashes and preemptions |
@@ -414,9 +424,8 @@ its evaluation is pulled.
 * Evaluate rows 1, 4, 5, 8, 9 (row 0 and persistence done 2026-11-11; the five were submitted 2026-11-11),
   then `rbbench aggregate` for the tables (`paper_protocol.csv`, mean ± std over seeds) and add them to
   section 3.
-* Billed cost and queue times: run
-  `sacct -u skose -S 2026-11-07 -X -P --format=JobID%20,JobName,Partition,Account,AllocTRES%60,Submit,Start,End,Elapsed,State,ExitCode > outputs/sacct_skose.txt`
-  on HPC3 and pull it. Our logs record run time but not time spent queueing; `Submit` and `Start` give it.
+* Rerun the `sacct` command (section 4) at the end of each phase so the billed totals stay current; the
+  findings script rebuilds the tables from it.
 * Decided by the owner (2026-11-11): all three failure thresholds (1, 2, 5) are reported (D16); the 1 h results
   are reported as the 4 h run's checkpoint after 1 h (learning rate still 0.85e-3; dedicated 1 h runs only if
   they do not make sense next to the 4 h results, not now; D6); one-step results are split into onset

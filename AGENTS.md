@@ -299,3 +299,11 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     dedicated 1 h runs only if needed later), all three failure thresholds side by side (D16, no primary), and
     one-step VRMSE also split into onset (< 50) and developed convection (D26). `aggregate` now writes the split
     and draws all three thresholds in fig3. On row 0 (4 h): 0.369 onset, 0.050 developed (physical).
+  * `sacct` pulled (`outputs/sacct_skose.txt`): 2,059 SU billed on the paid partition and 70 GPU-hours in all
+    as of 09:47; paid queue waits up to 12–15 h. `scripts/findings.py` now writes `sacct_jobs.csv`,
+    `sacct_summary.csv` and `compute_timeline`.
+  * Revised plan drafted in `docs/checkin_2026-11-12.md` section 3, for the owner. Core study ~140 GPU-h instead
+    of ~100, the difference all data waits; 100% runs estimated at ~2,400 SU.
+  * Mid-project report drafted as LaTeX: `reports/midproject.tex`, figures copied by `reports/sync_figures.sh`,
+    compiles with `tectonic`. The 10% table has "pending" cells until the evaluations finish. `reports/` is not
+    in git (the owner's abstract there is untracked too).

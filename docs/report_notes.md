@@ -280,6 +280,14 @@ Findings:
 * Seeds agree within 0.006 at 4 h but not at 1 h.
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+Flow snapshots (`fig_snapshots_buoyancy_*`, `scripts/visualize_rollouts.py`, job 59482062 on the free CPU
+partition; seed 0, 4 h, from frame 80):
+* At Ra = 1e8 CNextU-Net follows the true plumes for 30 steps.
+* TFNO blurs the plumes and builds a spurious warm layer along the bottom wall.
+* AViT shows rectangular artifacts at the size of its 16×16-pixel patches by step 12, consistent with its
+  middle- and small-scale energy gain.
+* At Ra = 1e10 all three miss the finest structures; CNextU-Net keeps the large-scale plume pattern.
+
 ### Model architectures and training recipe
 
 Full tables in `docs/architectures.md`. In short: all three are The Well's implementations at `e63dec8`, from
@@ -393,6 +401,7 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
   training job with 8 cores); free partitions cost nothing but can be preempted.
 * Account: the class allocation `eecs195221_class_gpu` (31,530 of 33,000 SU left on 2026-11-09, shared by the
   class), approved by the owner on 2026-11-09. The personal account `skose` has 1,000 SU.
+* **Final for the 10% study (`sacct`, 2026-11-11 12:41):** 2,160 SU billed and 72.6 GPU-hours in all; the evaluations cost 4.2 GPU-hours and 169 SU (7 jobs; queue waits 1–3 h for the last five). The visualisation job ran on the free CPU partition.
 * **Billed (from `sacct`, 2026-11-11 09:47, `outputs/findings/sacct_jobs.csv`, `sacct_summary.csv`,
   `compute_timeline`):** 2,059 SU on the paid partition, 70 GPU-hours in all (hours with a GPU allocated).
   Billing = `billing` × elapsed hours, `billing` = 40 for 1 GPU + 8 cores (36 for 1 GPU + 4 cores).

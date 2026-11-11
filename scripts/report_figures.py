@@ -288,7 +288,14 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
     cols = ["truth", *models]
     truth = d["truth"][..., fi]
     x, y = x_grid(truth.shape[1], LX), gauss_nodes(truth.shape[2], LY)
-    vmin, vmax = (0.0, 1.0) if field == "buoyancy" else (-np.abs(truth).max(), np.abs(truth).max())
+    if field == "buoyancy":
+        # sequential (cold dark, hot bright), scaled to the interior so the plumes show; the hot wall saturates
+        interior = truth[:, :, 8:-8]
+        vmin, vmax = (float(v) for v in np.percentile(interior, [1, 99]))
+        cmap = "inferno"
+    else:
+        lim = float(np.percentile(np.abs(truth), 99))
+        vmin, vmax, cmap = -lim, lim, "RdBu_r"
     fig, axes = plt.subplots(len(rows), len(cols), figsize=(FULL, 0.52 * len(rows) + 0.75), squeeze=False,
                              gridspec_kw={"wspace": 0.04, "hspace": 0.08})
     mesh = None
@@ -297,7 +304,7 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
         for j, col in enumerate(cols):
             ax = axes[i][j]
             img = truth[k] if col == "truth" else d[col][k, ..., fi]
-            mesh = ax.pcolormesh(x, y, img.T, shading="nearest", cmap="RdBu_r", vmin=vmin, vmax=vmax, rasterized=True)
+            mesh = ax.pcolormesh(x, y, img.T, shading="nearest", cmap=cmap, vmin=vmin, vmax=vmax, rasterized=True)
             ax.set_aspect("equal")
             ax.set_xticks([])
             ax.set_yticks([])
@@ -309,7 +316,9 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
             if j == 0:
                 ax.set_ylabel(f"step {step}", fontsize=7, color=INK)
     cbar = fig.colorbar(mesh, ax=axes, orientation="horizontal", fraction=0.05, pad=0.04, aspect=45, shrink=0.6)
-    cbar.set_label(ff.FIELD_LABELS.get(field, field), fontsize=7, color=INK)
+    what = ff.FIELD_LABELS.get(field, field)
+    cbar.set_label(f"{what} (colour range: 1st to 99th percentile of the true interior)" if field == "buoyancy"
+                   else what, fontsize=7, color=INK)
     cbar.ax.tick_params(labelsize=6.5)
     tag = npz.stem.removeprefix("rollout_")
     return save(fig, out, f"fig_snapshots_{field}_{tag}")

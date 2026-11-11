@@ -786,7 +786,7 @@ def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.Da
         what = {"rb4-setup": "environment", "rb4-check": "environment", "bash": "environment",
                 "rb4-download": "data", "rb4-audit": "data", "rb4-probe": "data", "rb4-subsets": "data",
                 "rb4-conv": "data", "rb4-bench": "data", "rb4-released": "pipeline check",
-                "rb4-profile": "profiling", "rb4-eval": "evaluation"}.get(name, name)
+                "rb4-profile": "profiling", "rb4-eval": "evaluation", "rb4-visualize": "flow snapshots (CPU)"}.get(name, name)
         if name == "rb4-train":
             m = task_of.get(str(r.JobID), "")
             what = {"lr_search": "learning-rate search", "train": "10% runs"}.get(m, "training (other)")

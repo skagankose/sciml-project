@@ -332,3 +332,6 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Results aggregated (`outputs/tables/`) and written into `reports/midproject.tex` (Tables 5–7, figures with
     all three models), `docs/report_notes.md` and the check-in notes. Flow snapshots wait for
     `visualize_cpu.sbatch`.
+  * Flow snapshots done (job 59482062, free CPU): CNextU-Net tracks the plumes, TFNO blurs them and grows a warm
+    bottom layer, AViT shows patch-sized block artifacts. Added as Figures 6–7 of `reports/midproject.tex`.
+  * Final `sacct` for the 10% study: 2,160 SU billed and 72.6 GPU-hours in all.

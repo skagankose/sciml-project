@@ -386,15 +386,28 @@ over the 35 regimes (band: middle 50\%); 1 is exact. Shaded: small scales ($k_x 
 \label{fig:spectra}
 \end{figure}
 
-\textbf{What the predictions look like} (Fig.~\ref{fig:snapshots}): the planned comparison places the true buoyancy field next to each
-model's rollout from the same four input frames, after 1, 12 and 30 steps.
+\textbf{What the predictions look like} (Figs.~\ref{fig:snapshots} and~\ref{fig:snapshots10}): the true buoyancy
+field next to each model's rollout from the same four input frames, seed 0. At $\mathrm{Ra}=10^8$ CNextU-Net
+follows the true plumes through 30 steps. TFNO blurs them and builds a spurious warm layer along the bottom wall.
+By step 12 AViT shows rectangular artifacts at the size of its $16\times16$-pixel patches, consistent with the
+energy it gains at middle and small scales (Fig.~\ref{fig:spectra}). At $\mathrm{Ra}=10^{10}$ the true flow is far
+finer than any of the three reproduces; CNextU-Net keeps the large-scale plume pattern but smooths the small
+structures, and TFNO and AViT show the same failures as at $10^8$.
 
 \begin{figure}[h]
 \centering
 \figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e8_Prandtl_1__0__s080.pdf}{scale=1}
-\caption{Buoyancy on a test trajectory ($\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$), rolled out from frame 80: the
-true flow and our 10\% / 4-hour models (seed 0) after 1, 12 and 30 steps.}
+\caption{Buoyancy on a test trajectory at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$, rolled out from frame 80: the
+true flow and our 10\% / 4-hour models (seed 0) after 1, 12 and 30 steps. Bright: warm; dark: cold. The colour
+range covers the interior (1st to 99th percentile of the true field), so the hot bottom wall saturates.}
 \label{fig:snapshots}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e10_Prandtl_1__0__s080.pdf}{scale=1}
+\caption{As Fig.~\ref{fig:snapshots}, at $\mathrm{Ra}=10^{10}$, $\mathrm{Pr}=1$.}
+\label{fig:snapshots10}
 \end{figure}
 
 \section{Revised plan}
@@ -410,9 +423,9 @@ and checkpoints at one and four hours. The main changes are:
     1, 2 and 5 (defined in Section~1).
     \item \textbf{Core resource estimate.} The original 48 hours of active training are unchanged.
     The current working estimate is approximately 135 allocated GPU-hours for the core study and its
-    supporting work, replacing the abstract's approximately 100-hour allowance. The 10\% evaluations are now measured (3.6 hours of evaluation passes in all); the components are reconciled
-    below. Slurm accounting showed 70 allocated GPU-hours and 2,059 SU on the paid partition (class allocation)
-    on 2026-11-11, before the last four evaluations, which add about 3 GPU-hours and 110 SU by their logs. The six 10\% runs contain 24 hours of active training and approximately 50 allocated GPU-hours.
+    supporting work, replacing the abstract's approximately 100-hour allowance. The 10\% evaluations are now measured; the components are reconciled below. With all 10\% work complete,
+    Slurm accounting gives 72.6 allocated GPU-hours and 2,160 SU billed on the paid partition (class
+    allocation), 2026-11-11. The six 10\% runs contain 24 hours of active training and approximately 50 allocated GPU-hours.
     \item \textbf{Optional additions, outside the core estimate.} Consider two longer reference-recipe
     runs, one per CNextU-Net and TFNO, with the paper's learning rates and 24\,h each of active GPU training
     (the same clock as the core runs; checkpoints at 6, 12, 18 and 24\,h): 48 active GPU-hours, roughly
@@ -433,7 +446,7 @@ Component & Allocated GPU-hours \\
 \midrule
 Six 10\% runs, completed (24.0 of them active training) & 49.8 \\
 Learning-rate search, profiling, pipeline check, environment checks, first replication try & 18.5 \\
-Test evaluation of the six 10\% runs and persistence (completed) & $\sim$4.5 \\
+Test evaluation of the six 10\% runs and persistence (completed) & 4.2 \\
 Six 100\% runs (projected, 24.0 active) & $\sim$54--65 \\
 Test evaluation of the 100\% runs & $\sim$4.5 \\
 \midrule
@@ -468,11 +481,12 @@ delivers at most $\sim$98 samples/s, below TFNO's and AViT's demand, and the ful
 no longer fits in a node's page cache.}
 \label{tab:time}
 \end{table}
+\FloatBarrier
 
 \textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
 failure horizons, spectra, latency and memory (Section~\ref{sec:results}). Remaining for the final report: the
 100\% runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), field-wise VRMSE and the
-Nusselt-number error per model, and the flow snapshots for all runs.
+Nusselt-number error per model, and the flow snapshots for the 100\% runs.
 
 \textbf{Next steps, in priority order.}
 (1) Improve data-loading robustness and assess node-local staging;

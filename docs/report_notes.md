@@ -240,6 +240,46 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
   1 h to 0.161 / 0.167 at 4 h, with bumps at 1.5 h and 2.5 h (seed 1) while the learning rate is still high.
 * The two seeds agree closely in training loss for every model. Validation differs more at 1 h than at 4 h.
 
+### Test results, all six 10% runs (2026-11-11; `outputs/tables/`, `rbbench aggregate`)
+
+All 12 checkpoints verified (cohort sha256 0e6dc760…, 34,300 one-step windows, 525 rollouts, physics audit
+passed). Evaluation passes: CNextU-Net 50–55 min, TFNO 32 min, AViT 19–21 min (both checkpoints per pass).
+
+One-step VRMSE, mean ± std over seeds (physical fields: all / onset / developed; paper protocol):
+
+| Model | 4 h | 1 h |
+|---|---|---|
+| CNextU-Net | 0.136±0.006 / 0.387 / **0.050**; 0.349 | 0.728±0.176 / 2.618 / 0.081; 2.345 |
+| TFNO | 0.209±0.001 / 0.502 / 0.109; 0.488 | 0.473±0.078 / 1.505 / 0.120; 1.362 |
+| AViT | **0.134**±0.001 / **0.308** / 0.075; **0.298** | 0.394±0.036 / 1.299 / 0.085; 1.171 |
+
+References (all / onset / developed; paper protocol): released CNextU-Net 0.224 / 0.766 / 0.038; 0.669;
+released TFNO 0.300 / 0.623 / 0.190; 0.663; persistence 0.199 / 0.121 / 0.226; 0.202.
+
+Rollouts (4 h, seed mean): VRMSE after 30 steps from frames 20 / 80 / 140; share below 1 / 2 / 5 after 30 steps;
+paper protocol windows 6–12 / 13–30 (normalised):
+* CNextU-Net 1.78 / 0.53 / 0.40; 0.89 / 0.94 / 0.98; 15 / 30.
+* TFNO 1.79 / 0.59 / 0.45; 0.75 / 0.85 / 0.91; 51 / 77.
+* AViT 5.42 / 0.80 / 0.65; 0.63 / 0.80 / 0.87; 75 / 167.
+* Persistence 0.68 / 0.86 / 0.54; 0.94 / 1.00 / 1.00; 0.27 / 0.50. Released CNextU-Net 36 / 35, TFNO 142 / 169.
+
+Spectra (4 h, median over regimes of predicted/true by band, steps 1 / 10 / 30):
+* CNextU-Net: large 1.00 / 0.98 / 1.02, middle 0.96 / 1.05 / 1.15, small 21 / 26 / 29.
+* TFNO: large 1.00 / 0.97 / 0.89, middle 0.40 / 0.24 / 0.12, small 1.0 / 2.8 / 1.2. It is too smooth,
+  consistent with 16 retained modes (k_x ≲ 25).
+* AViT: large 1.00 / 0.82 / 0.84, middle 1.06 / 3.5 / 5.4, small 24 / 390 / 731. Energy accumulates over the
+  rollout. Local peaks at the patch-grid wavenumbers were checked and are not clear, so no cause is claimed.
+
+Speed and memory: steps in 4 h 12.1k / 26.3k / 75.0k; peak training memory (allocated) 60.9 / 48.6 / 8.8 GB;
+inference 8.3 / 4.4 / 5.4 ms per step, 249 / 135 / 163 ms per 30-step rollout (A100, batch 1).
+
+Findings:
+* After 4 h, CNextU-Net is best in developed convection and in rollouts. AViT matches it over all windows but
+  degrades fastest. TFNO is too smooth.
+* At 1 h the order flips: AViT and TFNO lead, and CNextU-Net's 1 h checkpoint is far from converged.
+* Seeds agree within 0.006 at 4 h but not at 1 h.
+* Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
+
 ### Model architectures and training recipe
 
 Full tables in `docs/architectures.md`. In short: all three are The Well's implementations at `e63dec8`, from

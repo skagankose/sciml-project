@@ -322,3 +322,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     * Paper schedule: The Well's configs at e63dec8.
     * Wording: "alternative aggregate" became "physical-field VRMSE". The aggregation is identical; only eps acts
       differently on physical vs normalised fields.
+  * Report figures redrawn for print (owner: "not good looking and understandable"): `scripts/report_figures.py`
+    writes `reports/figures/fig_*.pdf` at their printed size. No titles inside, shared axes, legend on top,
+    neutral text. The learning-rate row is gone from the training figure. The spectra figure is now 3 panels,
+    plus a new test-error-by-window figure. `reports/sync_figures.sh` rebuilds them.

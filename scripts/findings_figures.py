@@ -371,7 +371,11 @@ def wait_timeline_figure(runs: pd.DataFrame, raw: dict[str, pd.DataFrame], attem
                bbox_to_anchor=(0.5, -0.06))
     fig.suptitle(f"{title}. Each line is one attempt; steep rises are waits for /pub,\nand rises at the same moment "
                  "on different runs are stalls that hit several nodes", fontsize=9, color=INK)
-    fig.tight_layout(rect=(0, 0.06, 1, 0.9))
+    import warnings
+
+    with warnings.catch_warnings():  # supxlabel is not a tight_layout axes; the layout is fixed just below
+        warnings.simplefilter("ignore", UserWarning)
+        fig.tight_layout(rect=(0, 0.06, 1, 0.9))
     fig.subplots_adjust(top=0.8)
     return _finish(fig, stem)
 

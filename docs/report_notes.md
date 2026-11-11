@@ -393,6 +393,16 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 
 ## 6. Figures for the report
 
+The written reports use `scripts/report_figures.py` (`reports/figures/fig_*.pdf`, rebuilt by
+`reports/sync_figures.sh`): each figure drawn at its printed size (6.9 in text width, 7–8 pt text), one message
+each, no titles inside, all models on shared axes where they are compared. The table below lists the exploratory
+figures in `outputs/findings/`, which show everything.
+
+Report figures: `fig_released_by_window` (pipeline check), `fig_loader` (data supply vs demand), `fig_training`
+(loss and validation for all models; the learning-rate row of the exploratory figure is left out, the schedule
+is described in the text), `fig_test_by_window` (ours vs released vs persistence), `fig_spectra` (one regime at
+step 30, and predicted/true at steps 1 and 30), `fig_snapshots_buoyancy_*` (after `visualize_cpu.sbatch`).
+
 All are rebuilt by `.venv/bin/python scripts/findings.py` after `cluster/pull.sh`, as PDF (for LaTeX) and PNG,
 into `outputs/findings/` unless another folder is named. The evaluation figures pick up each run as soon as
 its evaluation is pulled.

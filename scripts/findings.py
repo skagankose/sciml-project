@@ -9,10 +9,27 @@ Writes outputs/findings/:
   attempts.csv        one row per Slurm attempt: job, partition, host, commit, end status, wall time, SU estimate
   runs.csv            one row per run: wall time split into training / data wait / other, steps, epochs,
                       training loss, validation VRMSE at each milestone, attempts, SU estimate
-  training_curves_<manifest>_f<fraction>.{pdf,png}   training loss and validation VRMSE vs training hours
-  time_breakdown_<manifest>_f<fraction>.{pdf,png}    wall time per run: training, waiting for data, other
-  released_paper_rollout_<split>.{pdf,png}           released checkpoints rolled out from frame 0 (Table 3)
-and prints the run table as Markdown.
+  evaluated.csv       the (run, checkpoint) pairs with a test evaluation on disk
+and figures, each as .pdf and .png:
+  training (milestone 3)
+    training_curves_<manifest>_f<fraction>       training loss, validation VRMSE and learning rate vs training hours
+    time_breakdown_<manifest>_f<fraction>        wall time per run: training, waiting for data, other
+    data_wait_timeline_<manifest>_f<fraction>    cumulative data wait over UTC time (stalls, crashes)
+  pipeline check (milestone 1)
+    released_paper_rollout_<split>               released checkpoints rolled out from frame 0 (Table 3)
+    released_paper_rollout_by_ra_<split>         the same, per trajectory, by Rayleigh number
+    released_one_step_by_frame_<split>           released checkpoints' one-step VRMSE by window
+  budgets from pilot timings (milestone 2)
+    profile_batch_size                           compute throughput and memory vs batch size, fp32/bf16
+    data_loader_benchmark                        samples/s from /pub vs workers, against each model's demand
+    pilot_vs_actual_wall_time                    pilot wall-time predictions against the 10% runs
+  evaluation (test cohort, train manifest)
+    eval_one_step_by_frame_test                  one-step VRMSE by window: ours 1 h / 4 h, released, persistence
+    eval_rollout_by_start_<label>_test           rollouts from starts 20 / 80 / 140 against persistence
+    eval_paper_rollout_4h_test                   the paper's frame-0 rollouts: ours, released, persistence
+    eval_spectra_ratio_4h_test                   predicted / true kinetic-energy spectrum by wavenumber
+The learning-rate search has its own figures from `rbbench select-lr` (outputs/lr_search/); tables and the
+paper-protocol table come from `rbbench aggregate`. Prints the run table as Markdown.
 
 SU estimate: RCIC charges paid partitions 32 SU per GPU-hour plus 1 SU per core-hour of wall time; free
 partitions cost nothing. Attempts before 2026-11-10 did not record their core count, so the 8 cores of
@@ -31,6 +48,8 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
+
+import findings_figures as figs  # scripts/, next to this file
 
 from rbbench import MODEL_NAMES
 from rbbench.aggregate import GRID, INK, MUTED, STYLE, _save, _style_axes
@@ -142,7 +161,8 @@ def curves_figure(runs: pd.DataFrame, metrics: dict[str, pd.DataFrame], title: s
     from matplotlib.lines import Line2D
 
     models = [m for m in MODEL_NAMES if m in set(runs.model)]
-    fig, axes = plt.subplots(2, len(models), figsize=(3.4 * len(models), 5.2), sharey="row", squeeze=False)
+    fig, axes = plt.subplots(3, len(models), figsize=(3.4 * len(models), 6.6), sharey="row", squeeze=False,
+                             gridspec_kw={"height_ratios": [1, 1, 0.55]})
     seed_styles = {0: "-", 1: "--", 2: ":"}
     for j, model in enumerate(models):
         st = STYLE[model]
@@ -156,21 +176,23 @@ def curves_figure(runs: pd.DataFrame, metrics: dict[str, pd.DataFrame], title: s
             val = m[m.val_vrmse.notna()].drop_duplicates("step", keep="last")
             axes[1][j].plot(val.train_seconds / 3600, val.val_vrmse, color=st["color"], lw=1.6, ls=ls,
                             marker=st["marker"], ms=4)
+            axes[2][j].plot(tr.train_seconds / 3600, tr.lr * 1e3, color=st["color"], lw=1.4, ls=ls)
             if r.status != "complete":
                 axes[1][j].annotate(f"s{int(r.seed)} {r.status}", (val.train_seconds.iloc[-1] / 3600,
                                     val.val_vrmse.iloc[-1]), xytext=(4, 4), textcoords="offset points",
                                     fontsize=7, color=MUTED)
         for ms in sorted({float(x) for x in metrics[mine.run_id.iloc[0]].query("event.str.startswith('milestone_')",
                                                                                engine="python").train_seconds}):
-            for ax in (axes[0][j], axes[1][j]):
+            for ax in axes[:, j]:
                 ax.axvline(ms / 3600, color=MUTED, lw=0.8, ls=":")
         axes[0][j].set_title(st["label"], fontsize=9, color=INK)
         axes[0][j].set_yscale("log")
-        axes[1][j].set_xlabel("training time (h, budget clock)")
-        for ax in (axes[0][j], axes[1][j]):
+        axes[2][j].set_xlabel("training time (h, budget clock)")
+        for ax in axes[:, j]:
             _style_axes(ax)
     axes[0][0].set_ylabel("training loss")
     axes[1][0].set_ylabel("validation VRMSE")
+    axes[2][0].set_ylabel("learning rate (×1e-3)")
     budget = max(runs.budget_hours)
     for ax in axes.flat:
         ax.set_xlim(0, budget * 1.03)
@@ -306,7 +328,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     meta = manifest_rows(Path(args.tasks))
-    attempts, runs, metrics = [], [], {}
+    attempts, runs, metrics, raws = [], [], {}, {}
     for run_id, row in meta.items():
         run_dir = outputs / "runs" / run_id
         if not (run_dir / "train_metrics.csv").exists():
@@ -315,7 +337,7 @@ def main() -> int:
         mine = attempt_rows(run_id, run_dir, raw)
         attempts += mine
         runs.append(run_row(run_id, run_dir, row, clean, mine))
-        metrics[run_id] = clean
+        metrics[run_id], raws[run_id] = clean, raw
     attempts_df, runs_df = pd.DataFrame(attempts), pd.DataFrame(runs)
     attempts_df.to_csv(out / "attempts.csv", index=False)
     runs_df.to_csv(out / "runs.csv", index=False)
@@ -328,9 +350,36 @@ def main() -> int:
         label = f"{round(fraction * 100)}% data ({manifest} manifest)"
         written += curves_figure(group, metrics, f"Training curves, {label}", out / f"training_curves_{name}")
         written += time_figure(group, f"Where the wall time went, {label}", out / f"time_breakdown_{name}")
+    for (manifest, fraction), group in runs_df.groupby(["manifest", "fraction"]):
+        label = f"{round(fraction * 100)}% data ({manifest} manifest)"
+        written += figs.wait_timeline_figure(group, raws, attempts_df, f"Waiting for data, {label}",
+                                             out / f"data_wait_timeline_{manifest}_f{round(fraction * 100):03d}")
+
+    # milestone 1: the pipeline check
     for split in ("test", "valid"):
         written += released_rollout_figure(outputs / "baselines" / "released", split,
                                            out / f"released_paper_rollout_{split}")
+        written += figs.released_one_step_by_frame(outputs, split, out / f"released_one_step_by_frame_{split}")
+        written += figs.released_rollout_by_rayleigh(outputs, split, out / f"released_paper_rollout_by_ra_{split}")
+
+    # milestone 2: budgets from pilot timings
+    pilot_timings = outputs / "lr_search" / "pilot_timings.csv"
+    written += figs.profile_figure(outputs / "pilots" / "feasibility.csv", out / "profile_batch_size")
+    written += figs.data_loader_figure(outputs / "pilots" / "bench_data.json", pilot_timings,
+                                       out / "data_loader_benchmark")
+    if not runs_df.empty:
+        written += figs.pilot_vs_actual_figure(pilot_timings, runs_df, out / "pilot_vs_actual_wall_time")
+
+    # evaluation of the core runs on the frozen test cohort
+    evals = figs.evaluated_runs(runs_df, outputs) if not runs_df.empty else pd.DataFrame()
+    if not evals.empty:
+        evals.drop(columns="dir").to_csv(out / "evaluated.csv", index=False)
+        written.append(str(out / "evaluated.csv"))
+        written += figs.eval_one_step_by_frame(evals, outputs, out / "eval_one_step_by_frame_test")
+        written += figs.eval_paper_rollout(evals, outputs, "4h", out / "eval_paper_rollout_4h_test")
+        for lab in sorted(set(evals.label)):
+            written += figs.eval_rollout_by_start(evals, outputs, lab, out / f"eval_rollout_by_start_{lab}_test")
+        written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_ratio_4h_test")
 
     cols = {"manifest": "manifest", "task_index": "row", "model": "model", "fraction": "data", "seed": "seed",
             "lr": "lr", "status": "status", "attempts": "attempts", "partitions": "partition",

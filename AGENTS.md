@@ -275,3 +275,10 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     start 20.
   * Paid so far ~2,020 SU. Details in `docs/report_notes.md` section 3. Next: the owner evaluates rows 1, 4,
     5, 8, 9; then `aggregate`.
+  * Figures for the report: `scripts/findings.py` now also draws the pipeline check by window and by
+    Rayleigh number, the batch-size profile, the data-loader benchmark, pilot vs actual wall time, data-wait
+    timelines, the learning-rate schedule, and four evaluation figures (`scripts/findings_figures.py`).
+    The index by milestone is in `docs/report_notes.md` section 6.
+  * Correction: the model puts too much energy in the smallest scales (ratio ~50 to ~500 above k_x ≈ 100),
+    not too little. The log spectral error is dominated by those near-empty bins. `aggregate`'s fig6 now
+    drops the Nyquist mode. 136 tests pass; smoke passes.

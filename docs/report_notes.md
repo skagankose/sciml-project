@@ -285,6 +285,9 @@ The same, by start frame (physical units; normalised units agree from frame 50 o
   ~25% better (0.048 vs 0.063; 0.033 vs 0.043), and its median is lower. That is the expected order, and it
   also argues against any leakage, which would make ours better everywhere.
 * Persistence beats both models during convection onset (frames 0–29) and loses by 3–6× from frame 40 on.
+* The released TFNO is barely better than persistence from frame 50 on (0.17–0.26 against 0.20–0.30;
+  `released_one_step_by_frame_test`). This fits D20: its paper-era forward pass skips the FNO blocks, so it
+  acts as a per-pixel map of the last frames.
   Under the paper's protocol (normalised, all windows) persistence (0.202) beats our model (0.334) and the
   paper's released model (0.669).
 * From frame 50 on, error grows ~7× with Rayleigh number: ours 0.015 / 0.019 / 0.036 / 0.067 / 0.112 for
@@ -318,9 +321,15 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 * Share of rollouts still below the error threshold at step 30 (all starts; the primary threshold, D16, is
   still to be chosen on validation): threshold 1: 4 h 0.89, 1 h 0.002 (Kaplan–Meier median 17 steps),
   persistence 0.94; threshold 2: 0.94 / 0.72 / 1.00; threshold 5: 0.99 / 0.78 / 1.00.
-* Log spectral error at steps 1 / 10 / 30: 4 h 0.80 / 1.12 / 1.32; persistence 0.14 / 0.63 / 1.45. The
-  model's one-step spectrum is already far off while its VRMSE is low, which suggests it smooths small
-  scales. To be checked on the spectra plots.
+* Log spectral error at steps 1 / 10 / 30: 4 h 0.80 / 1.12 / 1.32; persistence 0.14 / 0.63 / 1.45.
+* The model puts too much energy in the smallest scales, not too little
+  (`eval_spectra_ratio_4h_test`). Below k_x ≈ 100 (wavenumber index < 64) its spectrum matches the truth
+  within a few percent at every step. Above that, the median ratio predicted / true grows to ~50 at step 1
+  and ~300–500 by step 30, spread over 35 regimes. At the Nyquist mode the data hold almost no energy, and
+  the ratio is ~10^10.
+* The log spectral error averages |log10 ratio| over all 255 bins with equal weight, so these near-empty
+  high-wavenumber bins dominate it. The figure, or a band-limited version of the metric, is the better
+  summary. The metric itself stays unchanged (hashed `eval`; D15).
 * Nusselt relative error (mean) at steps 1 / 30: 4 h 0.27 / 2.62, persistence 0.20 / 1.27.
 * Latency (A100, batch 1): 8.3 ms per step, 249 ms per 30-step rollout, 2.5 GB reserved.
 
@@ -360,10 +369,46 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-09 | free-gpu A100s planned for higher-priority jobs (`ReqNodeNotAvail`) | jobs waited for hours | moved to the paid `gpu` partition |
 | 11-09 | pipeline check hit its 2 h limit; Python buffered stdout | test split not scored, log empty | 4 h limit, `PYTHONUNBUFFERED=1` |
 
-## 6. Open items
+## 6. Figures for the report
 
-* Evaluate rows 1, 4, 5, 8, 9 (row 0 and persistence done 2026-11-11), then `rbbench aggregate` for the
-  tables (`paper_protocol.csv`, mean ± std over seeds) and add them to section 3.
+All are rebuilt by `.venv/bin/python scripts/findings.py` after `cluster/pull.sh`, as PDF (for LaTeX) and PNG,
+into `outputs/findings/` unless another folder is named. The evaluation figures pick up each run as soon as
+its evaluation is pulled.
+
+| Milestone | Figure | What it shows |
+|---|---|---|
+| 1 Pipeline check | `released_one_step_by_frame_test` (and `_valid`) | released CNextU-Net and TFNO one-step VRMSE by window, both units, against persistence; all-window means beside the paper's |
+| 1 | `released_paper_rollout_test` (and `_valid`) | released checkpoints rolled out from frame 0, the paper's Table 3, per field |
+| 1 | `released_paper_rollout_by_ra_test` (and `_valid`) | the same, per trajectory, by Rayleigh number: "> 10" comes from low Ra |
+| 2 Budgets | `profile_batch_size` | compute throughput and memory vs batch size, fp32 and bf16, four models |
+| 2 | `data_loader_benchmark` | samples/s from `/pub` vs loader workers, against each model's demand |
+| 2 | `outputs/lr_search/lr_search_val_vrmse`, `lr_search_training_loss` | learning-rate search (from `rbbench select-lr`) |
+| 2 | `pilot_vs_actual_wall_time` | pilot predictions of wall time against the 10% runs |
+| 2 | `data_wait_timeline_lr_search_f010` | data waits and crashes during the search |
+| 3 Training | `training_curves_train_f010` | training loss, validation VRMSE and learning rate vs training hours |
+| 3 | `time_breakdown_train_f010` | wall time per run: training, waiting for data, other; SU |
+| 3 | `data_wait_timeline_train_f010` | cumulative data wait over UTC time, crashes and preemptions |
+| 3 Evaluation | `eval_one_step_by_frame_test` | one-step VRMSE by window: ours 1 h / 4 h, released, persistence |
+| 3 | `eval_rollout_by_start_{1h,4h}_test` | rollouts from frames 20 / 80 / 140 against persistence |
+| 3 | `eval_paper_rollout_4h_test` | the paper's frame-0 rollouts: ours, released, persistence |
+| 3 | `eval_spectra_ratio_4h_test` | predicted / true kinetic-energy spectrum by wavenumber |
+| 3 | `rbbench aggregate`: `figures/fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (`fig1`, data scaling, needs the 100% runs) |
+
+## 7. Open items
+
+* Evaluate rows 1, 4, 5, 8, 9 (row 0 and persistence done 2026-11-11; the five were submitted 2026-11-11),
+  then `rbbench aggregate` for the tables (`paper_protocol.csv`, mean ± std over seeds) and add them to
+  section 3.
+* Billed cost and queue times: run
+  `sacct -u skose -S 2026-11-07 -X -P --format=JobID%20,JobName,Partition,Account,AllocTRES%60,Submit,Start,End,Elapsed,State,ExitCode > outputs/sacct_skose.txt`
+  on HPC3 and pull it. Our logs record run time but not time spent queueing; `Submit` and `Start` give it.
+* D16: the primary failure threshold (1 or 2) is still to be chosen on validation. Until then, report all
+  three thresholds (1, 2, 5).
+* The 1 h checkpoint is taken mid-schedule (learning rate still 0.85e-3 of 1e-3; `training_curves`), so it
+  measures a 4 h run after 1 h, not a 1 h budget. CNextU-Net's is worse than persistence (0.852). Reporting
+  it as is, or giving the 1 h budget its own runs or schedule, is an owner decision for the revised plan.
+* The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
+  section 3).
 * Report one-step VRMSE split into onset (frames < 50) and developed convection (≥ 50) next to the
   all-window mean, since the mean is dominated by the onset (section 3).
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more

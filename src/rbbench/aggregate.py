@@ -442,7 +442,9 @@ def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFr
         regimes = sorted({(r, p) for r, p in zip(spec.rayleigh, spec.prandtl)})
         ra, pr = regimes[len(regimes) // 2]
         step = spec.step.max()
-        s = spec[(spec.rayleigh == ra) & (spec.prandtl == pr) & (spec.step == step) & (spec.k_index > 0)]
+        # the Nyquist mode is dropped: the data hold almost no energy there, so it would set the axis range
+        s = spec[(spec.rayleigh == ra) & (spec.prandtl == pr) & (spec.step == step) & (spec.k_index > 0)
+                 & (spec.k_index < spec.k_index.max())]
         fig, ax = plt.subplots(figsize=(5.0, 3.4))
         truth = s[s.source == "true"].groupby("k")["energy"].mean()
         ax.loglog(truth.index, truth.values, color=INK, lw=2.2, label="reference")

@@ -1,0 +1,97 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\pagestyle{plain}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+
+\newcommand{\topic}[1]{\textbf{#1}\enspace}
+
+\begin{document}
+
+\begin{center}
+    {\large EECS 221: Machine Learning for Science\par}
+    \vspace{5pt}
+    {\LARGE\bfseries
+    Data--Compute Trade-offs\\[3pt]
+    in Neural PDE Forecasting\par}
+    \vspace{7pt}
+    {\Large Suha Kagan Kose\par}
+    \vspace{6pt}
+    {\large Project Abstract\par}
+\end{center}
+
+\topic{Problem.}
+Neural PDE forecasting models must be useful under limited data and
+compute. We compare how accurately and efficiently three architecture
+families learn fluid dynamics when training data and GPU time are limited.
+
+\topic{Data and task.}
+We use \texttt{rayleigh\_benard} from The Well~\cite{ohana2024well}: 1,750 Rayleigh--B\'enard convection trajectories across 35 (Rayleigh, Prandtl) combinations, each with 200 frames on a $512\times128$ grid, periodic horizontally and Chebyshev-spaced vertically (342\,GB). Given four previous frames, models predict the next frame's buoyancy, pressure, and horizontal and vertical velocities, then forecast further autoregressively. We keep the provided trajectory-level 80/10/10 splits and normalize every field with The Well's training-split statistics.
+
+\topic{Models and baselines.}
+We train three model families from scratch with The Well's implementations: convolutional CNextU-Net~\cite{liu2022convnext} (18.6M parameters), spectral Tensorized Fourier Neural Operator (TFNO)~\cite{kossaifi2024tfno} (19.3M), and attention-based Axial Vision Transformer (AViT)~\cite{mccabe2024mpp}, widened (hidden width 384$\rightarrow$432) to 18.6M. To check our pipeline, we first evaluate The Well's released CNextU-Net and TFNO checkpoints and compare with their published VRMSE.
+
+\topic{Core study (${\sim}$100 GPU-hours).}
+We cross two nested training-trajectory fractions (10\% and 100\%) with two seeds: $3\times2\times2=12$ runs. Each run trains for 4 hours on one A100, and we evaluate checkpoints at 1 and 4 hours, the two compute budgets. Models share subsets, targets, loss, batch size, learning-rate schedule, and evaluation horizons; an equal-budget learning-rate search on validation data precedes training.
+
+\topic{Extensions, if time and compute allow.}
+In priority order: input-noise robustness (evaluation only), a third seed, a 30\% data fraction, and a fourth, recurrent model family (ConvLSTM).
+
+\topic{Metrics.}
+Field-wise VRMSE (RMSE divided by the target field's standard deviation, as in The Well) for one-step predictions and rollouts, and steps until a predefined error threshold, with variation across seeds. Horizontal kinetic-energy spectra assess physical fidelity. We also report GPU-hours, inference latency, and peak GPU memory.
+
+\topic{GPU estimate.}
+Considering that each run uses a single GPU (e.g. NVIDIA A100  with 80\,GB VRAM), the core study requires $3\times2\times2\times4=48$ GPU-hours of training plus about 20 for profiling, tuning, baseline checks, and evaluation, with about 30 held as contingency: approximately 100 GPU-hours.
+
+\topic{Backup plan.}
+If storage, queue time, or pilot measurements show the plan is too costly, we will reduce the data size (downsampled fields or fewer trajectories) for all models equally.
+
+\topic{Milestones for the Nov 12 check-in.}
+Data pipeline validated against The Well's released checkpoints, budgets fixed from pilot timings, and first 10\%-data results with a revised plan.
+
+\topic{Expected outcome.}
+Reproducible code, accuracy--cost and data-scaling curves, and physical-fidelity comparisons showing when each architecture is most effective, including negative results.
+
+\newpage
+
+\begin{thebibliography}{9}
+\setlength{\itemsep}{8pt}
+
+\bibitem{ohana2024well}
+Ohana, R., et al.
+``The Well: a Large-Scale Collection of Diverse Physics
+Simulations for Machine Learning.''
+NeurIPS, Datasets and Benchmarks Track, 2024.\\
+\url{https://arxiv.org/abs/2412.00568}
+
+\bibitem{liu2022convnext}
+Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T.,
+and Xie, S.
+``A ConvNet for the 2020s.''
+CVPR, 2022.\\
+\url{https://arxiv.org/abs/2201.03545}
+
+\bibitem{kossaifi2024tfno}
+Kossaifi, J., Kovachki, N., Azizzadenesheli, K.,
+and Anandkumar, A.
+``Multi-Grid Tensorized Fourier Neural Operator for
+High-Resolution PDEs.''
+TMLR, 2024.\\
+\url{https://arxiv.org/abs/2310.00120}
+
+\bibitem{mccabe2024mpp}
+McCabe, M., et al.
+``Multiple Physics Pretraining for Spatiotemporal
+Surrogate Models.''
+NeurIPS, 2024.\\
+\url{https://arxiv.org/abs/2310.02994}
+
+\end{thebibliography}
+
+\end{document}

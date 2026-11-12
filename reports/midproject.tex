@@ -11,6 +11,7 @@
 \usepackage{xcolor}
 \usepackage[font=small,labelfont=bf]{caption}
 \usepackage[section]{placeins}  % floats stay in their section
+\usepackage{xurl}  % long commit URLs break across lines
 \usepackage[hidelinks]{hyperref}
 
 \pagestyle{plain}
@@ -18,8 +19,6 @@
 \setlength{\parskip}{5pt}
 \graphicspath{{figures/}}
 
-% Values still being computed (four 10%-data evaluations were running on 2026-11-11).
-\newcommand{\verify}[1]{\par\noindent\textcolor{red!65!black}{\textbf{Verification needed:} #1}\par}
 \newcommand{\pending}{\textcolor{gray}{\textit{pending}}}
 % Include a figure if it exists yet, otherwise a placeholder box naming it.
 \newcommand{\figureorpending}[2]{\IfFileExists{figures/#1}{\includegraphics[#2]{#1}}{%
@@ -43,15 +42,20 @@
 
 The abstract set three milestones for this check-in. Their status:
 \begin{enumerate}
-    \item \textbf{Data pipeline validated against The Well's released checkpoints: numerical agreement obtained.} Our data loading and
-    metric code reproduce the paper's published test VRMSE for the released CNextU-Net and TFNO to within 1\%,
-    and recover rollout errors in the same reported range (``$>10$''). The released TFNO needs the forward pass it was trained with, which differs from the corrected one our runs use (Section~\ref{sec:setup}).
-    \item \textbf{Budgets fixed from pilot timings: done.} Batch 64, fp32, learning rate $10^{-3}$ for every
-    model (from an equal-budget search), and 4-hour budgets measured in active GPU training time, with allocated GPU time reported separately.
+    \item \textbf{Data pipeline validated against The Well's released checkpoints: numerical agreement obtained.}
+    Our data loading and metric code reproduce the paper's published test VRMSE for the released CNextU-Net and
+    TFNO to within 1\%, and recover rollout errors in the same reported range (``$>10$''). The released TFNO
+    needs the forward pass it was trained with, which differs from the corrected one our runs use
+    (Section~\ref{sec:setup}, Appendix~\ref{app:tfno}).
+    \item \textbf{Budgets fixed from pilot timings: done.} Batch 64, fp32, peak learning rate $10^{-3}$ for every
+    model (from an equal-budget search), and 4-hour budgets measured in active GPU training time, with allocated
+    GPU time reported separately.
     \item \textbf{First 10\%-data results: done.} All six 10\% runs (3 models $\times$ 2 seeds) are trained and
-    evaluated on the full test set at 1 and 4 hours (Section~\ref{sec:results}). After 4 hours CNextU-Net is the
-    most accurate in developed convection and the most stable in rollouts; AViT matches it one step ahead but
-    degrades fastest over a rollout; TFNO is too smooth. A revised plan is in Section~\ref{sec:plan}.
+    evaluated on the full test set at 1 and 4 hours (Section~\ref{sec:results}). After 4 hours, among our models,
+    CNextU-Net is the most accurate in developed convection and the most stable in rollouts; AViT has a similar
+    one-step error but degrades fastest over a rollout; TFNO is too smooth. These findings hold for these
+    configurations, 10\% of the training data and the tested budgets. A revised plan is in
+    Section~\ref{sec:plan}.
 \end{enumerate}
 
 \section{Setup}
@@ -63,27 +67,20 @@ buoyancy, pressure and both velocity components, a model predicts the next frame
 autoregressively. Fields are normalised with The Well's training statistics.
 
 \textbf{Models.} The Well's own implementations, trained from random initialisation, with matched parameter
-counts (Table~\ref{tab:models}). All three use GELU activations. Released-checkpoint reproduction and training
-with corrected code must be distinguished, because the same weights do not imply the same forward computation.
-In The Well's code, commit \texttt{2d8d7eaf} (2024-06-03, ``Added gradient checkpointing'') called TFNO's
-Fourier blocks without keeping their output, so the model computed only its lifting and projection layers;
-commit \texttt{e4301602} (2025-11-17, ``actually use the TFNO blocks'') restored the assignment~\cite{wellcode}.
-The paper's TFNO results and the released TFNO checkpoint (uploaded 2025-03-28) date from that period. For the
-pipeline check (Section~2) we scored the released TFNO weights with the forward pass they were trained with
-(Fourier blocks skipped): it reproduces the published value; with the corrected forward pass the same weights
-score $\approx$10.5. Our own runs use The Well at commit \texttt{e63dec8}, which includes the fix, so our TFNO
-uses its Fourier layers (software: neuraloperator 0.3.0, PyTorch 2.8.0; our repository at \texttt{f42b2e2} for
-training and \texttt{4c0d3a8} for evaluation). Upstream issue \#49 reports related inconsistencies between
-released checkpoints and published numbers~\cite{wellcode}.
+counts (Table~\ref{tab:models}). All three use GELU activations. For TFNO, released-checkpoint reproduction and
+training with the current code must be distinguished: the paper-era code skipped TFNO's Fourier layers, an error
+fixed upstream in November 2025. We scored the released TFNO weights with the forward pass they were trained
+with, and our own TFNO, trained with the fixed code (The Well at \texttt{e63dec8}), uses its Fourier layers
+(Appendix~\ref{app:tfno}).
 
 \begin{table}[h]
 \centering\footnotesize
-\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}Xrl>{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\linewidth}{@{}llrl>{\raggedright\arraybackslash}X@{}}
 \toprule
 Model & Family & Parameters & Normalisation & Relation to released checkpoint \\
 \midrule
 CNextU-Net~\cite{liu2022convnext} & ConvNeXt U-Net, 4 stages & 18.58M & LayerNorm & same architecture \\
-TFNO~\cite{kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & none & same configuration; ours runs the Fourier layers (fixed forward), the released weights need the pre-fix forward \\
+TFNO~\cite{kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & none & same configuration, fixed forward \\
 AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & GroupNorm, LayerNorm & none released; width 384 $\to$ 432 \\
 \bottomrule
 \end{tabularx}
@@ -91,46 +88,49 @@ AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & GroupNorm, LayerNorm 
 \label{tab:models}
 \end{table}
 
-\textbf{Training.} All models use AdamW, one-step MSE in normalised field values, batch size 64,
-and fp32. An equal-budget validation search selected a peak learning rate of $10^{-3}$ for each model.
-Training uses 500 warmup steps followed by cosine decay to zero over four hours of active GPU training.
-The detailed comparison with the reference recipe is in Appendix~\ref{sec:recipe}.
-Checkpoints are saved at one and four hours. The one-hour checkpoint is an intermediate state of the
-four-hour schedule (learning rate approximately 85\% of peak), not a separately optimised one-hour run.
-Thus, the study measures progress along a shared training schedule; it does not establish the best
-performance achievable with an independently tuned one-hour schedule.
+\textbf{Training.} All models use AdamW, one-step MSE in normalised field values, batch size 64 and fp32, with a
+peak learning rate of $10^{-3}$, 500 warmup steps and cosine decay to zero over four hours of active GPU training
+on one A100. The paper trained for 12 hours on an H100 with its own learning rates and schedule, so ours is a
+different experiment (Appendix~\ref{app:recipe}). Checkpoints are saved at one and four hours. The one-hour
+checkpoint is an intermediate state of the four-hour schedule (learning rate about 85\% of peak), not a
+separately optimised one-hour run, so it measures progress along a shared schedule, not the best performance
+achievable in one hour.
 
-\textbf{Evaluation and metric conventions.} VRMSE is dimensionless. For one window (one predicted frame) and
-one field $f$ it is computed by The Well's metric code (\texttt{the\_well.benchmark.metrics.VRMSE} at
-\texttt{e63dec8}) as
+\textbf{VRMSE.} For one window (one predicted frame) and one field $f$, The Well's metric code (its
+\texttt{VRMSE} class at commit \texttt{e63dec8}) computes
 \[
 \mathrm{VRMSE}_f=\sqrt{\frac{\frac{1}{N}\sum_{i=1}^{N}(\hat y_{f,i}-y_{f,i})^2}{s_f^2+\varepsilon}},
 \qquad s_f^2=\frac{1}{N-1}\sum_{i=1}^{N}(y_{f,i}-\bar y_f)^2,\qquad \varepsilon=10^{-7},
 \]
 over the $N=512\times128$ grid points of the target frame. The four fields (buoyancy $b$, pressure $p$, and the
-velocity components $u$, $w$) are averaged with equal weights; reported values are means over windows with
-equal weight per window (one-step: all 196 windows of each of the 175 test trajectories; rollouts: per step,
-over trajectories and start frames). Two variants are reported, with the same formula and the same averaging.
-They differ only in the field values passed in: the \emph{paper protocol} scores normalised fields,
-$(y_f-\mu_f)/\sigma_f$ with The Well's training statistics ($\sigma_f = 0.249, 0.149, 0.208, 0.180$ for
-$b, p, u, w$); our \emph{physical-field VRMSE} scores the fields as stored. Without $\varepsilon$ the two would
-be identical, since the ratio is invariant to an affine rescaling of each field. With $\varepsilon$, normalising
-multiplies $s_f^2$ by $1/\sigma_f^2$ (16--45), so the floor shrinks from $10^{-7}$ to the equivalent of
-$\varepsilon\sigma_f^2\approx 2$--$6\times10^{-9}$. During the first $\sim$50 frames the velocity is nearly
-zero (exactly zero at $t=0$) and its spatial variance is comparable to $10^{-7}$, so the physical-field score is
-damped there and the normalised one is not. This is the whole difference between the released CNextU-Net's
-0.669 (paper protocol) and 0.224 (physical fields): on onset windows they score 2.510 and 0.766, while from frame
-50 on both give 0.038 (our 10\% model: 0.0499 in both).
+velocity components $u$, $w$) are averaged with equal weights, and reported values are means over windows with
+equal weight per window (one-step: all 196 windows of each of the 175 test trajectories; rollouts: per step, over
+trajectories and start frames). Two variants use the same formula and averaging and differ only in the field
+values passed in: the \emph{paper protocol} scores normalised fields, $(y_f-\mu_f)/\sigma_f$ with The Well's
+training statistics ($\sigma_f = 0.249, 0.149, 0.208, 0.180$ for $b, p, u, w$); our \emph{physical-field VRMSE}
+scores the fields as stored. Without $\varepsilon$ the two would be identical, since the ratio is invariant to an
+affine rescaling of each field. With $\varepsilon$, normalising multiplies $s_f^2$ by $1/\sigma_f^2$ (16--45), so
+the floor shrinks from $10^{-7}$ to the equivalent of $\varepsilon\sigma_f^2\approx 2$--$6\times10^{-9}$. During the
+first $\sim$50 frames the velocity is nearly zero (exactly zero at $t=0$) and its spatial variance is comparable to
+$10^{-7}$, so the physical-field score is damped there and the normalised one is not. This is the whole difference
+between the released CNextU-Net's 0.669 (paper protocol) and 0.224 (physical fields): on early windows they score
+2.510 and 0.766, while from frame 50 on both give 0.038.
 
-\textbf{Failure horizon.} For a rollout, the first step whose field-mean physical-field VRMSE exceeds a
-threshold (1, 2 or 5, all reported). Rollouts start at frames 20, 80 and 140 of every test trajectory and run
-30 steps; rollouts that never cross a threshold are right-censored at step 30 and summarised by Kaplan--Meier
-survival curves.
+\textbf{Failure horizon.} For a rollout, the first step whose field-mean physical-field VRMSE exceeds a threshold
+(1, 2 or 5, all reported). Rollouts start at frames 20, 80 and 140 of every test trajectory and run 30 steps. We
+report the fraction of rollouts that stay below each threshold through step 30 (Table~\ref{tab:rollout}) and,
+for threshold 1, its value at every step (Kaplan--Meier survival; Fig.~\ref{fig:rollouts}b).
+
+\textbf{Kinetic-energy spectrum.} At each grid row, the two velocity components are Fourier-transformed along the
+periodic $x$ axis; $E(k_x)$ is the one-sided energy $\tfrac12(|\hat u|^2+|\hat w|^2)$ at
+$k_x = 2\pi n/L_x$ ($L_x=4$), averaged over the Chebyshev-spaced rows with quadrature weights, so that summing over
+$k_x$ gives the domain-mean kinetic energy. Spectra are averaged over the rollouts of each regime (5 trajectories
+$\times$ 3 start frames) at steps 1, 10 and 30, separately for predictions and truth.
 
 \section{Milestone 1: pipeline validated against the released checkpoints}
 
-We loaded The Well's released CNextU-Net and TFNO weights and scored them with our own data
-path and metric on every window of the 175 test trajectories (Table~\ref{tab:released}).
+We loaded The Well's released CNextU-Net and TFNO weights and scored them with our own data path and metric on
+every window of the 175 test trajectories (Table~\ref{tab:released}).
 
 \begin{table}[h]
 \centering\small
@@ -148,70 +148,51 @@ TFNO & 0.663 & 0.657 & 142 / 169 & $>10$ / $>10$ \\
 \label{tab:released}
 \end{table}
 
-Three preliminary observations shape how we report results:
+Three observations shape how we report results:
 \begin{itemize}
     \item \textbf{Aggregate relative error is sensitive to the early frames} (Fig.~\ref{fig:released}). For the
-    first $\sim$50 frames the fluid is nearly at rest; the evaluated models have large relative velocity errors there, and copying
-    the last frame (persistence) is nearly exact. From frame 50 on, the released CNextU-Net scores 0.038, against
-    an all-window mean of 0.224 in physical fields (0.669 under the paper protocol). Near-zero target variability can amplify relative error, so this does not establish that absolute errors are largest during onset. We therefore also report onset (first input frame $<50$) and
-    developed convection separately.
+    first $\sim$50 frames the fluid is nearly at rest; the evaluated models have large relative velocity errors
+    there, and copying the last frame (persistence) is nearly exact. From frame 50 on, the released CNextU-Net
+    scores 0.038, against an all-window mean of 0.224 in physical fields (0.669 under the paper protocol).
+    Near-zero target variability can amplify relative error, so this does not establish that absolute errors are
+    largest early on. We therefore also report early (\emph{onset}) and later (\emph{developed}) windows
+    separately.
     \item \textbf{Rollout error varies substantially with Rayleigh number.} At $\mathrm{Ra}=10^{10}$ the released
     CNextU-Net's median over steps 13--30 is 1.7; at $10^{6}$ it is 69.
-    \item \textbf{The fixed test evaluation is the clearer reproduction target.} The paper's validation values use 20 random
-    batches per epoch; exact agreement would additionally require the same sampled batches and evaluation state.
+    \item \textbf{The fixed test evaluation is the clearer reproduction target.} The paper's validation values
+    use 20 random batches per epoch; exact agreement would additionally require the same sampled batches and
+    evaluation state.
 \end{itemize}
 
 \begin{figure}[h]
 \centering
 \figureorpending{fig_released_by_window.pdf}{scale=1}
-\caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, scored
-under the paper protocol (left) and on physical fields (right). Shaded: convection onset (first input frame
-$<50$). Persistence copies the last input frame.}
+\caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, under
+the paper protocol (left) and on physical fields (right). Shaded: windows whose first input frame is below 50,
+reported as \emph{onset}; the others are \emph{developed}. The cut at frame 50 is operational, chosen where the
+released checkpoints' error levels off on the validation split; it is not a transition verified for every
+regime. Persistence copies the last input frame.}
 \label{fig:released}
 \end{figure}
 
 \section{Milestone 2: budgets fixed from pilot timings}
 
-\textbf{Resource accounting.} \emph{Active GPU training time} is the measured training time counted
-against the experimental budget. \emph{Allocated GPU time} is the duration for which a job occupies a GPU,
-including data waits and other overhead. \emph{Service units (SU)} are the cluster's accounting charges.
-Queue time is reported separately and is not allocated GPU time.
-Active training time is measured per optimizer step with a host-side monotonic clock
-(\texttt{time.perf\_counter}), from the moment the data loader returns the batch to just after
-\texttt{torch.cuda.synchronize()} following the optimizer update. It therefore includes the host-to-device copy
-of the batch (pinned memory, non-blocking), setting the learning rate, the forward pass, the loss, the backward
-pass, the optimizer step and the host-side launch overhead of these operations. It excludes the wait for the
-next batch (logged as data-wait time), reading the loss value, logging, validation, checkpoint writes and
-start-up. After a crash the clock resumes from the last saved checkpoint, so lost steps are not counted. A
-milestone checkpoint is written after the first step at which the cumulative time reaches 1\,h or 4\,h
-(overshoot below one step).
+\textbf{Resource accounting.} \emph{Active GPU training time} is the measured training time counted against the
+budget (optimizer steps only; Appendix~\ref{app:accounting} gives the timer boundaries). \emph{Allocated GPU time}
+is the duration for which a job occupies a GPU, including data waits and other overhead. \emph{Service units (SU)}
+are the cluster's charges on its paid partition. Queue time is reported separately and is not allocated GPU time.
 
-\textbf{Budget clock.} Data are read from the cluster's shared file system, which delivers at most
-$\sim$98 training samples per second into one node and stalls for 5--22 minutes at a time, on all nodes at
-once. TFNO and AViT consume 116 and 330 samples per second of GPU time (Fig.~\ref{fig:loader}), so a wall-clock
-budget would partly measure our storage. The 1-hour and 4-hour budgets count active GPU training time; waiting for
+\textbf{Budget clock.} Data are read from the cluster's shared file system, which delivers at most $\sim$98
+training samples per second into one node and stalls for 5--22 minutes at a time, on all nodes at once. TFNO and
+AViT consume 116 and 330 samples per second of GPU time (Fig.~\ref{fig:loader}), so a wall-clock budget would
+partly measure our storage. The 1-hour and 4-hour budgets therefore count active GPU training time; waiting for
 data is logged separately.
 
-\begin{figure}[h]
-\centering
-\figureorpending{fig_loader.pdf}{scale=1}
-\caption{Training samples per second read from the shared file system by one node, against the rate at which
-each model consumes them on the GPU (horizontal lines).}
-\label{fig:loader}
-\end{figure}
-
 \textbf{Learning rate.} An equal-budget search (20 minutes of GPU training per run, 10\% data, validation only)
-over $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}\}$ chose $10^{-3}$ for all three models (Table~\ref{tab:lr}). It is the
-largest rate tried, so this identifies the best candidate tested, not an optimal learning rate.
-The initial grid is a bounded pilot search within the project's tuning budget: three models, three rates,
-and 20 minutes per trial require three hours of active GPU training in total.
-Rates above $10^{-3}$ were not evaluated, so their accuracy and stability are unknown.
-A larger learning rate may speed early learning, but it may also increase oscillation or destabilise
-training; no such failure is established here for an untested rate.
-The 20-minute ranking may also differ from the ranking after four hours.
-To preserve the current comparison, completed runs retain the selected rates. If additional tuning is
-performed, every family should receive the same additional search budget, using validation data only,
-and any changed configuration should be reported as a separate experiment.
+chose $10^{-3}$ for all three models (Table~\ref{tab:lr}). The Well swept $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
+5\cdot10^{-3}, 10^{-2}\}$; we tested its lower three rates and omitted the two largest to limit tuning cost. Since
+$10^{-3}$ is the largest rate tried, it is the best candidate tested, not an established optimum, and the
+20-minute ranking may differ from the ranking after four hours.
 
 \begin{table}[h]
 \centering\small
@@ -228,62 +209,44 @@ AViT & 0.646 & 0.332 & \textbf{0.257} \\
 \label{tab:lr}
 \end{table}
 
-\textbf{Batch size and precision.} Batch 64 (The Well's) fits every model in fp32 on an A100 80\,GB (peak
-64.8\,GB for CNextU-Net). The current TFNO implementation requires fp32 FFT operations, so all models use fp32 for this comparison. This is an implementation constraint, not a claim that mixed-precision TFNO is impossible.
+\textbf{Batch size and precision.} Batch 64 (The Well's) fits every model in fp32 on an A100 80\,GB; CNextU-Net
+peaks at 64.8\,GB of memory reserved by PyTorch (60.9\,GB allocated, Table~\ref{tab:resources}). The current TFNO
+implementation requires fp32 FFT operations, so all models use fp32 for this comparison. This is an
+implementation constraint, not a claim that mixed-precision TFNO is impossible.
 
-\textbf{Pilot against actual.} The pilots predicted 4\,h of GPU training to take 6.0 / 8.0 / 9.7\,h of wall
-time (CNextU-Net / TFNO / AViT) at the stall rate observed then; the 10\% runs took 5.2--6.0 / 6.9--7.1 /
-11.1--12.2\,h.
+\textbf{Pilot against actual.} The pilots predicted 4\,h of GPU training to take 6.0 / 8.0 / 9.7\,h of wall time
+(CNextU-Net / TFNO / AViT) at the stall rate observed then; the 10\% runs took 5.2--6.0 / 6.9--7.1 /
+11.1--12.2\,h (Appendix~\ref{app:accounting}).
 
 \section{Milestone 3: first 10\%-data results}
 \label{sec:results}
 
-\textbf{Training.} The six runs completed their 4-hour budgets (Table~\ref{tab:train}, Fig.~\ref{fig:curves}).
-On the fixed validation sample, AViT and CNextU-Net reach similar error after 4 hours; TFNO's loss plateaus after $\sim$1.5 hours.
-CNextU-Net's validation error peaks near one hour while its learning rate is still high; this temporal association does not establish the learning rate as the cause. The test evaluation below, on all test trajectories and both seeds, gives the rankings.
-
-\begin{table}[h]
-\centering\small
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-& \multicolumn{2}{c}{Validation VRMSE (seed 0 / 1)} & Epochs & Wall time & SU \\
-\cmidrule(lr){2-3}
-Model & 1 h & 4 h & in 4 h & per run & per run \\
-\midrule
-CNextU-Net & 1.043 / 0.772 & 0.167 / 0.178 & 28 & 5.2--6.0 h & 189--191 \\
-TFNO & 0.508 / 0.524 & 0.310 / 0.325 & 61 & 6.9--7.1 h & 274--286 \\
-AViT & 0.468 / 0.418 & 0.161 / 0.167 & 175 & 11.1--12.2 h & 443--488 \\
-\bottomrule
-\end{tabular}
-\caption{The 10\% runs (140 training trajectories). Validation: 64 fixed windows, physical-field VRMSE.}
-\label{tab:train}
-\end{table}
-The 64 validation windows are fixed and evenly spaced over the 34,300 one-step windows of the validation split
-(175 trajectories $\times$ 196), taken in the dataset's order (regime, trajectory, time): indices
-$\mathrm{round}(\mathrm{linspace}(0, 34299, 64))$. They cover all 35 regimes (one or two windows each) and 64
-different trajectories; 18 of them (28\%) are onset windows (first input frame $<50$), close to the 26\% of all
-windows. The learning-rate search used 512 windows chosen the same way (all 35 regimes, all 175 trajectories,
-25\% onset); the two samples share 8 windows. This monitoring sample does not replace the full test evaluation.
+\textbf{Training} (Fig.~\ref{fig:curves}). The six runs completed their 4-hour budgets (Table~\ref{tab:train}).
+On a fixed validation sample of 64 windows (Appendix~\ref{app:accounting}), AViT and CNextU-Net reach similar
+error after 4 hours; TFNO's loss plateaus after $\sim$1.5 hours. CNextU-Net's validation error peaks near one
+hour while its learning rate is still high; this temporal association does not establish the learning rate as
+the cause.
 
 \begin{figure}[h]
 \centering
 \figureorpending{fig_training.pdf}{scale=1}
-\caption{Training loss (left; smoothed over 3 minutes of training) and validation VRMSE on the 64 fixed windows
-(right) against active GPU training time, 10\% data. Solid: seed 0; dashed: seed 1. Vertical lines: the 1-hour
-and 4-hour checkpoints.}
+\caption{Training MSE in normalised units (left; smoothed over 3 minutes of training) and validation VRMSE on the
+64 fixed windows, physical fields (right), against active training time, 10\% data. Solid: seed 0; dashed: seed 1.
+Vertical lines: the 1-hour and 4-hour checkpoints.}
 \label{fig:curves}
 \end{figure}
 
 \textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow}).
-After 4 hours AViT and CNextU-Net have the same one-step error over all windows (0.134 and 0.136) and TFNO a
+After 4 hours AViT and CNextU-Net have similar one-step error over all windows (0.134 and 0.136) and TFNO a
 higher one (0.209), but the two phases separate them: in developed convection CNextU-Net is clearly the most
-accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), while AViT is the most accurate during onset. At
-4 hours the two seeds agree to within 0.006; at 1 hour they do not (CNextU-Net: 0.85 and 0.60), and the order is
-reversed: AViT (0.39) and TFNO (0.47) are ahead of CNextU-Net (0.73), whose 1-hour checkpoint is far from
-converged. The released CNextU-Net, trained on all the data for longer, remains better in developed convection
-(0.038 against 0.050). Our TFNO, which uses its Fourier layers, is better than the released TFNO everywhere
-(developed 0.109 against 0.190; paper protocol 0.488 against 0.663) despite 10\% of the data and 4 hours.
-Persistence is better than every model during onset and 2--4.5 times worse in developed convection.
+accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), while AViT is the most accurate during onset. At four
+hours the across-seed standard deviation of the all-window VRMSE is at most 0.006; at one hour it is up to 0.18
+(CNextU-Net: 0.85 and 0.60), and the order is reversed: AViT (0.39) and TFNO (0.47) are ahead of CNextU-Net
+(0.73), whose one-hour checkpoint is far from converged. The released CNextU-Net, trained on all the data for
+longer, remains better in developed convection (0.038 against 0.050). Our TFNO, which uses its Fourier layers, is
+better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
+despite 10\% of the data and 4 hours. Persistence is better than every model during onset and 2--4.5 times worse
+in developed convection.
 
 \begin{table}[h]
 \centering\small
@@ -314,25 +277,27 @@ first input frame $<50$; developed: $\geq 50$. Bold: best of our 4-hour models.}
 \begin{figure}[h]
 \centering
 \figureorpending{fig_test_by_window.pdf}{scale=1}
-\caption{One-step test VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models
-at 4 hours (seed mean; band: range over seeds), the released CNextU-Net trained on all the data, and
-persistence. Shaded: convection onset.}
+\caption{One-step test VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models at
+4 hours (seed mean; band: range over seeds), the released CNextU-Net trained on all the data, and persistence.
+Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}
 \label{fig:testwindow}
 \end{figure}
 
-\textbf{Rollouts} (Table~\ref{tab:rollout}). One-step accuracy does not carry over to rollouts in the same order.
-CNextU-Net is the most stable: after 30 steps from frames 80 and 140 its error (0.53, 0.40) is below
-persistence's (0.86, 0.54), and 89\% of its rollouts stay below VRMSE 1. AViT, despite matching CNextU-Net one
-step ahead, degrades fastest (0.80, 0.65; 63\% below 1), and from frame 20, during onset, its error grows to 5.4.
-TFNO lies in between. Under the paper's frame-0 protocol all three land in the ``$>10$'' range; CNextU-Net
-(15 / 30) is below both released checkpoints.
+\textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). One-step accuracy does not carry over to
+rollouts in the same order. Among our trained models, CNextU-Net is the most stable: after 30 steps from frames 80
+and 140 its error (0.53, 0.40) is below persistence's (0.86, 0.54), and 89\% of its rollouts stay below VRMSE 1
+through step 30. AViT, despite a similar one-step error, degrades fastest (0.80, 0.65; 63\%), and from frame 20,
+during onset, its error grows to 5.4. TFNO lies in between. Persistence keeps more rollouts below the thresholds
+because its error levels off near 0.7, while it is 2--5 times less accurate than every model over the first steps
+from developed flow (Fig.~\ref{fig:rollouts}a). Under the paper's frame-0 protocol all three models land in the
+``$>10$'' range; CNextU-Net (15 / 30) is below both released checkpoints.
 
 \begin{table}[h]
 \centering\footnotesize
 \begin{tabular}{@{}lccc@{}}
 \toprule
-& VRMSE after 30 steps & Rollouts below VRMSE & Paper protocol, steps \\
-Model & from frame 20 / 80 / 140 & 1 / 2 / 5 after 30 steps & 6--12 / 13--30 (normalised) \\
+& VRMSE after 30 steps & Fraction staying below threshold & Paper protocol, steps \\
+Model & from frame 20 / 80 / 140 & through step 30: 1 / 2 / 5 & 6--12 / 13--30 (normalised) \\
 \midrule
 CNextU-Net, 4 h & 1.78 / \textbf{0.53} / \textbf{0.40} & \textbf{0.89} / \textbf{0.94} / \textbf{0.98} & \textbf{15} / \textbf{30} \\
 TFNO, 4 h & 1.79 / 0.59 / 0.45 & 0.75 / 0.85 / 0.91 & 51 / 77 \\
@@ -344,102 +309,108 @@ Persistence & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
 \bottomrule
 \end{tabular}
 \caption{Rollouts on the test set, physical-field VRMSE unless stated, mean over the two seeds. Middle column:
-share of the 525 rollouts (175 trajectories $\times$ 3 start frames) whose error stays below each threshold for
-all 30 steps. Right: the paper's Table 3 protocol (published: $>10$ in both windows).}
+fraction of the 525 rollouts (175 trajectories $\times$ 3 start frames) whose error stays below each threshold at
+every step through step 30. Right: the paper's Table 3 protocol (published: $>10$ in both windows); bold: best of
+our models.}
 \label{tab:rollout}
 \end{table}
 
-\textbf{Speed and memory} (Table~\ref{tab:resources}). In the same 4 hours of GPU training AViT takes six times
-as many optimizer steps as CNextU-Net and uses a seventh of the memory; TFNO is the fastest at inference.
+\begin{figure}[h]
+\centering
+\figureorpending{fig_rollouts.pdf}{scale=1}
+\caption{Rollouts of our 10\% models at 4 hours (seed mean) and persistence. (a) Physical-field VRMSE at each
+step, mean over the rollouts from frames 80 and 140 (developed convection). (b) Fraction of all 525 rollouts that
+have stayed below VRMSE 1 up to each step (Kaplan--Meier survival).}
+\label{fig:rollouts}
+\end{figure}
+
+\textbf{Speed and memory} (Table~\ref{tab:resources}). In the same 4 hours of GPU training AViT takes six times as
+many optimizer steps as CNextU-Net and allocates a seventh of the memory; TFNO is the fastest at inference.
 
 \begin{table}[h]
 \centering\footnotesize
 \begin{tabular}{@{}lccccc@{}}
 \toprule
-Model & Optimizer steps in 4 h & Epochs & Peak training memory & Inference, per step & Per 30-step rollout \\
+& Optimizer steps & & Peak training memory & Inference & Inference per \\
+Model & in 4 h & Epochs & allocated (reserved) & per step & 30-step rollout \\
 \midrule
-CNextU-Net & 12,122--12,194 & 28 & 60.9\,GB & 8.3\,ms & 249\,ms \\
-TFNO & 26,339--26,352 & 61 & 48.6\,GB & 4.4\,ms & 135\,ms \\
-AViT & 74,978--75,060 & 175 & 8.8\,GB & 5.4\,ms & 163\,ms \\
+CNextU-Net & 12,122--12,194 & 28 & 60.9 (64.8)\,GB & 8.3\,ms & 249\,ms \\
+TFNO & 26,339--26,352 & 61 & 48.6 (56.9)\,GB & 4.4\,ms & 135\,ms \\
+AViT & 74,978--75,060 & 175 & 8.8 (8.9)\,GB & 5.4\,ms & 163\,ms \\
 \bottomrule
 \end{tabular}
-\caption{Training throughput and memory (allocated, batch 64, fp32) and inference latency (batch 1), on one
-A100 80\,GB.}
+\caption{Training throughput and memory (batch 64, fp32) and inference latency (batch 1), on one A100 80\,GB.
+Allocated: tensors in use; reserved: memory held by PyTorch's allocator.}
 \label{tab:resources}
 \end{table}
 
-\textbf{Physical fidelity} (4-hour checkpoints; Fig.~\ref{fig:spectra}). Each architecture errs at a different
-scale. As medians over the 35 regimes of the predicted-to-true energy ratio: CNextU-Net keeps the large and middle
-scales ($k_x<100$) within 15\% at every step and overshoots the small scales by a factor of 20--30. TFNO is too
-smooth: its middle-scale energy falls to 0.40 of the truth after one step and 0.12 after 30, while its small
-scales stay within a factor of 3; this is consistent with its spectral layers keeping only the 16 lowest Fourier
-modes in each direction ($k_x \lesssim 25$). AViT is accurate after one step at large and middle scales but
-accumulates energy during the rollout, reaching 5 times the truth at middle scales and over 700 times at small
-scales after 30 steps, in line with its fast degradation in rollouts. Persistence repeats its last input field, so its predicted spectrum is fixed within a rollout. Changes in its predicted-to-true energy ratio reflect the evolving true spectrum, not decay in the copied prediction. Ratios at the smallest scales should also be read alongside absolute spectra, because very small true energy can magnify the ratio.
+\textbf{Physical fidelity} (4-hour checkpoints; Fig.~\ref{fig:spectra}). The kinetic-energy spectrum shows at
+which scales each model's errors lie. It is a complementary diagnostic, not the paper's binned spectral error, and
+it describes how energy is distributed over scales, not where structures are: a model can match the spectrum with
+plumes in the wrong places. The values below are medians over the 35 regimes and both seeds of the
+predicted-to-true ratio, taken per wavenumber at steps 1, 10 and 30 (the steps evaluated). CNextU-Net stays
+within 0.80--1.57 below $k_x=100$ and reaches 190--530 at the highest wavenumbers. TFNO is too smooth: between
+$k_x\approx 25$ and 100 its ratio falls to 0.33 after one step and 0.09 after 30, and it reaches 9--50 at the
+highest wavenumbers. AViT stays within 0.97--1.34 below $k_x=100$ after one step, but after 30 steps it ranges
+from 0.55 to 21 there and reaches about $5\times10^4$ at the highest wavenumbers. The TFNO deficit is consistent
+with its spectral layers keeping only the 16 lowest Fourier modes in each direction ($k_x \lesssim 25$), and
+AViT's growth with the patch-shaped artifacts in Fig.~\ref{fig:snapshots}; neither is established as the cause.
+Persistence repeats its last input field, so its predicted spectrum is fixed within a rollout; changes in its
+ratio reflect the evolving true spectrum. Ratios at the smallest scales should also be read alongside absolute
+spectra, because very small true energy can magnify the ratio.
 
 \begin{figure}[h]
 \centering
 \figureorpending{fig_spectra.pdf}{scale=1}
-\caption{Horizontal kinetic-energy spectra. (a) True and predicted spectrum after 30 rollout steps for one
-regime ($\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$). (b, c) Predicted over true spectrum after 1 and 30 steps: median
-over the 35 regimes (band: middle 50\%); 1 is exact. Shaded: small scales ($k_x > 100$).}
+\caption{Horizontal kinetic-energy spectra. (a) True and predicted spectrum after 30 rollout steps for one regime
+($\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$). (b, c) Predicted over true spectrum after 1 and 30 steps, per wavenumber:
+median over the 35 regimes (band: middle 50\%); 1 is exact. Shaded: small scales ($k_x > 100$).}
 \label{fig:spectra}
 \end{figure}
 
-\textbf{What the predictions look like} (Figs.~\ref{fig:snapshots} and~\ref{fig:snapshots10}): the true buoyancy
-field next to each model's rollout from the same four input frames, seed 0. At $\mathrm{Ra}=10^8$ CNextU-Net
+\textbf{What the predictions look like} (Fig.~\ref{fig:snapshots}; $\mathrm{Ra}=10^{10}$ in
+Appendix~\ref{app:snapshots}). The figure shows buoyancy, while the spectra are computed from velocity, so the two
+are related qualitative evidence rather than measurements of the same field. At $\mathrm{Ra}=10^8$ CNextU-Net
 follows the true plumes through 30 steps. TFNO blurs them and builds a spurious warm layer along the bottom wall.
-By step 12 AViT shows rectangular artifacts at the size of its $16\times16$-pixel patches, consistent with the
-energy it gains at middle and small scales (Fig.~\ref{fig:spectra}). At $\mathrm{Ra}=10^{10}$ the true flow is far
-finer than any of the three reproduces; CNextU-Net keeps the large-scale plume pattern but smooths the small
-structures, and TFNO and AViT show the same failures as at $10^8$.
+By step 12 AViT shows rectangular artifacts at the size of its $16\times16$-pixel patches. At
+$\mathrm{Ra}=10^{10}$ the true flow is far finer than any of the three reproduces; CNextU-Net keeps the
+large-scale plume pattern but smooths the small structures.
 
 \begin{figure}[h]
 \centering
 \figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e8_Prandtl_1__0__s080.pdf}{scale=1}
-\caption{Buoyancy on a test trajectory at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$, rolled out from frame 80: the
-true flow and our 10\% / 4-hour models (seed 0) after 1, 12 and 30 steps. Bright: warm; dark: cold. The colour
-range covers the interior (1st to 99th percentile of the true field), so the hot bottom wall saturates.}
+\caption{Buoyancy on a test trajectory at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$, rolled out from frame 80: the true
+flow and our 10\% / 4-hour models (seed 0) after 1, 12 and 30 steps. Bright: warm; dark: cold. One colour range
+is used for all panels: the 1st to 99th percentile of the true field away from the walls, so the hot bottom wall
+saturates.}
 \label{fig:snapshots}
-\end{figure}
-
-\begin{figure}[h]
-\centering
-\figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e10_Prandtl_1__0__s080.pdf}{scale=1}
-\caption{As Fig.~\ref{fig:snapshots}, at $\mathrm{Ra}=10^{10}$, $\mathrm{Pr}=1$.}
-\label{fig:snapshots10}
 \end{figure}
 
 \section{Revised plan}
 \label{sec:plan}
 
-The \emph{core comparison} remains three families, 10\% and 100\% training data, two seeds,
-and checkpoints at one and four hours. The main changes are:
+The \emph{core comparison} remains three families, 10\% and 100\% training data, two seeds, and checkpoints at one
+and four hours. The main changes are:
 \begin{itemize}
-    \item \textbf{Budget definition.} Experimental budgets count active GPU training time. Allocated GPU time,
-    data waits, and SU are reported separately so that storage costs remain visible.
+    \item \textbf{Budget definition.} Experimental budgets count active GPU training time. Allocated GPU time, data
+    waits and SU are reported separately so that storage costs remain visible.
     \item \textbf{Evaluation.} Report the paper protocol for reference comparisons alongside the physical-field
-    VRMSE (Section~1), separate onset from developed convection, and report the failure horizon at thresholds
-    1, 2 and 5 (defined in Section~1).
-    \item \textbf{Core resource estimate.} The original 48 hours of active training are unchanged.
-    The current working estimate is approximately 135 allocated GPU-hours for the core study and its
-    supporting work, replacing the abstract's approximately 100-hour allowance. The 10\% evaluations are now measured; the components are reconciled below. With all 10\% work complete,
-    Slurm accounting gives 72.6 allocated GPU-hours and 2,160 SU billed on the paid partition (class
-    allocation), 2026-11-11. The six 10\% runs contain 24 hours of active training and approximately 50 allocated GPU-hours.
-    \item \textbf{Optional additions, outside the core estimate.} Consider two longer reference-recipe
-    runs, one per CNextU-Net and TFNO, with the paper's learning rates and 24\,h each of active GPU training
-    (the same clock as the core runs; checkpoints at 6, 12, 18 and 24\,h): 48 active GPU-hours, roughly
-    60--90 allocated given the data waits. They are not exact replications of the paper's 12-hour H100
-    experiments, and TFNO would run with the fixed forward pass, so they test the paper's recipe rather than
-    the paper's exact model.
-    A Dedalus~\cite{burns2020dedalus} solver baseline at three resolutions is also optional and requires a
-    feasibility check for restarting the solver from saved fields with the necessary state and boundary
-    conditions. Its CPU cost is additional.
+    VRMSE, separate onset from developed convection, and report the failure horizon at thresholds 1, 2 and 5.
+    \item \textbf{One-hour budget.} Dedicated one-hour runs at 10\% data (same recipe, cosine ending at one hour)
+    have been trained to check the one-hour comparison: on the validation sample they reach 0.22--0.33, against
+    0.42--1.04 for the one-hour checkpoints above. Their test evaluation follows.
+    \item \textbf{Core resource estimate.} The 48 hours of active training are unchanged; the working estimate is
+    approximately 135 allocated GPU-hours for the core study and its supporting work (Table~\ref{tab:budget}),
+    instead of the abstract's approximately 100. With all 10\% work complete, Slurm accounting gives 72.6
+    allocated GPU-hours: 54.2 on the paid partition, billed 2,160 SU (40 SU per allocated hour for jobs with 8
+    cores, 36 for the 4-core pipeline check), and 18.3 on the free partition, which is not billed.
+    \item \textbf{Optional, outside the estimate.} 24-hour runs of CNextU-Net and TFNO with the paper's learning
+    rates (roughly 60--90 allocated GPU-hours; not an exact replication of the paper's 12-hour H100 runs), and a
+    Dedalus~\cite{burns2020dedalus} solver baseline on CPUs, which first needs a feasibility check.
 \end{itemize}
-The estimate reconciles as follows (allocated GPU-hours from Slurm accounting on 2026-11-11, projections from
-Table~\ref{tab:time}):
 
-\begin{center}\footnotesize
+\begin{table}[h]
+\centering\footnotesize
 \begin{tabular}{@{}lr@{}}
 \toprule
 Component & Allocated GPU-hours \\
@@ -447,21 +418,120 @@ Component & Allocated GPU-hours \\
 Six 10\% runs, completed (24.0 of them active training) & 49.8 \\
 Learning-rate search, profiling, pipeline check, environment checks, first replication try & 18.5 \\
 Test evaluation of the six 10\% runs and persistence (completed) & 4.2 \\
-Six 100\% runs (projected, 24.0 active) & $\sim$54--65 \\
+Six 100\% runs (projected, 24.0 active; Appendix~\ref{app:accounting}) & $\sim$54--65 \\
 Test evaluation of the 100\% runs & $\sim$4.5 \\
 \midrule
 Core study & $\sim$131--142 \\
 \bottomrule
 \end{tabular}
-\end{center}
+\caption{Allocated GPU-hours of the core study: completed parts from Slurm accounting (2026-11-11), the rest
+projected. No contingency is included; the abstract's $\sim$100 hours included $\sim$30, and a similar margin
+would bring the total to $\sim$160--170.}
+\label{tab:budget}
+\end{table}
 
-It contains no contingency, whereas the abstract's $\sim$100 hours included $\sim$30; a similar margin would bring
-it to $\sim$160--170. The optional additions above are excluded.
+\textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
+failure horizons, spectra, latency and memory. Remaining for the final report: the 100\% runs and the data--compute
+comparison (10\% against 100\% at 1 and 4 hours), the dedicated one-hour runs' test evaluation, field-wise VRMSE
+and the Nusselt-number error per model, and the flow snapshots for the 100\% runs.
 
-Table~\ref{tab:time} breaks the time of each run into its parts, as measured on the 10\% runs (range over the two
-seeds), and projects the 100\% runs. A run's cost in SU is 40 times its allocated hours (one A100 and 8 cores);
-time in the queue is not charged. The validation sample, the checkpoints and the test evaluation do not depend
-on the data fraction, so only the data wait changes for the 100\% runs.
+\textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;
+(2) complete the six 100\% runs (estimated approximately 2,400 SU) and the core data--compute comparison;
+(3) complete the promised metrics and the reproducible final report. Only after core completion, consider the
+abstract's extensions in their original order: input-noise robustness, a third seed, a 30\% fraction, and
+ConvLSTM. The optional runs above should not delay the core deliverables.
+
+\clearpage
+\appendix
+
+\section{Detailed training recipe}
+\label{app:recipe}
+Sources of the reference settings: the paper (learning rates, 12-hour H100 budget) and The Well's training
+configuration at commit \texttt{e63dec8}:
+\begin{itemize}
+    \item \texttt{configs/optimizer/adam.yaml}: AdamW, weight decay $10^{-4}$ (the paper's text says 0.01; we
+    follow the code);
+    \item \texttt{configs/data/rayleigh\_benard.yaml}: batch 64;
+    \item \texttt{configs/trainer/defaults.yaml}: 200 epochs;
+    \item \texttt{configs/lr\_scheduler/cosine\_with\_warmup.yaml} with \texttt{train.py}: 5 warmup epochs
+    from $0.1\cdot$lr, then cosine to $0.1\cdot$lr.
+\end{itemize}
+Our software: The Well \texttt{e63dec8}, neuraloperator 0.3.0, PyTorch 2.8.0 (CUDA 12.8), Python 3.13; our
+repository at \texttt{f42b2e2} (training) and \texttt{4c0d3a8} (AViT resume, evaluation).
+
+\begin{table}[h]
+\centering\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+& This study & The Well paper / code \\
+\midrule
+Activation & GELU (all three models) & GELU (same model code) \\
+Optimizer & AdamW, $\beta = (0.9, 0.999)$, weight decay $10^{-4}$, no clipping & AdamW, weight decay $10^{-4}$ in the code (0.01 in the text), no clipping \\
+Loss & one-step MSE, normalised units, equal field weights & same \\
+Batch size, precision & 64, fp32 & 64, fp32 \\
+Learning rate & $10^{-3}$ for all, from our search over $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}\}$ & per model from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3}, 5\cdot10^{-3}, 10^{-2}\}$: $5\cdot10^{-4}$ (CNextU-Net), $10^{-4}$ (TFNO) \\
+Schedule & 500 warmup steps, cosine to 0 over the 4-hour budget & 5 warmup epochs, cosine to $0.1\cdot$lr over 200 epochs, stopped at 12\,h \\
+Budget, hardware & 1\,h and 4\,h of active GPU training on one A100 & 12\,h on one H100, best validation epoch \\
+Training data & 10\% of the trajectories (100\% next) & 100\% \\
+\bottomrule
+\end{tabularx}
+\caption{Training recipe: ours against the paper's.}
+\label{tab:recipe}
+\end{table}
+
+\section{TFNO forward pass}
+\label{app:tfno}
+In The Well's code, commit \texttt{2d8d7eaf} (2024-06-03, ``Added gradient checkpointing'') called TFNO's Fourier
+blocks without keeping their output, so the model computed only its lifting and projection layers; commit
+\texttt{e4301602} (2025-11-17, ``actually use the TFNO blocks'') restored the assignment (\texttt{x =}
+before the block call)~\cite{wellfix}. The paper's TFNO results and the released TFNO checkpoint (uploaded
+2025-03-28) date from that period. For the pipeline check we scored the released TFNO weights with the forward
+pass they were trained with (Fourier blocks skipped): it reproduces the published value, while with the corrected
+forward pass the same weights score $\approx$10.5. Our own runs use The Well at commit \texttt{e63dec8}, which
+includes the fix. Upstream issue \#49 reports related inconsistencies between released checkpoints and published
+numbers~\cite{wellissue}.
+
+\section{Resource accounting}
+\label{app:accounting}
+
+\textbf{Timer.} Active training time is measured per optimizer step with a host-side monotonic clock
+(Python's \texttt{perf\_counter}), from the moment the data loader returns the batch to just after a CUDA
+synchronisation (\texttt{torch.cuda.synchronize}) following the optimizer update. It includes the host-to-device copy of the batch
+(pinned memory, non-blocking), setting the learning rate, the forward pass, the loss, the backward pass, the
+optimizer step and the host-side launch overhead of these operations. It excludes the wait for the next batch
+(logged as data-wait time), reading the loss value, logging, validation, checkpoint writes and start-up. After a
+crash the clock resumes from the last saved checkpoint, so lost steps are not counted. A milestone checkpoint is
+written after the first step at which the cumulative time reaches 1\,h or 4\,h (overshoot below one step).
+
+\textbf{Validation sample.} The 64 validation windows are fixed and evenly spaced over the 34,300 one-step windows
+of the validation split (175 trajectories $\times$ 196), taken in the dataset's order (regime, trajectory, time):
+indices $\mathrm{round}(\mathrm{linspace}(0, 34299, 64))$. They cover all 35 regimes (one or two windows each) and
+64 different trajectories; 18 of them (28\%) are onset windows, close to the 26\% of all windows. The learning-rate
+search used 512 windows chosen the same way (all 35 regimes, all 175 trajectories, 25\% onset); the two samples
+share 8 windows. This monitoring sample does not replace the full test evaluation.
+
+\textbf{Billing.} Paid jobs are billed 32 SU per GPU-hour plus 1 SU per core-hour of allocated time (40 SU per
+hour for one A100 and 8 cores); the free partition is not billed. Runs that started on the free partition and
+resumed on the paid one are billed only for the paid part.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+& \multicolumn{2}{c}{Validation VRMSE (seed 0 / 1)} & Epochs & Allocated time & SU \\
+\cmidrule(lr){2-3}
+Model & 1 h & 4 h & in 4 h & per run & per run \\
+\midrule
+CNextU-Net & 1.043 / 0.772 & 0.167 / 0.178 & 28 & 5.2--6.0 h & 189--191 \\
+TFNO & 0.508 / 0.524 & 0.310 / 0.325 & 61 & 6.9--7.1 h & 274--286 \\
+AViT & 0.468 / 0.418 & 0.161 / 0.167 & 175 & 11.1--12.2 h & 443--488 \\
+\bottomrule
+\end{tabular}
+\caption{The 10\% runs (140 training trajectories). Validation: 64 fixed windows, physical-field VRMSE. SU covers
+the paid partition only: CNextU-Net's first attempts ran on the free partition, so its SU corresponds to 4.8\,h
+of its 5.2--6.0\,h.}
+\label{tab:train}
+\end{table}
 
 \begin{table}[h]
 \centering\footnotesize
@@ -487,67 +557,34 @@ Waiting for data & 1.0--2.0 & 3.0--4.5 & 9.5--12.5 \\
 Test evaluation job & $\sim$0.9 & $\sim$0.6 & $\sim$0.4 \\
 \bottomrule
 \end{tabular}
-\caption{Time per run. $^{a}$A run that starts once spends about 0.15\,h in start-up (environment, data index,
-model build); the larger values belong to runs with two attempts, which also replayed the steps since their last
-saved checkpoint. Projection for 100\%: the shared file system delivers at most $\sim$98 samples/s, below TFNO's
-(116) and AViT's (330) demand, and the full training split ($\sim$290\,GB) no longer fits in a node's page
-cache; start-up, validation and checkpoint writes as measured. Queue waits depend on the cluster's load and are
-not projected.}
+\caption{Time per run (range over the two seeds). $^{a}$A run that starts once spends about 0.15\,h in start-up
+(environment, data index, model build); the larger values belong to runs with two attempts, which also replayed
+the steps since their last saved checkpoint. Projection for 100\%: the shared file system delivers at most
+$\sim$98 samples/s, below TFNO's (116) and AViT's (330) demand, and the full training split ($\sim$290\,GB) no
+longer fits in a node's page cache; start-up, validation, checkpoint writes and evaluation as measured. Queue
+waits depend on the cluster's load and are not projected.}
 \label{tab:time}
 \end{table}
-\FloatBarrier
 
-\textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
-failure horizons, spectra, latency and memory (Section~\ref{sec:results}). Remaining for the final report: the
-100\% runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), field-wise VRMSE and the
-Nusselt-number error per model, and the flow snapshots for the 100\% runs.
+\begin{figure}[h]
+\centering
+\figureorpending{fig_loader.pdf}{scale=1}
+\caption{Training samples per second read from the shared file system by one node, against the rate at which each
+model consumes them on the GPU (horizontal lines).}
+\label{fig:loader}
+\end{figure}
 
-\textbf{Next steps, in priority order.}
-(1) Improve data-loading robustness and assess node-local staging;
-(2) complete the six 100\% runs (estimated approximately 2,400 SU) and the core data--compute comparison;
-(3) complete the promised metrics and the reproducible final report.
-Only after core completion, consider the abstract's extensions in their original order: input-noise
-robustness, a third seed, a 30\% fraction, and ConvLSTM. The longer reference-recipe runs and solver baseline
-are further optional work and should not delay the core deliverables.
+\section{Flow snapshots at $\mathrm{Ra}=10^{10}$}
+\label{app:snapshots}
+
+\begin{figure}[h]
+\centering
+\figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e10_Prandtl_1__0__s080.pdf}{scale=1}
+\caption{As Fig.~\ref{fig:snapshots}, at $\mathrm{Ra}=10^{10}$, $\mathrm{Pr}=1$.}
+\label{fig:snapshots10}
+\end{figure}
 
 \clearpage
-\appendix
-\section{Detailed training recipe}
-\label{sec:recipe}
-Sources of the reference settings: the paper (learning rates, 12-hour H100 budget) and The Well's training
-configuration at commit \texttt{e63dec8}:
-\begin{itemize}
-    \item \texttt{configs/optimizer/adam.yaml}: AdamW, weight decay $10^{-4}$ (the paper's text says 0.01; we
-    follow the code);
-    \item \texttt{configs/data/rayleigh\_benard.yaml}: batch 64;
-    \item \texttt{configs/trainer/defaults.yaml}: 200 epochs;
-    \item \texttt{configs/lr\_scheduler/cosine\_with\_warmup.yaml} with \texttt{train.py}: 5 warmup epochs
-    from $0.1\cdot$lr, then cosine to $0.1\cdot$lr.
-\end{itemize}
-Our software: The Well \texttt{e63dec8}, neuraloperator 0.3.0, PyTorch 2.8.0 (CUDA 12.8), Python 3.13; our
-repository at \texttt{f42b2e2} (training) and \texttt{4c0d3a8} (AViT resume, evaluation).
-
-\begin{table}[h]
-\centering\footnotesize
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
-\toprule
-& This study & The Well paper / code \\
-\midrule
-Activation & GELU (all three models) & GELU (same model code) \\
-Optimizer & AdamW, $\beta = (0.9, 0.999)$, weight decay $10^{-4}$, no clipping & AdamW, weight decay $10^{-4}$ in the code (0.01 in the text), no clipping \\
-Loss & one-step MSE, normalised units, equal field weights & same \\
-Batch size, precision & 64, fp32 & 64, fp32 \\
-Learning rate & $10^{-3}$ for all, from our equal-budget search & per model: $5\cdot10^{-4}$ (CNextU-Net), $10^{-4}$ (TFNO) \\
-Schedule & 500 warmup steps, cosine to 0 over the 4-hour budget & 5 warmup epochs, cosine to $0.1\cdot$lr over 200 epochs, stopped at 12\,h \\
-Budget, hardware & 1\,h and 4\,h of GPU training on one A100 & 12\,h on one H100, best validation epoch \\
-Training data & 10\% of the trajectories (100\% next) & 100\% \\
-\bottomrule
-\end{tabularx}
-\caption{Training recipe: ours against the paper's.}
-\label{tab:recipe}
-\end{table}
-
-\newpage
 
 \begin{thebibliography}{9}
 \setlength{\itemsep}{8pt}
@@ -582,10 +619,15 @@ Burns, K. J., Vasil, G. M., Oishi, J. S., Lecoanet, D., and Brown, B. P.
 Physical Review Research 2, 023068, 2020.\\
 \url{https://arxiv.org/abs/1905.10388}
 
-\bibitem{wellcode}
-The Well source code, \url{https://github.com/PolymathicAI/the_well}: commits \texttt{2d8d7eaf} (2024-06-03)
-and \texttt{e4301602} (2025-11-17, ``actually use the TFNO blocks''); issue \#49, ``Inconsistent Pre-trained
-Baseline Performance'' (open since 2025-04-21).
+\bibitem{wellfix}
+The Well source code, commits \texttt{2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c} (2024-06-03) and
+\texttt{e4301602e57f2dddeaa87856dda49bbba47c663b} (2025-11-17).\\
+\url{https://github.com/PolymathicAI/the_well/commit/2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}\\
+\url{https://github.com/PolymathicAI/the_well/commit/e4301602e57f2dddeaa87856dda49bbba47c663b}
+
+\bibitem{wellissue}
+The Well, issue \#49, ``Inconsistent Pre-trained Baseline Performance'' (open since 2025-04-21).\\
+\url{https://github.com/PolymathicAI/the_well/issues/49}
 
 \end{thebibliography}
 

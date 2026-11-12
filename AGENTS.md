@@ -344,3 +344,16 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Short validation: CNextU-Net 0.33, TFNO 0.30–0.33, AViT 0.22. The 4 h runs' 1 h checkpoints were 0.77–1.04 /
     0.51–0.52 / 0.42–0.47.
   * Test evaluation next: `eval_a100.sbatch` with `MANIFEST=tasks/train_1h.jsonl`.
+* 2026-11-12: mid-project report revised after an independent critique (owner).
+  * Corrected:
+    * Spectral numbers are now per wavenumber, matching the figure: CNextU-Net 0.80–1.57 below k_x = 100.
+    * Seed spread is stated as a standard deviation: ≤ 0.006 at 4 h, up to 0.18 at 1 h.
+    * Memory is labelled allocated (reserved).
+    * Billing is split paid/free: 54.2 + 18.3 GPU-h, which explains 2,160 SU.
+    * Table 9's CNextU-Net SU is explained.
+    * The failure table's heading is reworded, and the spectrum calculation is defined.
+  * Added `fig_rollouts`: VRMSE vs step, and Kaplan–Meier survival at threshold 1.
+  * Moved to appendices: the run table, time table, timer, validation sample, loader figure, TFNO history and the
+    Ra = 1e10 snapshots.
+  * Figure labels and the colorbar ("Buoyancy b") are clearer, and full commit SHAs are cited. Numbers are in
+    `docs/report_notes.md`.

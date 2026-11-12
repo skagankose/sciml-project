@@ -286,6 +286,13 @@ Spectra (4 h, median over regimes of predicted/true by band, steps 1 / 10 / 30):
   consistent with 16 retained modes (k_x ≲ 25).
 * AViT: large 1.00 / 0.82 / 0.84, middle 1.06 / 3.5 / 5.4, small 24 / 390 / 731. Energy accumulates over the
   rollout. Local peaks at the patch-grid wavenumbers were checked and are not clear, so no cause is claimed.
+* Per wavenumber (median over the 35 regimes and both seeds of predicted/true, steps 1, 10, 30; quoted in the
+  report because its spectra figure is per k_x, and the band medians above smooth over the extremes):
+  * CNextU-Net: 0.80–1.57 below k_x = 100; 190–530 at the highest wavenumbers.
+  * TFNO: between k_x ≈ 25 and 100 it falls to 0.33 after one step and 0.09 after 30; 9–50 at the highest.
+  * AViT: 0.97–1.34 below k_x = 100 after one step, but 0.55–21 after 30; about 5×10^4 at the highest.
+  * The spectrum is computed from velocity (u, w), the snapshots show buoyancy; the two are related but not the
+    same measurement. It is a complementary diagnostic, not the paper's binned spectral error.
 
 Speed and memory: steps in 4 h 12.1k / 26.3k / 75.0k; peak training memory (allocated) 60.9 / 48.6 / 8.8 GB;
 inference 8.3 / 4.4 / 5.4 ms per step, 249 / 135 / 163 ms per 30-step rollout (A100, batch 1).
@@ -294,7 +301,8 @@ Findings:
 * After 4 h, CNextU-Net is best in developed convection and in rollouts. AViT matches it over all windows but
   degrades fastest. TFNO is too smooth.
 * At 1 h the order flips: AViT and TFNO lead, and CNextU-Net's 1 h checkpoint is far from converged.
-* Seeds agree within 0.006 at 4 h but not at 1 h.
+* Across seeds, the standard deviation of the all-window VRMSE is at most 0.006 at 4 h and up to 0.18 at 1 h
+  (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
 Flow snapshots (`fig_snapshots_buoyancy_*`, `scripts/visualize_rollouts.py`, job 59482062 on the free CPU
@@ -436,6 +444,12 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 * Account: the class allocation `eecs195221_class_gpu` (31,530 of 33,000 SU left on 2026-11-09, shared by the
   class), approved by the owner on 2026-11-09. The personal account `skose` has 1,000 SU.
 * **Final for the 10% study (`sacct`, 2026-11-11 12:41):** 2,160 SU billed and 72.6 GPU-hours in all; the evaluations cost 4.2 GPU-hours and 169 SU (7 jobs; queue waits 1–3 h for the last five). The visualisation job ran on the free CPU partition.
+  * Paid/free split of the 72.6 GPU-hours: 54.2 on the paid partition (billed 2,160 SU: 40 SU per allocated hour
+    for jobs with 8 cores, 36 for the 4-core pipeline check) and 18.3 on free-gpu (not billed). So 72.6 × 40 does
+    not equal 2,160. CNextU-Net's first 10% attempts ran on free-gpu, so its SU per run covers 4.8 h of its
+    5.2–6.0 h.
+  * Memory: 64.8 / 56.9 / 8.9 GB is what PyTorch reserved at peak; 60.9 / 48.6 / 8.8 GB is what tensors
+    allocated. Report both with labels.
 * **Billed (from `sacct`, 2026-11-11 09:47, `outputs/findings/sacct_jobs.csv`, `sacct_summary.csv`,
   `compute_timeline`):** 2,059 SU on the paid partition, 70 GPU-hours in all (hours with a GPU allocated).
   Billing = `billing` × elapsed hours, `billing` = 40 for 1 GPU + 8 cores (36 for 1 GPU + 4 cores).
@@ -484,7 +498,8 @@ figures in `outputs/findings/`, which show everything.
 Report figures: `fig_released_by_window` (pipeline check), `fig_loader` (data supply vs demand), `fig_training`
 (loss and validation for all models; the learning-rate row of the exploratory figure is left out, the schedule
 is described in the text), `fig_test_by_window` (ours vs released vs persistence), `fig_spectra` (one regime at
-step 30, and predicted/true at steps 1 and 30), `fig_snapshots_buoyancy_*` (after `visualize_cpu.sbatch`).
+step 30, and predicted/true at steps 1 and 30), `fig_rollouts` (VRMSE vs rollout step from frames 80 and 140,
+and the Kaplan–Meier fraction staying below VRMSE 1), `fig_snapshots_buoyancy_*` (after `visualize_cpu.sbatch`).
 
 All are rebuilt by `.venv/bin/python scripts/findings.py` after `cluster/pull.sh`, as PDF (for LaTeX) and PNG,
 into `outputs/findings/` unless another folder is named. The evaluation figures pick up each run as soon as

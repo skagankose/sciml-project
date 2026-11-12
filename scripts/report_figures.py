@@ -89,8 +89,8 @@ def released_by_window(outputs: Path, out: Path) -> list[str]:
         ax.set_yscale("log")
         ax.set_xlim(-2, 197)
         ax.set_title(title)
-        ax.set_xlabel("first input frame of the window")
-    axes[0].set_ylabel("one-step VRMSE")
+        ax.set_xlabel("Input-window start frame")
+    axes[0].set_ylabel("One-step VRMSE")
     handles = [Line2D([], [], color=STYLE[m]["color"], label=f"released {STYLE[m]['label']}") for m in tables]
     if persist is not None:
         handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence (copy last frame)"))
@@ -120,8 +120,8 @@ def loader(outputs: Path, out: Path) -> list[str]:
     ax.set_xticks(sorted(b.workers.unique()))
     ax.set_xlim(3.3, 15.5)
     ax.set_ylim(0, pt.gpu_samples_per_s.max() * 1.1)
-    ax.set_xlabel("data-loader worker processes")
-    ax.set_ylabel("training samples per second")
+    ax.set_xlabel("Data-loader worker processes")
+    ax.set_ylabel("Training samples per second")
     fig.tight_layout()
     return save(fig, out, "fig_loader")
 
@@ -151,12 +151,12 @@ def training(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
             ax.axvline(x, color=MUTED, lw=0.6, alpha=0.5)
         ax.set_xlim(0, 4.1)
         ax.set_xticks([0, 1, 2, 3, 4])
-        ax.set_xlabel("GPU training time (h)")
+        ax.set_xlabel("Active training time (h)")
     ax_loss.text(1.04, 0.97, "1 h checkpoint", transform=ax_loss.get_xaxis_transform(), fontsize=7, color=MUTED,
                  va="top")
     ax_loss.set_yscale("log")
-    ax_loss.set_ylabel("training loss (MSE, normalised)")
-    ax_val.set_ylabel("validation VRMSE (64 windows)")
+    ax_loss.set_ylabel("Training MSE")
+    ax_val.set_ylabel("Validation VRMSE")
     ax_val.set_ylim(0, None)
     handles = [Line2D([], [], color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=3.5, label=STYLE[m]["label"])
                for m in MODEL_NAMES if m in set(runs.model)]
@@ -190,8 +190,8 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4
         ax.plot(g.index, g.values, color=PERSIST["color"], lw=1.3, ls=":")
     ax.set_yscale("log")
     ax.set_xlim(-2, 197)
-    ax.set_xlabel("first input frame of the window")
-    ax.set_ylabel("one-step VRMSE (physical fields)")
+    ax.set_xlabel("Input-window start frame")
+    ax.set_ylabel("One-step VRMSE")
     handles = [Line2D([], [], color=STYLE[m]["color"], label=f"{STYLE[m]['label']} (ours, 10%, {label})")
                for m in MODEL_NAMES if m in tables]
     if released is not None:
@@ -201,6 +201,49 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4
     fig.legend(handles=handles, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.98))
     fig.tight_layout()
     return save(fig, out, "fig_test_by_window")
+
+
+# --- 4b. rollouts: error by step (developed convection) and survival below VRMSE 1 ---------------------------
+
+def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", threshold: float = 1.0) -> list[str]:
+    from rbbench.evaluate import failure_step, kaplan_meier
+
+    evals = ff.evaluated_runs(runs, outputs)
+    tables = ff._load(evals, "rollout", label) if not evals.empty else {}
+    if not tables:
+        return []
+    persist = ff._persistence(outputs, "rollout")
+    sources = dict(tables)
+    if persist is not None:
+        sources["persistence"] = [persist]
+    fig, (a, b) = plt.subplots(1, 2, figsize=(FULL, 2.45))
+    for name, ts in sources.items():
+        st = STYLE[name]
+        ls = ":" if name == "persistence" else "-"
+        dev = [t[(t.sigma == 0) & t.start.isin([80, 140])].groupby("step").vrmse_mean.mean() for t in ts]
+        mean = pd.concat(dev, axis=1).mean(axis=1)
+        a.plot(mean.index, mean.values, color=st["color"], ls=ls, marker=st.get("marker") or None, ms=3, markevery=5)
+        curves = []
+        for t in ts:
+            piv = t[t.sigma == 0].pivot_table(index=["traj_id", "start"], columns="step", values="vrmse_mean")
+            curves.append(kaplan_meier([failure_step(v.values, threshold) for _, v in piv.iterrows()], piv.shape[1]))
+        c = np.mean(curves, axis=0)
+        b.step(np.arange(0, len(c) + 1), np.r_[1.0, c], where="post", color=st["color"], ls=ls)
+    a.set_title("(a) Error, rollouts from frames 80 and 140")
+    a.set_ylabel("Rollout VRMSE")
+    b.set_title(f"(b) Rollouts staying below VRMSE {threshold:g}, all starts")
+    b.set_ylabel("Fraction of rollouts")
+    b.set_ylim(0, 1.03)
+    for ax in (a, b):
+        ax.set_xlabel("Rollout step")
+        ax.set_xlim(0, 30.5)
+    handles = [Line2D([], [], color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=3, label=f"{STYLE[m]['label']} ({label})")
+               for m in MODEL_NAMES if m in tables]
+    if persist is not None:
+        handles.append(Line2D([], [], color=PERSIST["color"], ls=":", label="persistence"))
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, 0.98))
+    fig.tight_layout()
+    return save(fig, out, "fig_rollouts")
 
 
 # --- 5. spectra: where in scale the error is ----------------------------------------------------------------------
@@ -240,7 +283,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
                                    & (clean(t).prandtl == pr)].set_index("k").energy for t in ts], axis=1).mean(axis=1)
         a.loglog(spec.index, spec.values, color=STYLE[name]["color"], ls=ls, lw=1.2)
     a.set_title(f"(a) step {last}, Ra = 1e{int(np.log10(ra))}, Pr = {pr:g}")
-    a.set_ylabel("kinetic energy E(k_x)")
+    a.set_ylabel(r"$E(k_x)$")
     for ax, step, tag in ((b, 1, "(b)"), (c, last, "(c)")):
         for name, ts in sources.items():
             ls = ":" if name == "persistence" else "-"
@@ -257,10 +300,10 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
         ax.set_ylim(0.05, 5e3)
     c.sharey(b)
     c.tick_params(labelleft=False)
-    b.set_ylabel("E_pred / E_true")
+    b.set_ylabel(r"$E_{\mathrm{pred}}/E_{\mathrm{true}}$")
     for ax in axes:
         ax.axvspan(ff.SMALL_SCALES_K, kmax * 1.1, color=MUTED, alpha=0.08, lw=0)
-        ax.set_xlabel("horizontal wavenumber k_x")
+        ax.set_xlabel(r"Horizontal wavenumber $k_x$")
     a.text(ff.SMALL_SCALES_K * 1.08, 0.04, "small\nscales", transform=a.get_xaxis_transform(), fontsize=7,
            color=MUTED, va="bottom")
     a.text(2.2, 0.04, "large scales", transform=a.get_xaxis_transform(), fontsize=7, color=MUTED, va="bottom")
@@ -317,8 +360,7 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
                 ax.set_ylabel(f"step {step}", fontsize=7, color=INK)
     cbar = fig.colorbar(mesh, ax=axes, orientation="horizontal", fraction=0.05, pad=0.04, aspect=45, shrink=0.6)
     what = ff.FIELD_LABELS.get(field, field)
-    cbar.set_label(f"{what} (colour range: 1st to 99th percentile of the true interior)" if field == "buoyancy"
-                   else what, fontsize=7, color=INK)
+    cbar.set_label("Buoyancy $b$" if field == "buoyancy" else what, fontsize=7, color=INK)
     cbar.ax.tick_params(labelsize=6.5)
     tag = npz.stem.removeprefix("rollout_")
     return save(fig, out, f"fig_snapshots_{field}_{tag}")
@@ -330,7 +372,8 @@ def main() -> int:
     runs = pd.read_csv(runs_csv) if runs_csv.exists() else pd.DataFrame()
     written = released_by_window(outputs, out) + loader(outputs, out)
     if not runs.empty:
-        written += training(outputs, runs, out) + test_by_window(outputs, runs, out) + spectra(outputs, runs, out)
+        written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
+                    + spectra(outputs, runs, out))
     for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
         written += snapshots(npz, out)
     print("\n".join(f"wrote {p}" for p in written if p.endswith(".pdf")))

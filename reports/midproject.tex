@@ -46,47 +46,22 @@
 
 \section*{Summary}
 
-\textbf{Aim.} Neural PDE forecasting models must be useful under limited data and compute. This project compares
-how accurately and efficiently three architecture families (CNextU-Net, TFNO and AViT) learn Rayleigh--B\'enard
-convection when training data and GPU time are limited. This check-in covers the most constrained setting of the
-study: 10\% of the training data (140 trajectories, four per regime) and 1 or 4 hours of training on one A100 GPU.
-The 100\% runs, which complete the data axis, follow (Section~\ref{sec:plan}).
+Neural PDE forecasting models must be useful under limited data and compute. This project compares how accurately and efficiently three architecture families (CNextU-Net, TFNO and AViT) learn Rayleigh--B\'enard convection when training data and GPU time are limited. This check-in covers the most constrained setting of the study: 10\% of the training data (140 trajectories, four per regime) and 1 or 4 hours of training on one A100 GPU. The 100\% runs is planned to be conducted in the following stage of the project as indicated in (Section~\ref{sec:plan}).
 
-\textbf{Milestones.} The abstract set three milestones for this check-in; all three are met:
+\textbf{Milestones.} The abstract set three milestones for this check-in; all of these were carried out as planned.
 \begin{enumerate}
-    \item \textbf{Data pipeline validated against The Well's released checkpoints: numerical agreement obtained.}
+    \item \textbf{Data pipeline validated against The Well's released checkpoints.}
     Our data loading and metric code reproduce the paper's published test VRMSE for the released CNextU-Net and
     TFNO to within 1\%, and recover rollout errors in the same reported range (``$>10$''). The released TFNO
     needs the forward pass it was trained with, which differs from the corrected one our runs use
     (Section~\ref{sec:setup}, Appendix~\ref{app:tfno}).
-    \item \textbf{Budgets fixed from pilot timings: done.} Batch 64, fp32, peak learning rate $10^{-3}$ for every
+    \item \textbf{Budgets fixed from pilot timings.} Batch 64, fp32, peak learning rate $10^{-3}$ for every
     model (from an equal-budget search), and 4-hour budgets measured in active GPU training time, with allocated
     GPU time reported separately.
-    \item \textbf{First 10\%-data results: done.} All six 10\% runs (3 models $\times$ 2 seeds) are trained and
+    \item \textbf{First 10\%-data results.} All six 10\% runs (3 models $\times$ 2 seeds) are trained and
     evaluated on the full test set at 1 and 4 hours, together with what each model costs to train and to use
     (Section~\ref{sec:results}). A revised plan is in Section~\ref{sec:plan}.
 \end{enumerate}
-
-\textbf{Findings under limited data and compute} (10\% data; they hold for these configurations and budgets,
-Table~\ref{tab:choice}):
-\begin{itemize}
-    \item \textbf{Accuracy.} After 4 hours CNextU-Net is the most accurate in developed convection (one-step VRMSE
-    0.050) and the most stable over 30-step rollouts. With a tenth of the data and 4 hours on an A100, its error is
-    1.3 times that of The Well's released CNextU-Net, trained on all the data for 12 hours on an H100 (0.038). TFNO's
-    predictions are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout.
-    \item \textbf{With only one hour of training} the ranking differs. AViT has the lowest one-step error and TFNO
-    the most stable rollouts, while CNextU-Net, the best after four hours, varies most between seeds. CNextU-Net
-    gains most from the extra three hours: its error in developed convection falls by 38\%, AViT's by 12\% and
-    TFNO's by 9\%.
-    \item \textbf{Cost to train.} In the same 4 hours AViT takes six times as many optimizer steps as CNextU-Net
-    with a seventh of its memory, but it reads data faster than our shared storage delivers, so a run held a GPU for
-    11--12 hours, against 5--6 hours for CNextU-Net.
-    \item \textbf{Cost to use.} Each model forecasts 30 steps (7.5 simulation time units) in at most a quarter of a
-    second on one A100, using under 0.5\,GB of GPU memory. TFNO is the fastest (135\,ms), then AViT (163\,ms) and
-    CNextU-Net (249\,ms): the most accurate model is 1.8 times slower than the fastest.
-    \item \textbf{Negative results.} No model beats copying the last frame (persistence) during convection onset,
-    and after 30 steps from developed flow AViT is no better than persistence.
-\end{itemize}
 
 \section{Setup}
 \label{sec:setup}
@@ -560,6 +535,30 @@ model; and the flow snapshots for the 100\% runs.
 (3) complete the promised metrics and the reproducible final report. Only after core completion, consider the
 abstract's extensions in their original order: input-noise robustness, a third seed, a 30\% fraction, and
 ConvLSTM. The optional runs above should not delay the core deliverables.
+
+\section{Findings under limited data and compute}
+\label{sec:findings}
+
+The main findings at 10\% data hold for these configurations and budgets (Table~\ref{tab:choice}):
+\begin{itemize}
+    \item \textbf{Accuracy.} After 4 hours CNextU-Net is the most accurate in developed convection (one-step VRMSE
+    0.050) and the most stable over 30-step rollouts. With a tenth of the data and 4 hours on an A100, its error is
+    1.3 times that of The Well's released CNextU-Net, trained on all the data for 12 hours on an H100 (0.038). TFNO's
+    predictions are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout.
+    \item \textbf{With only one hour of training} the ranking differs. AViT has the lowest one-step error and TFNO
+    the most stable rollouts, while CNextU-Net, the best after four hours, varies most between seeds. CNextU-Net
+    gains most from the extra three hours: its error in developed convection falls by 38\%, AViT's by 12\% and
+    TFNO's by 9\%.
+    \item \textbf{Cost to train.} In the same 4 hours AViT takes six times as many optimizer steps as CNextU-Net
+    with a seventh of its memory, but it reads data faster than our shared storage delivers, so a run held a GPU for
+    11--12 hours, against 5--6 hours for CNextU-Net.
+    \item \textbf{Cost to use.} Each model forecasts 30 steps (7.5 simulation time units) in at most a quarter of a
+    second on one A100, using under 0.5\,GB of GPU memory. TFNO is the fastest (135\,ms), then AViT (163\,ms) and
+    CNextU-Net (249\,ms): the most accurate model is 1.8 times slower than the fastest.
+    \item \textbf{Negative results.} No model beats copying the last frame (persistence) during convection onset,
+    and after 30 steps from developed flow AViT is no better than persistence.
+\end{itemize}
+
 
 \clearpage
 \appendix

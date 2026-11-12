@@ -305,6 +305,19 @@ Findings:
   (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+Field-wise VRMSE (2026-11-12; physical fields, seed mean, from the evaluation parquets; report Table "Field-wise"):
+* Developed convection, one step (4 h): CNextU-Net b 0.092, p 0.024, u 0.039, w 0.044. TFNO 0.170 / 0.054 / 0.096 /
+  0.116. AViT 0.119 / 0.039 / 0.061 / 0.080. Buoyancy is the hardest field for every model.
+* Onset, one step (4 h): velocity dominates (CNextU-Net u 0.863, w 0.639), while b and p are small. On buoyancy
+  all three beat persistence even during onset (0.031–0.045 against 0.066); CNextU-Net and AViT also do on
+  pressure (persistence 0.014). So the onset deficit against persistence is a velocity effect: near-zero velocity
+  variance magnifies relative error. The released CNextU-Net shows the same pattern (onset u 1.47, w 1.56).
+* After 30 steps from frames 80 and 140 (4 h): CNextU-Net (0.384 / 0.293 / 0.598 / 0.584) and TFNO stay below
+  persistence (0.531 / 0.408 / 0.934 / 0.916) on every field. AViT is worse on u (1.059), about level on p and w,
+  and better only on b.
+* 1 h: CNextU-Net's all-window error is almost entirely onset velocity (u 6.83). In developed flow it is best or
+  tied on b, p and w.
+
 Qualifications from the plausibility review (2026-11-12, in the report):
 * Batch-1 latency is overhead-bound. Forward pass per sample in a batch of 64 (training profile, fp32, with
   gradient tracking; `outputs/pilots/feasibility.csv`): AViT 0.89 ms, TFNO 3.15 ms, CNextU-Net 6.74 ms. So AViT

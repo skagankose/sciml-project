@@ -393,3 +393,10 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Metric details, the recipe, the TFNO bug, accounting, the learning-rate search, training curves, the
     per-window test figure and the Ra = 1e10 snapshots moved to appendices.
   * `midproject.tex` is kept as the full version.
+* 2026-11-12: field-wise VRMSE (promised in the abstract) is added to the long report (`tab:fields`).
+  * In developed convection buoyancy is the hardest field.
+  * The onset deficit against persistence is a velocity effect: on buoyancy all three models beat persistence.
+  * The findings, the choice table and the test-evaluation sentence carry this qualifier.
+  * The remaining deliverables now list only the Nusselt error.
+  * The grammar slip in the opening paragraph is fixed.
+  * The short version is no longer maintained (owner).

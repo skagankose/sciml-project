@@ -50,7 +50,7 @@
     {\large Mid-Project Report\par}
 \end{center}
 
-\textbf{Project Goal.} Neural PDE forecasting models must be useful under limited data and compute. This project compares how accurately and efficiently three architecture families (CNextU-Net, TFNO and AViT) learn Rayleigh--B\'enard convection when training data and GPU time are limited. This check-in covers the most constrained setting of the study: 10\% of the training data (140 trajectories, four per regime) and 1 or 4 hours of training on one A100 GPU. The 100\% runs is planned to be conducted in the following stage of the project as indicated in (Section~\ref{sec:plan}).
+\textbf{Project Goal.} Neural PDE forecasting models must be useful under limited data and compute. This project compares how accurately and efficiently three architecture families (CNextU-Net, TFNO and AViT) learn Rayleigh--B\'enard convection when training data and GPU time are limited. This check-in covers the most constrained setting of the study: 10\% of the training data (140 trajectories, four per regime) and 1 or 4 hours of training on one A100 GPU. The 100\% runs follow in the next stage of the project (Section~\ref{sec:plan}).
 
 \textbf{Milestones.} The abstract set three milestones for this check-in; all of these were carried out as planned.
 \begin{enumerate}
@@ -245,8 +245,8 @@ across-seed standard deviation of the all-window VRMSE is at most 0.006 (seeds o
 released CNextU-Net, trained on all the data for longer, remains better in developed convection (0.038 against
 0.050). This gap is not a measure of what ten times more data buys, because the two also differ in hardware,
 learning rate and schedule (Appendix~\ref{app:recipe}). The 100\% runs will
-measure the effect of data with everything else fixed. Persistence is better than every model during onset and 2--4.5 times worse
-in developed convection.
+measure the effect of data with everything else fixed. Persistence is better than every model during onset on the four-field mean, a velocity effect
+(Table~\ref{tab:fields}), and 2--4.5 times worse in developed convection.
 
 \begin{table}[!htbp]
 \centering\small
@@ -330,6 +330,45 @@ step, mean over the rollouts from frames 80 and 140 (developed convection). (b) 
 have stayed below VRMSE 1 up to each step (Kaplan--Meier survival).}
 \label{fig:rollouts}
 \end{figure}
+
+\textbf{Field-wise error} (Table~\ref{tab:fields}). The four-field mean hides where the error lies. In developed
+convection buoyancy is the hardest field for every model (CNextU-Net: 0.092, against 0.024 for pressure and about
+0.04 for each velocity component), consistent with the sharp gradients of its thin plumes and thermal boundary
+layers. During onset the picture reverses: buoyancy and pressure errors are small, and the mean comes almost
+entirely from velocity (CNextU-Net: 0.86 and 0.64), whose near-zero spatial variance magnifies relative error
+(Section~\ref{sec:m1}). On buoyancy all three models beat persistence even during onset (0.031--0.045 against
+0.066), and CNextU-Net and AViT also on pressure, so the models' onset deficit against persistence is a velocity
+effect. After 30 steps from developed flow, CNextU-Net and TFNO stay below persistence on every field, while AViT is
+worse than persistence on horizontal velocity (1.06 against 0.93), level on vertical velocity and pressure, and
+better only on buoyancy. After one hour, CNextU-Net's large all-window error is almost entirely onset velocity (6.8
+for $u$); in developed convection it is best or tied on three of the four fields.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{One step, developed} & \multicolumn{4}{c}{One step, onset} & \multicolumn{4}{c}{30 steps from frames 80, 140} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(l){10-13}
+Model & $b$ & $p$ & $u$ & $w$ & $b$ & $p$ & $u$ & $w$ & $b$ & $p$ & $u$ & $w$ \\
+\midrule
+CNextU-Net, 4 h & \textbf{0.092} & \textbf{0.024} & \textbf{0.039} & \textbf{0.044} & 0.032 & 0.012 & 0.863 & 0.639 & \textbf{0.384} & \textbf{0.293} & \textbf{0.598} & \textbf{0.584} \\
+TFNO, 4 h & 0.170 & 0.054 & 0.096 & 0.116 & 0.045 & 0.016 & 1.164 & 0.783 & 0.466 & 0.307 & 0.665 & 0.646 \\
+AViT, 4 h & 0.119 & 0.039 & 0.061 & 0.080 & \textbf{0.031} & \textbf{0.008} & \textbf{0.651} & \textbf{0.542} & 0.497 & 0.419 & 1.059 & 0.922 \\
+\midrule
+CNextU-Net, 1 h & \textbf{0.126} & \textbf{0.046} & 0.079 & \textbf{0.072} & 0.051 & 0.034 & 6.829 & 3.557 & 1.017 & 0.729 & 1.280 & 1.249 \\
+TFNO, 1 h & 0.180 & 0.062 & 0.108 & 0.128 & 0.057 & 0.029 & 3.745 & 2.190 & 0.925 & \textbf{0.603} & \textbf{0.930} & \textbf{0.908} \\
+AViT, 1 h & 0.129 & \textbf{0.046} & \textbf{0.074} & 0.088 & \textbf{0.040} & \textbf{0.018} & \textbf{3.092} & \textbf{2.047} & \textbf{0.837} & 0.652 & 1.484 & 1.209 \\
+\midrule
+Released CNextU-Net & 0.069 & 0.020 & 0.030 & 0.034 & 0.024 & 0.011 & 1.465 & 1.563 & -- & -- & -- & -- \\
+Persistence & 0.272 & 0.122 & 0.245 & 0.264 & 0.066 & 0.014 & 0.202 & 0.201 & 0.531 & 0.408 & 0.934 & 0.916 \\
+\bottomrule
+\end{tabular}
+\caption{Field-wise test VRMSE (physical fields, mean over the two seeds): buoyancy $b$, pressure $p$, horizontal
+and vertical velocity $u$, $w$. Our models: 10\% data; the released CNextU-Net: 100\%. Bold: best of our
+models at each budget.}
+\label{tab:fields}
+\end{table}
 
 \textbf{Accuracy against cost} (Fig.~\ref{fig:cost}, Table~\ref{tab:resources}). Because data and compute are
 the limiting resources, we set each model's accuracy against what it costs to train and to use.
@@ -454,8 +493,8 @@ and 100; largest one-step error in developed convection; gains least from longer
 Least training memory, most optimizer steps per GPU-hour, cheapest batched forecasts & AViT (8.8\,GB; 0.89\,ms per
 sample at batch 64) & Needs storage delivering
 $\sim$330 samples/s; rollouts degrade fastest, no better than persistence after 30 steps \\ \addlinespace[3pt]
-Convection onset (first 50 frames) & None: persistence & Every model is less accurate than copying the last
-frame \\ \addlinespace[3pt]
+Convection onset (first 50 frames) & None: persistence (four-field mean) & Every model is less accurate than
+copying the last frame on velocity, whose variance is near zero; on buoyancy all three are more accurate \\ \addlinespace[3pt]
 Only one hour of training & AViT (one step); TFNO (rollouts) & AViT: lowest one-step error (0.39);
 TFNO: 60\% of rollouts stay below VRMSE 1, against 34\%; CNextU-Net varies most between seeds; none beats
 persistence after 30 steps \\
@@ -475,7 +514,8 @@ The main findings at 10\% data hold for these configurations and budgets (Table~
     0.050) and the most stable over 30-step rollouts. With a tenth of the data and 4 hours on an A100, its error is
     1.3 times that of The Well's released CNextU-Net, trained on all the data for 12 hours on an H100 (0.038); the
     two also differ in schedule and hardware, so this is not an estimate of what more data buys. TFNO's predictions
-    are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout.
+    are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout. In developed
+    flow buoyancy is the hardest field for every model; the large onset errors come from velocity.
     \item \textbf{With only one hour of training} the ranking differs. AViT has the lowest one-step error and TFNO
     the most stable rollouts, while CNextU-Net, the best after four hours, varies most between seeds. CNextU-Net
     gains most from the extra three hours: its error in developed convection falls by 38\%, AViT's by 12\% and
@@ -488,7 +528,8 @@ The main findings at 10\% data hold for these configurations and budgets (Table~
     (135\,ms), then AViT (163\,ms) and CNextU-Net (249\,ms), so the most accurate model is 1.8 times slower than the
     fastest. For batched forecasts AViT is the cheapest per sample (0.89\,ms per step, against 3.15 for TFNO and
     6.74 for CNextU-Net).
-    \item \textbf{Negative results.} No model beats copying the last frame (persistence) during convection onset,
+    \item \textbf{Negative results.} No model beats copying the last frame (persistence) on velocity during
+    convection onset (on buoyancy all three do),
     and after 30 steps from developed flow AViT is no better than persistence.
     \item \textbf{Caveats.} Two seeds on one fixed 10\% subset do not measure how much the choice of trajectories
     matters. Training in fp32 for every model favours TFNO, since bf16 would speed up CNextU-Net (1.7 times) and
@@ -524,7 +565,7 @@ budget. The main changes are:
 \textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
 failure horizons, spectra, training cost, inference time and memory. Remaining for the final report: the 100\%
 runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), with accuracy--cost curves at both
-data fractions; field-wise VRMSE and the Nusselt-number error per
+data fractions; the Nusselt-number error per
 model; and the flow snapshots for the 100\% runs.
 
 \textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;

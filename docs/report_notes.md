@@ -217,6 +217,23 @@ evaluation. "Other" is startup, validation, checkpoint writes and steps replayed
 * After 4 h of GPU time AViT leads on short validation (0.161 / 0.167), just ahead of CNextU-Net (0.167 /
   0.178); TFNO is at 0.310 / 0.325.
 
+**Time per run, by component** (hours; 10% runs measured, range over seeds; `reports/midproject.tex` Table 8):
+
+| Hours per run | CNextU-Net | TFNO | AViT |
+|---|---|---|---|
+| Queue wait before training | 0.1–0.9 | 0.5–0.7 | 6.7–8.8 |
+| GPU training (budget) | 4.0 | 4.0 | 4.0 |
+| Waiting for data | 0.8–1.1 | 2.5–2.8 | 6.1–7.3 |
+| Start-up (+ replays after preemption/crash) | 0.13–0.65 | 0.14–0.15 | 0.68–0.69 |
+| Validation | 0.01–0.02 | 0.02–0.10 | 0.18 |
+| Checkpoint writes | 0.23–0.24 | 0.08–0.15 | 0.03–0.13 |
+| Allocated time of training | 5.2–6.0 | 6.9–7.1 | 11.1–12.2 |
+| Test evaluation job (1 h + 4 h) | 0.87–0.95 | 0.57 | 0.34–0.38 |
+| Queue wait before evaluation | 1.0–14.0 | 1.9–2.4 | 3.0–3.3 |
+| 100% projected: data wait / allocated / evaluation | 1.0–2.0 / 5.5–6.5 / ~0.9 | 3.0–4.5 / 7.5–9 / ~0.6 | 9.5–12.5 / 14–17 / ~0.4 |
+
+A run that starts once spends ~0.15 h in start-up; SU = 40 × allocated hours.
+
 ### Throughput and memory (A100 80 GB, batch 64, fp32)
 
 | Model | Steps per training second | Samples per training second | Peak GPU memory reserved |

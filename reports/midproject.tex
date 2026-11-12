@@ -458,27 +458,41 @@ Core study & $\sim$131--142 \\
 It contains no contingency, whereas the abstract's $\sim$100 hours included $\sim$30; a similar margin would bring
 it to $\sim$160--170. The optional additions above are excluded.
 
-Table~\ref{tab:time} gives the time per run: measured on the 10\% runs and projected for the 100\% runs. The
-validation set and the test evaluation do not depend on the data fraction. Time spent waiting in the queue
-(median 2.8\,h, up to 15\,h on the paid partition) is not included.
+Table~\ref{tab:time} breaks the time of each run into its parts, as measured on the 10\% runs (range over the two
+seeds), and projects the 100\% runs. A run's cost in SU is 40 times its allocated hours (one A100 and 8 cores);
+time in the queue is not charged. The validation sample, the checkpoints and the test evaluation do not depend
+on the data fraction, so only the data wait changes for the 100\% runs.
 
 \begin{table}[h]
 \centering\footnotesize
-\begin{tabular}{@{}lcccccc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
-& \multicolumn{4}{c}{10\% runs, measured (hours)} & Test eval. & 100\% runs \\
-\cmidrule(lr){2-5}
-Model & training & data wait & other$^{a}$ & wall & (1\,h + 4\,h) & wall, projected \\
+Hours per run & CNextU-Net & TFNO & AViT \\
 \midrule
-CNextU-Net & 4.0 & 0.8--1.1 & 0.4--0.9 & 5.2--6.0 & 0.8--0.9\,h & 5.5--6.5\,h \\
-TFNO & 4.0 & 2.5--2.8 & 0.3 & 6.9--7.1 & 0.5\,h & 7.5--9\,h \\
-AViT & 4.0 & 6.1--7.3 & 0.9--1.0 & 11.1--12.2 & 0.3\,h & 14--17\,h \\
+\multicolumn{4}{@{}l}{\textit{10\% runs, measured}} \\
+Queue wait before training started & 0.1--0.9 & 0.5--0.7 & 6.7--8.8 \\
+GPU training (the budget) & 4.0 & 4.0 & 4.0 \\
+Waiting for data & 0.8--1.1 & 2.5--2.8 & 6.1--7.3 \\
+Start-up, and steps replayed after a preemption or crash$^{a}$ & 0.13--0.65 & 0.14--0.15 & 0.68--0.69 \\
+Validation (64 windows every 30 minutes) & 0.01--0.02 & 0.02--0.10 & 0.18 \\
+Checkpoint writes & 0.23--0.24 & 0.08--0.15 & 0.03--0.13 \\
+\textbf{Allocated time of training} & \textbf{5.2--6.0} & \textbf{6.9--7.1} & \textbf{11.1--12.2} \\
+Test evaluation job (1-hour and 4-hour checkpoints) & 0.87--0.95 & 0.57 & 0.34--0.38 \\
+Queue wait before the evaluation started & 1.0--14.0 & 1.9--2.4 & 3.0--3.3 \\
+Training attempts (seed 0 / seed 1) & 2 / 2 & 1 / 1 & 2 / 2 \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{100\% runs, projected}} \\
+Waiting for data & 1.0--2.0 & 3.0--4.5 & 9.5--12.5 \\
+\textbf{Allocated time of training} & \textbf{5.5--6.5} & \textbf{7.5--9} & \textbf{14--17} \\
+Test evaluation job & $\sim$0.9 & $\sim$0.6 & $\sim$0.4 \\
 \bottomrule
 \end{tabular}
-\caption{Time per run. $^{a}$Startup, validation (64 windows every 30 minutes: 0.01--0.18\,h per run) and
-checkpoint writes; for AViT also steps replayed after a file-system crash. Projection for 100\%: the shared file system
-delivers at most $\sim$98 samples/s, below TFNO's and AViT's demand, and the full training split ($\sim$290\,GB)
-no longer fits in a node's page cache.}
+\caption{Time per run. $^{a}$A run that starts once spends about 0.15\,h in start-up (environment, data index,
+model build); the larger values belong to runs with two attempts, which also replayed the steps since their last
+saved checkpoint. Projection for 100\%: the shared file system delivers at most $\sim$98 samples/s, below TFNO's
+(116) and AViT's (330) demand, and the full training split ($\sim$290\,GB) no longer fits in a node's page
+cache; start-up, validation and checkpoint writes as measured. Queue waits depend on the cluster's load and are
+not projected.}
 \label{tab:time}
 \end{table}
 \FloatBarrier

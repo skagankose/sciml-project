@@ -91,6 +91,7 @@ def released_by_window(outputs: Path, out: Path) -> list[str]:
         ax.set_title(title)
         ax.set_xlabel("Input-window start frame")
     axes[0].set_ylabel("One-step VRMSE")
+    axes[1].tick_params(labelleft=True)    # shared scale, but labelled on both panels
     handles = [Line2D([], [], color=STYLE[m]["color"], label=f"released {STYLE[m]['label']}") for m in tables]
     if persist is not None:
         handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence (copy last frame)"))
@@ -299,7 +300,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
         ax.set_title(f"{tag} predicted / true, step {step}")
         ax.set_ylim(0.05, 5e3)
     c.sharey(b)
-    c.tick_params(labelleft=False)
+    c.tick_params(labelleft=True)          # same scale as (b), but labelled: the gap between panels hides the link
     b.set_ylabel(r"$E_{\mathrm{pred}}/E_{\mathrm{true}}$")
     for ax in axes:
         ax.axvspan(ff.SMALL_SCALES_K, kmax * 1.1, color=MUTED, alpha=0.08, lw=0)

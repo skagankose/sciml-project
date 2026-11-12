@@ -305,6 +305,27 @@ Findings:
   (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+Error by Rayleigh number and heat transport (2026-11-12; report Section 5 "Additional Analysis", `fig_by_rayleigh`):
+* One-step developed VRMSE by Ra = 1e6 → 1e10 (4 h): CNextU-Net 0.016 / 0.020 / 0.036 / 0.066 / 0.111; TFNO 0.042 → 0.191;
+  AViT 0.016 → 0.154; persistence 0.098 → 0.351. The released CNextU-Net (100%) is 0.018 / 0.017 / 0.025 / 0.045 /
+  0.085. It matches ours at low Ra, and its advantage is confined to high Ra.
+* VRMSE after 30 steps (starts 80, 140): CNextU-Net 0.35 → 0.59 and TFNO 0.47 → 0.62, both below persistence
+  (0.66 → 0.77) at every Ra. AViT is 0.81 / 0.73 / 0.69 / 0.68 / 0.71: worse than persistence up to Ra 1e8.
+* Fraction of rollouts below VRMSE 1 (all starts) rises with Ra: CNextU-Net 0.67 → 0.98, persistence 0.90 → 0.96.
+  This fits a later onset at low Ra.
+* Nusselt number: Nu = 1 + sqrt(Ra·Pr)·<w b> (κ = (Ra Pr)^-1/2, Ly = Δb = 1), computed per frame by
+  `metrics.physics.nusselt`.
+  * The instantaneous true Nu one step after frame 80 ranges from −249 to 1,363 across test trajectories, so mean
+    relative errors are meaningless. Use medians and the Nu averaged over each 30-step rollout.
+  * Developed starts (80, 140), 4 h: step-1 median |rel| CNextU-Net 0.020, AViT 0.037, TFNO 0.072, persistence 0.076.
+  * Nu averaged over the 30-step rollout, median |rel| (signed): CNextU-Net 0.485 (−0.015), TFNO 0.196 (+0.064),
+    AViT 0.275 (−0.167), persistence 0.267 (+0.023).
+  * By Ra, CNextU-Net's averaged-Nu |rel| is 0.19 / 0.33 / 0.62 / 0.87 / 1.00. AViT's signed error is −0.11 / −0.08 /
+    −0.13 / −0.18 / −0.43, so it predicts too little heat transport at every Ra.
+  * 1 h: CNextU-Net averaged-Nu signed error is +5.45, about 6× the true heat transport.
+  * Interpretation (hypothesis): CNextU-Net's excess small-scale energy may create spurious w·b correlation,
+    amplified by sqrt(Ra·Pr) ≈ 3e4–3e5 at Ra 1e10.
+
 Field-wise VRMSE (2026-11-12; physical fields, seed mean, from the evaluation parquets; report Table "Field-wise"):
 * Developed convection, one step (4 h): CNextU-Net b 0.092, p 0.024, u 0.039, w 0.044. TFNO 0.170 / 0.054 / 0.096 /
   0.116. AViT 0.119 / 0.039 / 0.061 / 0.080. Buoyancy is the hardest field for every model.

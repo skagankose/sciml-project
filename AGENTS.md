@@ -400,3 +400,8 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * The remaining deliverables now list only the Nusselt error.
   * The grammar slip in the opening paragraph is fixed.
   * The short version is no longer maintained (owner).
+* 2026-11-12: new "Additional Analysis" section in the long report (`sec:extra`), with error by Rayleigh number and
+  heat transport (`fig_by_rayleigh`, `tab:nusselt`).
+  * Nusselt errors are now reported as medians and as the error of the rollout-averaged Nu. The means were
+    dominated by near-zero and negative instantaneous true values.
+  * A findings bullet was added, and the remaining deliverables were updated.

@@ -505,6 +505,84 @@ the row says otherwise. These hold for these configurations and budgets and may 
 \label{tab:choice}
 \end{table}
 
+\section{Additional Analysis}
+\label{sec:extra}
+
+Two analyses go beyond the abstract's metrics: how the error depends on the Rayleigh number, and whether the models
+reproduce the heat that convection carries across the layer.
+
+\textbf{Error by Rayleigh number} (Fig.~\ref{fig:rayleigh}a, b). Each Rayleigh number groups seven Prandtl numbers
+(35 test trajectories). The one-step error in developed convection grows four- to tenfold from $\mathrm{Ra}=10^6$ to
+$10^{10}$ (CNextU-Net 0.016 to 0.111, TFNO 0.042 to 0.191, AViT 0.016 to 0.154), as convection becomes more turbulent, with finer plumes and
+thinner boundary layers; persistence's error grows too (0.098 to 0.351), because the flow changes more between
+frames. The ranking is the same at every Rayleigh number, except that AViT ties CNextU-Net at $10^6$. The released
+CNextU-Net, trained on all the data, matches ours at $10^6$ and $10^7$ (0.018 and 0.017, against 0.016 and 0.020)
+and is better only at higher Rayleigh numbers (0.085 against 0.111 at $10^{10}$): the 10\% model falls short where
+the flow is most complex, with the caveat that the two runs also differ in schedule and hardware. After 30 steps from
+developed flow, CNextU-Net and TFNO stay below persistence at every Rayleigh number, while AViT is worse than
+persistence up to $10^8$ (0.81 against 0.66 at $10^6$) and better only at $10^9$ and $10^{10}$. Over all three
+start frames, the fraction of CNextU-Net's rollouts that stay below VRMSE 1 instead rises with Rayleigh number (0.67
+at $10^6$, 0.98 at $10^{10}$). This is consistent with convection starting later at low Rayleigh number, so that
+more rollouts from frame 20 begin in the near-quiescent onset, where relative errors are large; the same effect
+underlies the released model's Rayleigh-number dependence (Appendix~\ref{app:pipeline}).
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_by_rayleigh.pdf}{width=\linewidth}
+\caption{Error by Rayleigh number, four-hour models (seed mean; each point averages seven Prandtl numbers, 35 test
+trajectories). (a) One-step VRMSE in developed convection. (b) VRMSE after 30 steps from frames 80 and 140. (c)
+Median relative error of the Nusselt number averaged over those 30-step rollouts. Dashed: released CNextU-Net
+(100\% data); dotted: persistence.}
+\label{fig:rayleigh}
+\end{figure}
+
+\textbf{Heat transport} (Table~\ref{tab:nusselt}, Fig.~\ref{fig:rayleigh}c). The Nusselt number is the heat carried
+across the layer relative to conduction alone. Volume-averaged, and in the units of the data (diffusivity
+$\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$, unit height and temperature difference), it is
+$\mathrm{Nu}=1+\sqrt{\mathrm{Ra}\,\mathrm{Pr}}\,\langle w\,b\rangle$, computed for every predicted and true frame of
+each rollout. Two properties shape the comparison. The factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$, $3\times10^4$ to $3\times10^5$ at
+$\mathrm{Ra}=10^{10}$, amplifies small errors in the correlation between vertical velocity and buoyancy. And the
+instantaneous value fluctuates strongly: across test trajectories the true Nusselt number one step after frame 80
+ranges from $-249$ to 1,363, so relative errors near zero crossings are unbounded and means are dominated by outliers. We
+therefore report medians, and the error of the Nusselt number averaged over each 30-step rollout from frames 80 and
+140; its sign shows whether a model predicts too much or too little heat transport.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& One step & \multicolumn{2}{c}{Averaged over 30 steps} \\
+\cmidrule(l){3-4}
+Model (10\% data, checkpoint) & median $|$error$|$ & median $|$error$|$ & median signed error \\
+\midrule
+CNextU-Net, 4 h & \textbf{0.020} & 0.485 & $-0.015$ \\
+TFNO, 4 h & 0.072 & \textbf{0.196} & $+0.064$ \\
+AViT, 4 h & 0.037 & 0.275 & $-0.167$ \\
+\midrule
+CNextU-Net, 1 h & 0.265 & 5.479 & $+5.451$ \\
+TFNO, 1 h & 0.285 & 0.906 & $+0.205$ \\
+AViT, 1 h & \textbf{0.081} & \textbf{0.353} & $+0.138$ \\
+\midrule
+Persistence & 0.076 & 0.267 & $+0.023$ \\
+\bottomrule
+\end{tabular}
+\caption{Relative error of the volume-averaged Nusselt number on the 350 rollouts from frames 80 and 140 (175
+trajectories $\times$ 2), median over rollouts, mean over the two seeds. One step: the instantaneous value after
+the first step. Signed: negative means too little heat transport. Bold: best of our models at each budget.}
+\label{tab:nusselt}
+\end{table}
+
+After one step the four-hour CNextU-Net reproduces the instantaneous Nusselt number to within 2\% (median), better
+than AViT (3.7\%), TFNO (7.2\%) and persistence (7.6\%), and it is the best or tied at every Rayleigh number. Over a 30-step
+rollout the picture changes. TFNO comes closest to the true heat transport (0.20, against 0.27 for persistence).
+AViT systematically predicts too little (median $-17$\%, down to $-43$\% at $\mathrm{Ra}=10^{10}$). CNextU-Net is
+unbiased on average ($-1.5$\%) but has the largest spread (0.49), which grows with Rayleigh number to 1.0 at
+$10^{10}$. Its excess small-scale energy (Fig.~\ref{fig:spectra}) could create spurious correlations between $w$ and
+$b$ that the factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$ amplifies; this is consistent with the data but not
+established. After one hour CNextU-Net predicts about six times the true heat transport. Heat transport is
+therefore largely a negative result: a low one-step VRMSE does not guarantee the right heat flux over a rollout, and
+the MSE objective does not constrain it.
+
 \section{Findings Under Limited Data and Compute}
 \label{sec:findings}
 
@@ -531,6 +609,10 @@ The main findings at 10\% data hold for these configurations and budgets (Table~
     \item \textbf{Negative results.} No model beats copying the last frame (persistence) on velocity during
     convection onset (on buoyancy all three do),
     and after 30 steps from developed flow AViT is no better than persistence.
+    \item \textbf{Rayleigh number and heat transport.} Error grows four- to tenfold from $\mathrm{Ra}=10^6$ to
+    $10^{10}$ for every model, and the released full-data model's advantage is confined to high Rayleigh numbers.
+    After one step CNextU-Net reproduces the Nusselt number best (2\% median error); over a 30-step rollout only TFNO
+    predicts the averaged heat transport better than persistence, and AViT predicts too little (Section~\ref{sec:extra}).
     \item \textbf{Caveats.} Two seeds on one fixed 10\% subset do not measure how much the choice of trajectories
     matters. Training in fp32 for every model favours TFNO, since bf16 would speed up CNextU-Net (1.7 times) and
     AViT (2.2 times) but is not available for our TFNO. The learning rate is the best of a short search, at the top
@@ -565,8 +647,7 @@ budget. The main changes are:
 \textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
 failure horizons, spectra, training cost, inference time and memory. Remaining for the final report: the 100\%
 runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), with accuracy--cost curves at both
-data fractions; the Nusselt-number error per
-model; and the flow snapshots for the 100\% runs.
+data fractions; the Rayleigh-number and heat-transport analyses for the 100\% runs; and their flow snapshots.
 
 \textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;
 (2) complete the six 100\% runs (estimated approximately 2,400 SU) and the core data--compute comparison;

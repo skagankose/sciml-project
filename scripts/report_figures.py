@@ -348,6 +348,72 @@ def accuracy_cost(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
     return save(fig, out, "fig_accuracy_cost")
 
 
+# --- 4d. error by Rayleigh number: one step, 30-step rollout, heat transport -------------------------------------
+
+def _clean(t: pd.DataFrame) -> pd.DataFrame:
+    return t[t.sigma == 0] if "sigma" in t else t
+
+
+def _by_ra_one_step(t: pd.DataFrame) -> pd.Series:
+    t = _clean(t)
+    return t[t.start >= ONSET_FRAMES].groupby("rayleigh").vrmse_mean.mean()
+
+
+def _by_ra_rollout(t: pd.DataFrame, step: int = 30, starts=(80, 140)) -> pd.Series:
+    t = _clean(t)
+    return t[t.start.isin(starts) & (t.step == step)].groupby("rayleigh").vrmse_mean.mean()
+
+
+def _by_ra_nusselt(t: pd.DataFrame, starts=(80, 140)) -> pd.Series:
+    """Median |relative error| of the Nusselt number averaged over each rollout, per Rayleigh number."""
+    t = _clean(t)
+    g = t[t.start.isin(starts)].groupby(["rayleigh", "traj_id", "start"])[["nu_pred", "nu_true"]].mean()
+    return ((g.nu_pred - g.nu_true) / g.nu_true).abs().groupby(level="rayleigh").median()
+
+
+def by_rayleigh(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h") -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs)
+    one, roll, phys = (ff._load(evals, k, label) for k in ("one_step", "rollout", "physics"))
+    if not one or not roll or not phys:
+        return []
+    released = ff._released(outputs, "cnext_unet", "one_step")
+    p_one, p_roll = ff._persistence(outputs, "one_step"), ff._persistence(outputs, "rollout")
+    p_phys_path = outputs / "baselines" / "persistence" / "evaluations" / "physics_na.parquet"
+    p_phys = pd.read_parquet(p_phys_path) if p_phys_path.exists() else None
+    fig, axes = plt.subplots(1, 3, figsize=(FULL, 2.3))
+    panels = ((axes[0], one, _by_ra_one_step, p_one, "One-step VRMSE, developed", "(a) One step"),
+              (axes[1], roll, _by_ra_rollout, p_roll, "VRMSE after 30 steps", "(b) 30 steps from frames 80, 140"),
+              (axes[2], phys, _by_ra_nusselt, p_phys, "Nusselt-number error", "(c) Heat transport over 30 steps"))
+    for ax, tables, fn, persist, ylabel, title in panels:
+        for m in [m for m in MODEL_NAMES if m in tables]:
+            s = pd.concat([fn(t) for t in tables[m]], axis=1).mean(axis=1)
+            ax.plot(s.index, s.values, color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=3.5)
+        if persist is not None:
+            s = fn(persist)
+            ax.plot(s.index, s.values, color=PERSIST["color"], ls=":", lw=1.3)
+        ax.set_xscale("log")
+        ax.set_xticks([1e6, 1e7, 1e8, 1e9, 1e10])
+        ax.set_xlabel("Rayleigh number")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+    if released is not None:
+        s = _by_ra_one_step(released)
+        axes[0].plot(s.index, s.values, color=INK, lw=1.0, ls="--")
+    axes[0].set_yscale("log")
+    axes[0].set_yticks([0.02, 0.05, 0.1, 0.2, 0.4])
+    axes[0].yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%g"))
+    axes[0].yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+    handles = [Line2D([], [], color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=3.5,
+                      label=f"{STYLE[m]['label']} ({label})") for m in MODEL_NAMES if m in one]
+    if released is not None:
+        handles.append(Line2D([], [], color=INK, lw=1.0, ls="--", label="released CNextU-Net (100%)"))
+    handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence"))
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, 0.98),
+               columnspacing=1.0, handlelength=1.8)
+    fig.tight_layout()
+    return save(fig, out, "fig_by_rayleigh")
+
+
 # --- 5. spectra: where in scale the error is ----------------------------------------------------------------------
 
 def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", regime=(1e8, 1.0)) -> list[str]:
@@ -475,7 +541,8 @@ def main() -> int:
     written = released_by_window(outputs, out) + loader(outputs, out)
     if not runs.empty:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
-                    + accuracy_cost(outputs, runs, out) + spectra(outputs, runs, out))
+                    + accuracy_cost(outputs, runs, out) + by_rayleigh(outputs, runs, out)
+                    + spectra(outputs, runs, out))
     for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
         written += snapshots(npz, out)
     print("\n".join(f"wrote {p}" for p in written if p.endswith(".pdf")))

@@ -374,3 +374,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     and CNextU-Net varies most between seeds.
   * The choice table gains a 1 h row, and the summary bullet is updated.
   * Mentions of the dedicated runs are removed from the plan and deliverables.
+* 2026-11-12: plausibility review of the 10% results (owner request); the report now carries these
+  qualifications:
+  * TFNO is fastest only at batch 1. With batched forecasts AViT is cheapest per sample (0.89 / 3.15 / 6.74 ms at
+    batch 64, from the profile).
+  * fp32 favours TFNO: bf16 speeds up a training step 1.7× for CNextU-Net and 2.2× for AViT.
+  * The 1.3× gap to the released CNextU-Net is not a data-scaling estimate: its schedule was probably not
+    annealed (≤ ~25 of 200 epochs).
+  * Seeds share one fixed 10% subset.
+  * Table 6 gains a batch-64 column; the findings section gains a Caveats bullet.
+  * Optional work added to the plan: a second subset draw, and batched inference timing.

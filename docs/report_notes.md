@@ -305,6 +305,23 @@ Findings:
   (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+Qualifications from the plausibility review (2026-11-12, in the report):
+* Batch-1 latency is overhead-bound. Forward pass per sample in a batch of 64 (training profile, fp32, with
+  gradient tracking; `outputs/pilots/feasibility.csv`): AViT 0.89 ms, TFNO 3.15 ms, CNextU-Net 6.74 ms. So AViT
+  is the cheapest for batched forecasts (3.5× cheaper than TFNO, 7.6× cheaper than CNextU-Net). TFNO is the fastest
+  only at batch 1.
+* bf16 vs fp32 at batch 64, GPU time per training step (forward + backward + optimizer):
+  * CNextU-Net 1.172 → 0.708 s (1.66×); its memory 58.7 → 34.5 GB allocated.
+  * AViT 0.180 → 0.083 s (2.17×).
+  * TFNO cannot run in bf16 (D8). Training everything in fp32 therefore favours TFNO.
+* The released CNextU-Net (12 h on an H100) probably never annealed. Our estimate: our A100 rate of 54 samples/s,
+  with an H100 at most 3× faster, gives ≤ 7.0 M samples in 12 h. At 274,400 windows per epoch that is ≤ ~25 of
+  the 200 scheduled epochs. With 5 warmup epochs and a cosine to 0.1·lr over 200, the learning rate at epoch 25
+  is still ~98% of peak. So the 1.3× gap to our 10% / 4 h model is not a data-scaling estimate. This is an
+  estimate; the model card does not give the epoch count.
+* One 10% subset is shared by every seed and model (`src/rbbench/subsets.py`), so the seed spread excludes the
+  effect of which trajectories were drawn. Optional: a second subset draw, one run per model, ~25 allocated GPU-h.
+
 With only 1 h of training (the 4 h runs' 1 h checkpoints; report section 4, Tables 4–5):
 * One step: AViT is best over all windows (0.394 vs TFNO 0.473, CNextU-Net 0.728) and in onset (1.30). In developed
   convection CNextU-Net (0.081) and AViT (0.085) are close, and TFNO trails (0.120).

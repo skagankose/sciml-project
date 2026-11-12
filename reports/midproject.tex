@@ -214,11 +214,20 @@ same budget; AViT would also need faster storage to benefit, since it already wa
 This section answers the project's question for its most constrained setting: how accurate each family becomes
 with 10\% of the training data and 1 or 4 hours of training, and what it costs to train and to use.
 
-\textbf{Training} (Fig.~\ref{fig:curves} in Appendix~\ref{app:figs}). The six runs completed their 4-hour budgets (Table~\ref{tab:train}).
+\textbf{Training} (Fig.~\ref{fig:curves}). The six runs completed their 4-hour budgets (Table~\ref{tab:train}).
 On a fixed validation sample of 64 windows (Appendix~\ref{app:accounting}), AViT and CNextU-Net reach similar
 error after 4 hours; TFNO's loss plateaus after $\sim$1.5 hours. CNextU-Net's validation error peaks near one
 hour while its learning rate is still high; this temporal association does not establish the learning rate as
 the cause.
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_training.pdf}{scale=1}
+\caption{Training MSE in normalised units (left; smoothed over 3 minutes of training) and validation VRMSE on the
+64 fixed windows, physical fields (right), against active training time, 10\% data. Solid: seed 0; dashed: seed 1.
+Vertical lines: the 1-hour and 4-hour checkpoints.}
+\label{fig:curves}
+\end{figure}
 
 \textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow} in Appendix~\ref{app:figs}).
 After 4 hours AViT and CNextU-Net have similar one-step error over all windows (0.134 and 0.136) and TFNO a
@@ -744,17 +753,7 @@ model consumes them on the GPU (horizontal lines).}
 \section{Additional Figures}
 \label{app:figs}\label{app:snapshots}
 
-Training curves (Fig.~\ref{fig:curves}), test error by window (Fig.~\ref{fig:testwindow}) and flow snapshots at
-$\mathrm{Ra}=10^{10}$ (Fig.~\ref{fig:snapshots10}).
-
-\begin{figure}[!htbp]
-\centering
-\figureorpending{fig_training.pdf}{scale=1}
-\caption{Training MSE in normalised units (left; smoothed over 3 minutes of training) and validation VRMSE on the
-64 fixed windows, physical fields (right), against active training time, 10\% data. Solid: seed 0; dashed: seed 1.
-Vertical lines: the 1-hour and 4-hour checkpoints.}
-\label{fig:curves}
-\end{figure}
+Test error by window (Fig.~\ref{fig:testwindow}) and flow snapshots at $\mathrm{Ra}=10^{10}$ (Fig.~\ref{fig:snapshots10}).
 
 \begin{figure}[!htbp]
 \centering

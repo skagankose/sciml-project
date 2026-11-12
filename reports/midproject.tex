@@ -137,7 +137,10 @@ The kinetic-energy spectrum and the inference-time measurements are defined in A
 \section{Milestone 1: Pipeline Validated Against the Released Checkpoints}
 
 We loaded The Well's released CNextU-Net and TFNO weights and scored them with our own data path and metric on
-every window of the 175 test trajectories (Table~\ref{tab:released}).
+every window of the 175 test trajectories (Table~\ref{tab:released}). The released TFNO also reproduces its
+published value, but only with the paper-era forward pass, under which it is effectively a per-pixel model that
+tracks persistence. Because of that bug it is not shown in the main text; its results, and why it behaves this
+way, are in Appendix~\ref{app:tfno}.
 
 \begin{table}[!htbp]
 \centering\small
@@ -148,10 +151,10 @@ every window of the 175 test trajectories (Table~\ref{tab:released}).
 Model & Ours (released weights) & Published & Ours & Published \\
 \midrule
 CNextU-Net & 0.669 & 0.670 & 36 / 35 & $>10$ / $>10$ \\
-TFNO & 0.663 & 0.657 & 142 / 169 & $>10$ / $>10$ \\
 \bottomrule
 \end{tabular}
-\caption{Released checkpoints scored by our pipeline against the paper's Tables 2 and 3 (test split).}
+\caption{The released CNextU-Net scored by our pipeline against the paper's Tables 2 and 3 (test split). The
+released TFNO is in Appendix~\ref{app:tfno} (Table~\ref{tab:released_tfno}).}
 \label{tab:released}
 \end{table}
 
@@ -168,12 +171,12 @@ Three observations shape how we report results (the second and third are in Appe
 
 \begin{figure}[!htbp]
 \centering
-\figureorpending{fig_released_by_window.pdf}{scale=1}
-\caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, under
+\figureorpending{fig_released_cnext_by_window.pdf}{scale=1}
+\caption{The released CNextU-Net's one-step VRMSE by window on the test set, mean over the 175 trajectories, under
 the paper protocol (left) and on physical fields (right). Shaded: windows whose first input frame is below 50,
 reported as \emph{onset}; the others are \emph{developed}. The cut at frame 50 is operational, chosen where the
 released checkpoints' error levels off on the validation split; it is not a transition verified for every
-regime. Persistence copies the last input frame.}
+regime. Persistence copies the last input frame. The released TFNO is shown in Fig.~\ref{fig:released_tfno}.}
 \label{fig:released}
 \end{figure}
 
@@ -238,9 +241,7 @@ across-seed standard deviation of the all-window VRMSE is at most 0.006 (seeds o
 released CNextU-Net, trained on all the data for longer, remains better in developed convection (0.038 against
 0.050). This gap is not a measure of what ten times more data buys, because the two also differ in hardware,
 learning rate and schedule (Appendix~\ref{app:recipe}). The 100\% runs will
-measure the effect of data with everything else fixed. Our TFNO, which uses its Fourier layers, is
-better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
-despite 10\% of the data and 4 hours. Persistence is better than every model during onset and 2--4.5 times worse
+measure the effect of data with everything else fixed. Persistence is better than every model during onset and 2--4.5 times worse
 in developed convection.
 
 \begin{table}[!htbp]
@@ -260,7 +261,6 @@ TFNO, 1 h & 0.473 $\pm$ 0.078 & 1.505 $\pm$ 0.305 & 0.120 $\pm$ 0.000 & 1.362 $\
 AViT, 1 h & \textbf{0.394} $\pm$ 0.036 & \textbf{1.299} $\pm$ 0.140 & 0.085 $\pm$ 0.000 & \textbf{1.171} $\pm$ 0.125 \\
 \midrule
 Released CNextU-Net (100\%, paper) & 0.224 & 0.766 & 0.038 & 0.669 \\
-Released TFNO (100\%, paper) & 0.300 & 0.623 & 0.190 & 0.663 \\
 Persistence & 0.199 & 0.121 & 0.226 & 0.202 \\
 \bottomrule
 \end{tabular}
@@ -279,7 +279,7 @@ rollouts from frames 80 and 140, its error after 30 steps (0.72) is no better th
 frame 20, during onset, it grows to 5.4. TFNO lies in between. Persistence keeps more rollouts below the thresholds
 because its error levels off near 0.7, while it is 2--5 times less accurate than every model over the first steps
 from developed flow (Fig.~\ref{fig:rollouts}a). Under the paper's frame-0 protocol all three models land in the
-``$>10$'' range; CNextU-Net (15 / 30) is below both released checkpoints.
+``$>10$'' range; CNextU-Net (15 / 30) is below the released CNextU-Net (36 / 35).
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -297,7 +297,6 @@ TFNO, 1 h & \textbf{2.67} / \textbf{0.90} / \textbf{0.78} & \textbf{0.60} / \tex
 AViT, 1 h & 4.67 / 1.11 / 0.98 & 0.34 / 0.74 / 0.83 & 129 / 184 \\
 \midrule
 Released CNextU-Net (100\%) & & & 36 / 35 \\
-Released TFNO (100\%) & & & 142 / 169 \\
 Persistence & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
 \bottomrule
 \end{tabular}
@@ -619,7 +618,7 @@ computation. For many forecasts at once, such as ensembles, we also report the f
 batch of 64, measured during profiling (fp32, with gradient tracking as in training, so an upper bound for
 inference).
 
-\section{TFNO Forward Pass}
+\section{TFNO Forward Pass and the Released TFNO}
 \label{app:tfno}
 In The Well's code, commit \texttt{2d8d7eaf} (2024-06-03, ``Added gradient checkpointing'') called TFNO's Fourier
 blocks without keeping their output, so the model computed only its lifting and projection layers; commit
@@ -630,6 +629,44 @@ pass they were trained with (Fourier blocks skipped): it reproduces the publishe
 forward pass the same weights score $\approx$10.5. Our own runs use The Well at commit \texttt{e63dec8}, which
 includes the fix. Upstream issue \#49 reports related inconsistencies between released checkpoints and published
 numbers~\cite{wellissue}.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& Paper-protocol one-step & Physical-field one-step & Rollout from frame 0, \\
+Model & VRMSE (published) & all / onset / developed & steps 6--12 / 13--30 \\
+\midrule
+Released TFNO (paper-era forward) & 0.663 (0.657) & 0.300 / 0.623 / 0.190 & 142 / 169 (published $>10$) \\
+Our TFNO (10\% data, 4 h) & 0.488 & 0.209 / 0.502 / 0.109 & 51 / 77 \\
+Persistence & 0.202 & 0.199 / 0.121 / 0.226 & 0.27 / 0.50 \\
+\bottomrule
+\end{tabular}
+\caption{The released TFNO, scored by our pipeline on the test split, against our TFNO (seed mean) and
+persistence.}
+\label{tab:released_tfno}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_released_tfno_by_window.pdf}{scale=1}
+\caption{The released TFNO's one-step VRMSE by window on the test set (mean over the 175 trajectories), against
+persistence, on normalised (left) and physical fields (right). Shaded: onset windows.}
+\label{fig:released_tfno}
+\end{figure}
+
+\textbf{Why the released TFNO tracks persistence} (Fig.~\ref{fig:released_tfno}). With its Fourier blocks
+skipped, the model is only its lifting and projection layers, which act on each grid point separately: every
+output pixel is computed from the same pixel's four input frames (and at most its position), with no information
+from neighbouring pixels. Such a model cannot move structures, such as rising plumes or flow carried by the
+convection rolls, so what it learns is close to copying each pixel's last value with a small correction from its
+recent trend: persistence with a little extrapolation. In developed convection it is therefore only slightly
+better than persistence (physical-field VRMSE 0.190 against 0.226). During onset the fields barely change, so
+copying is nearly exact, while the model's small per-pixel adjustments are divided by a near-zero spatial variance
+and become large relative errors. The published all-window value (0.657) hides this, because every model scores
+poorly on the onset windows. Our TFNO, which uses its Fourier layers, is
+better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
+despite 10\% of the data and 4 hours.
 
 \section{Further Pipeline-Check Observations}
 \label{app:pipeline}

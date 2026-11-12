@@ -72,8 +72,11 @@ def onset_band(ax, label: bool = True):
 
 # --- 1. released checkpoints by window (pipeline check) ----------------------------------------------------
 
-def released_by_window(outputs: Path, out: Path) -> list[str]:
-    tables = {m: t for m in ("cnext_unet", "tfno") if (t := ff._released(outputs, m, "one_step")) is not None}
+def released_by_window(outputs: Path, out: Path, models=("cnext_unet", "tfno"),
+                       name: str = "fig_released_by_window") -> list[str]:
+    """Released checkpoints' one-step VRMSE by window. The long report shows CNextU-Net alone in the main text and
+    the released TFNO (paper-era forward, Fourier blocks skipped) against persistence in its appendix."""
+    tables = {m: t for m in models if (t := ff._released(outputs, m, "one_step")) is not None}
     if not tables:
         return []
     persist = ff._persistence(outputs, "one_step")
@@ -98,7 +101,7 @@ def released_by_window(outputs: Path, out: Path) -> list[str]:
         handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence (copy last frame)"))
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, 0.98))
     fig.tight_layout()
-    return save(fig, out, "fig_released_by_window")
+    return save(fig, out, name)
 
 
 # --- 2. data loading against demand --------------------------------------------------------------------------
@@ -470,7 +473,10 @@ def main() -> int:
     outputs, out = REPO / "outputs", REPO / "reports" / "figures"
     runs_csv = outputs / "findings" / "runs.csv"
     runs = pd.read_csv(runs_csv) if runs_csv.exists() else pd.DataFrame()
-    written = released_by_window(outputs, out) + loader(outputs, out)
+    written = (released_by_window(outputs, out)
+               + released_by_window(outputs, out, ("cnext_unet",), "fig_released_cnext_by_window")
+               + released_by_window(outputs, out, ("tfno",), "fig_released_tfno_by_window")
+               + loader(outputs, out))
     if not runs.empty:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
                     + accuracy_cost(outputs, runs, out) + spectra(outputs, runs, out))

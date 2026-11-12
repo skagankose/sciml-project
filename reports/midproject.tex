@@ -10,9 +10,10 @@
 \usepackage{amsmath,amssymb,tabularx}
 \usepackage{xcolor}
 \usepackage[font=small,labelfont=bf]{caption}
-\usepackage[section]{placeins}  % floats stay in their section
+\usepackage{placeins} % floats stay in their section
 \usepackage{xurl}  % long commit URLs break across lines
 \usepackage[hidelinks]{hyperref}
+
 
 \pagestyle{plain}
 \setlength{\parindent}{0pt}
@@ -79,14 +80,14 @@ fixed upstream in November 2025. We scored the released TFNO weights with the fo
 with, and our own TFNO, trained with the fixed code (The Well at \texttt{e63dec8}), uses its Fourier layers
 (Appendix~\ref{app:tfno}).
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabularx}{\linewidth}{@{}llrl>{\raggedright\arraybackslash}X@{}}
 \toprule
 Model & Family & Parameters & Normalisation & Relation to released checkpoint \\
 \midrule
 CNextU-Net~\cite{liu2022convnext} & ConvNeXt U-Net, 4 stages & 18.58M & LayerNorm & same architecture \\
-TFNO~\cite{kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & none & same configuration, fixed forward \\
+TFNO~\cite{li2021fno,kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & none & same configuration, fixed forward \\
 AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & GroupNorm, LayerNorm & none released; width 384 $\to$ 432 \\
 \bottomrule
 \end{tabularx}
@@ -150,7 +151,7 @@ inference).
 We loaded The Well's released CNextU-Net and TFNO weights and scored them with our own data path and metric on
 every window of the 175 test trajectories (Table~\ref{tab:released}).
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -182,7 +183,7 @@ Three observations shape how we report results:
     evaluation state.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_released_by_window.pdf}{scale=1}
 \caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, under
@@ -206,13 +207,17 @@ AViT consume 116 and 330 samples per second of GPU time (Fig.~\ref{fig:loader}),
 partly measure our storage. The 1-hour and 4-hour budgets therefore count active GPU training time; waiting for
 data is logged separately.
 
-\textbf{Learning rate.} An equal-budget search (20 minutes of GPU training per run, 10\% data, validation only)
-chose $10^{-3}$ for all three models (Table~\ref{tab:lr}). The Well swept $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
+\textbf{Learning rate.} The paper's rates ($5\cdot10^{-4}$ for CNextU-Net, $10^{-4}$ for TFNO) were chosen for
+12-hour runs. With one to four hours a model takes far fewer optimizer steps, and a small learning rate that pays off
+over a long run may not get far enough in a short one, so we tested whether a higher rate suits our budgets. An
+equal-budget search (20 minutes of GPU training per run, 10\% data, validation only) chose $10^{-3}$ for all three
+models (Table~\ref{tab:lr}). At this budget the higher rate was clearly better than the paper's: 0.408 against 0.469
+for CNextU-Net at $5\cdot10^{-4}$, and 0.302 against 0.603 for TFNO at $10^{-4}$. The Well swept $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
 5\cdot10^{-3}, 10^{-2}\}$; we tested its lower three rates and omitted the two largest to limit tuning cost. Since
 $10^{-3}$ is the largest rate tried, it is the best candidate tested, not an established optimum, and the
 20-minute ranking may differ from the ranking after four hours.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -251,7 +256,7 @@ error after 4 hours; TFNO's loss plateaus after $\sim$1.5 hours. CNextU-Net's va
 hour while its learning rate is still high; this temporal association does not establish the learning rate as
 the cause.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_training.pdf}{scale=1}
 \caption{Training MSE in normalised units (left; smoothed over 3 minutes of training) and validation VRMSE on the
@@ -263,7 +268,8 @@ Vertical lines: the 1-hour and 4-hour checkpoints.}
 \textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow}).
 After 4 hours AViT and CNextU-Net have similar one-step error over all windows (0.134 and 0.136) and TFNO a
 higher one (0.209), but the two phases separate them: in developed convection CNextU-Net is clearly the most
-accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), while AViT is the most accurate during onset. The
+accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), consistent with U-Net variants being among the
+strongest baselines in neural PDE benchmarks~\cite{gupta2022pdearena,ohana2024well}, while AViT is the most accurate during onset. The
 across-seed standard deviation of the all-window VRMSE is at most 0.006 (seeds only; the subset is fixed). The
 released CNextU-Net, trained on all the data for longer, remains better in developed convection (0.038 against
 0.050). This gap is not a measure of what ten times more data buys, because the two also differ in hardware,
@@ -275,7 +281,7 @@ better than the released TFNO everywhere (developed 0.109 against 0.190; paper p
 despite 10\% of the data and 4 hours. Persistence is better than every model during onset and 2--4.5 times worse
 in developed convection.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -301,7 +307,7 @@ first input frame $<50$; developed: $\geq 50$. Bold: best of our models at each 
 \label{tab:test}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_test_by_window.pdf}{scale=1}
 \caption{One-step test VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models at
@@ -311,7 +317,9 @@ Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}
 \end{figure}
 
 \textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). One-step accuracy does not carry over to
-rollouts in the same order. Among our trained models, CNextU-Net is the most stable: after 30 steps from frames 80
+rollouts in the same order. This is expected for models trained only on one-step targets: in a rollout they receive
+their own slightly wrong outputs, inputs they never saw in training~\cite{brandstetter2022mp}, and uncontrolled error
+growth over an autoregressive rollout is a known failure mode~\cite{mccabe2023stability}. Among our trained models, CNextU-Net is the most stable: after 30 steps from frames 80
 and 140 its error (0.53, 0.40) is below persistence's (0.86, 0.54), and 89\% of its rollouts stay below VRMSE 1
 through step 30. AViT, despite a similar one-step error, degrades fastest (0.80, 0.65; 63\%): averaged over the
 rollouts from frames 80 and 140, its error after 30 steps (0.72) is no better than persistence's (0.70), and from
@@ -320,7 +328,7 @@ because its error levels off near 0.7, while it is 2--5 times less accurate than
 from developed flow (Fig.~\ref{fig:rollouts}a). Under the paper's frame-0 protocol all three models land in the
 ``$>10$'' range; CNextU-Net (15 / 30) is below both released checkpoints.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -358,7 +366,7 @@ for AViT. CNextU-Net, the best model after four hours, is the least reliable aft
 With one hour of training, AViT is the better choice for one-step predictions and TFNO for multi-step forecasts;
 after 30 steps none of the three is more accurate than persistence.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_rollouts.pdf}{scale=1}
 \caption{Rollouts of our 10\% models at 4 hours (seed mean) and persistence. (a) Physical-field VRMSE at each
@@ -393,7 +401,7 @@ the limiting resources, we set each model's accuracy against what it costs to tr
     comparable to a per-forecast time; the solver baseline in the plan would measure that comparison directly.
 \end{itemize}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_accuracy_cost.pdf}{width=\linewidth}
 \caption{Accuracy against cost, 10\% data (seed mean; bars: range over seeds). (a) One-step test VRMSE in
@@ -404,7 +412,7 @@ the released CNextU-Net (100\% data); dotted: persistence.}
 \label{fig:cost}
 \end{figure}
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \setlength{\tabcolsep}{4.5pt}
 \begin{tabular}{@{}lcccccccc@{}}
@@ -434,13 +442,17 @@ within 0.80--1.57 below $k_x=100$ and reaches 190--530 at the highest wavenumber
 $k_x\approx 25$ and 100 its ratio falls to 0.33 after one step and 0.09 after 30, and it reaches 9--50 at the
 highest wavenumbers. AViT stays within 0.97--1.34 below $k_x=100$ after one step, but after 30 steps it ranges
 from 0.55 to 21 there and reaches about $5\times10^4$ at the highest wavenumbers. The TFNO deficit is consistent
-with its spectral layers keeping only the 16 lowest Fourier modes in each direction ($k_x \lesssim 25$), and
-AViT's growth with the patch-shaped artifacts in Fig.~\ref{fig:snapshots}; neither is established as the cause.
+with its spectral layers keeping only the 16 lowest Fourier modes in each direction ($k_x \lesssim
+25$)~\cite{li2021fno}, and AViT's growth with the patch-shaped artifacts in Fig.~\ref{fig:snapshots}; neither is
+established as the cause. The excess small-scale energy of CNextU-Net and AViT is typical of surrogates trained with
+MSE, which weights each scale by its energy and so barely constrains low-energy small scales (the spectral bias of
+neural networks~\cite{rahaman2019spectral}); such surrogates are known to neglect non-dominant, often high-frequency,
+components~\cite{lippe2023pderefiner}.
 Persistence repeats its last input field, so its predicted spectrum is fixed within a rollout; changes in its
 ratio reflect the evolving true spectrum. Ratios at the smallest scales should also be read alongside absolute
 spectra, because very small true energy can magnify the ratio.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_spectra.pdf}{scale=1}
 \caption{Horizontal kinetic-energy spectra. (a) True and predicted spectrum after 30 rollout steps for one regime
@@ -457,7 +469,7 @@ By step 12 AViT shows rectangular artifacts at the size of its $16\times16$-pixe
 $\mathrm{Ra}=10^{10}$ the true flow is far finer than any of the three reproduces; CNextU-Net keeps the
 large-scale plume pattern but smooths the small structures.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e8_Prandtl_1__0__s080.pdf}{scale=1}
 \caption{Buoyancy on a test trajectory at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$, rolled out from frame 80: the true
@@ -473,7 +485,7 @@ the slowest inference and the most training memory; TFNO is the fastest for sing
 is the cheapest on the GPU, in training and for batched forecasts, but needs fast storage and does not stay
 accurate over a rollout.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.27\linewidth}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}X@{}}
 \toprule
@@ -553,7 +565,7 @@ budget. The main changes are:
     trajectories matters, and batched inference timing can be added to the 100\% evaluations at little cost.
 \end{itemize}
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabular}{@{}lr@{}}
 \toprule
@@ -610,7 +622,7 @@ configuration at commit \texttt{e63dec8}:
 Our software: The Well \texttt{e63dec8}, neuraloperator 0.3.0, PyTorch 2.8.0 (CUDA 12.8), Python 3.13; our
 repository at \texttt{f42b2e2} (training) and \texttt{4c0d3a8} (AViT resume, evaluation).
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
 \toprule
@@ -665,7 +677,7 @@ share 8 windows. This monitoring sample does not replace the full test evaluatio
 hour for one A100 and 8 cores); the free partition is not billed. Runs that started on the free partition and
 resumed on the paid one are billed only for the paid part.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\small
 \begin{tabular}{@{}lccccc@{}}
 \toprule
@@ -684,7 +696,7 @@ of its 5.2--6.0\,h.}
 \label{tab:train}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering\footnotesize
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -717,7 +729,7 @@ waits depend on the cluster's load and are not projected.}
 \label{tab:time}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_loader.pdf}{scale=1}
 \caption{Training samples per second read from the shared file system by one node, against the rate at which each
@@ -728,7 +740,7 @@ model consumes them on the GPU (horizontal lines).}
 \section{Flow Snapshots at $\mathrm{Ra}=10^{10}$}
 \label{app:snapshots}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
 \centering
 \figureorpending{fig_snapshots_buoyancy_rayleigh_benard_Rayleigh_1e10_Prandtl_1__0__s080.pdf}{scale=1}
 \caption{As Fig.~\ref{fig:snapshots}, at $\mathrm{Ra}=10^{10}$, $\mathrm{Pr}=1$.}
@@ -737,7 +749,7 @@ model consumes them on the GPU (horizontal lines).}
 
 \clearpage
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \setlength{\itemsep}{8pt}
 
 \bibitem{ohana2024well}
@@ -763,6 +775,42 @@ McCabe, M., et al.
 ``Multiple Physics Pretraining for Spatiotemporal Surrogate Models.''
 NeurIPS, 2024.\\
 \url{https://arxiv.org/abs/2310.02994}
+
+\bibitem{li2021fno}
+Li, Z., Kovachki, N., Azizzadenesheli, K., Liu, B., Bhattacharya, K., Stuart, A., and Anandkumar, A.
+``Fourier Neural Operator for Parametric Partial Differential Equations.''
+ICLR, 2021.\\
+\url{https://arxiv.org/abs/2010.08895}
+
+\bibitem{gupta2022pdearena}
+Gupta, J. K., and Brandstetter, J.
+``Towards Multi-spatiotemporal-scale Generalized PDE Modeling.''
+arXiv:2209.15616, 2022.\\
+\url{https://arxiv.org/abs/2209.15616}
+
+\bibitem{rahaman2019spectral}
+Rahaman, N., Baratin, A., Arpit, D., Draxler, F., Lin, M., Hamprecht, F. A., Bengio, Y., and Courville, A.
+``On the Spectral Bias of Neural Networks.''
+ICML, 2019.\\
+\url{https://arxiv.org/abs/1806.08734}
+
+\bibitem{lippe2023pderefiner}
+Lippe, P., Veeling, B. S., Perdikaris, P., Turner, R. E., and Brandstetter, J.
+``PDE-Refiner: Achieving Accurate Long Rollouts with Neural PDE Solvers.''
+NeurIPS, 2023.\\
+\url{https://arxiv.org/abs/2308.05732}
+
+\bibitem{brandstetter2022mp}
+Brandstetter, J., Worrall, D., and Welling, M.
+``Message Passing Neural PDE Solvers.''
+ICLR, 2022.\\
+\url{https://arxiv.org/abs/2202.03376}
+
+\bibitem{mccabe2023stability}
+McCabe, M., Harrington, P., Subramanian, S., and Brown, J.
+``Towards Stability of Autoregressive Neural Operators.''
+TMLR, 2023.\\
+\url{https://arxiv.org/abs/2306.10619}
 
 \bibitem{burns2020dedalus}
 Burns, K. J., Vasil, G. M., Oishi, J. S., Lecoanet, D., and Brown, B. P.

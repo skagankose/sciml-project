@@ -384,3 +384,12 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Seeds share one fixed 10% subset.
   * Table 6 gains a batch-64 column; the findings section gains a Caveats bullet.
   * Optional work added to the plan: a second subset draw, and batched inference timing.
+* 2026-11-12: `reports/midproject_short.tex` written (owner): a shorter mid-project report.
+  * The main body is ~7 pages, against ~11, and is framed by the aim (useful under limited data and compute).
+  * It adds an inductive-bias column to the model table and a new section, "Why the Families Behave
+    Differently", which ties the results to spectral truncation, locality and multi-scale structure, patching,
+    one-step training vs rollouts, persistence and the metric, and data vs compute. New citations: FNO, PDEArena,
+    spectral bias, PDE-Refiner, Brandstetter et al. 2022 and McCabe et al. 2023, all verified on arXiv.
+  * Metric details, the recipe, the TFNO bug, accounting, the learning-rate search, training curves, the
+    per-window test figure and the Ra = 1e10 snapshots moved to appendices.
+  * `midproject.tex` is kept as the full version.

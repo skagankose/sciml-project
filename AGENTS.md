@@ -357,3 +357,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     Ra = 1e10 snapshots.
   * Figure labels and the colorbar ("Buoyancy b") are clearer, and full commit SHAs are cited. Numbers are in
     `docs/report_notes.md`.
+* 2026-11-12: report reframed around the project's aim (owner): which model is useful under limited data and
+  compute, with inference speed as a practical comparison.
+  * Summary: added the aim, and findings on accuracy, returns on training time, cost to train, cost to use and
+    negative results.
+  * Setup: the 10% subset, frame spacing (dataset card) and an inference-time definition.
+  * New `fig_accuracy_cost` (error against training time, GPU time held per run and inference time). The cost
+    table gains GPU time held per run and inference memory.
+  * New "which model under which constraint" table (`tab:choice`). The plan names the accuracy–cost curves at both
+    data fractions.
+  * Numbers are in `docs/report_notes.md`.

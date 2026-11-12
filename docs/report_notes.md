@@ -305,6 +305,29 @@ Findings:
   (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+Accuracy against cost: the project's aim, "useful under limited data and compute" (owner 2026-11-12, report
+reframed). Source: `fig_accuracy_cost`, from `scripts/report_figures.py`.
+* Returns on training time, developed one-step VRMSE from 1 h to 4 h (seed means):
+  * CNextU-Net 0.081 → 0.050 (−38%).
+  * AViT 0.085 → 0.075 (−12%).
+  * TFNO 0.120 → 0.109 (−9%).
+  * At 1 h CNextU-Net and AViT are close. The 1 h points are checkpoints of the 4 h schedule.
+* Data efficiency: at 10% data and 4 h on an A100, CNextU-Net's developed error is 1.3× the released full-data model's
+  (0.050 vs 0.038; the released model trained 12 h on an H100).
+* Cost to train (GPU time held per 4 h run): CNextU-Net 5.2–6.0 h, TFNO 6.9–7.1 h, AViT 11.1–12.2 h. AViT is the
+  most GPU-efficient but storage-bound.
+* Cost to use (batch 1, fp32, A100, input already on the GPU, 10 warm-ups, 50 timed steps):
+  * Per step: 8.3 / 4.4 / 5.4 ms (CNextU-Net / TFNO / AViT).
+  * Per 30-step rollout: 249 / 135 / 163 ms.
+  * Peak allocated memory: 0.31 / 0.44 / 0.23 GB.
+  * The most accurate model is 1.8× slower than the fastest.
+* Negative result: averaged over the rollouts from frames 80 and 140, AViT's VRMSE after 30 steps (0.72) is no better
+  than persistence's (0.70). CNextU-Net 0.47, TFNO 0.52.
+* Context, not a comparison: The Well's dataset card (e63dec8) gives "Approximate time to generate the data: per
+  input parameter from ~6,000s to ~50,000s", total ~60 h, on "12 nodes of 64 CPU cores with 8 processes per node".
+  It also gives a simulation time-step of 0.25 over 0–50, so a 30-step forecast covers 7.5 time units. The
+  parallel layout per trajectory is not stated, so a per-forecast solver cost needs our own solver baseline (D25).
+
 Flow snapshots (`fig_snapshots_buoyancy_*`, `scripts/visualize_rollouts.py`, job 59482062 on the free CPU
 partition; seed 0, 4 h, from frame 80):
 * At Ra = 1e8 CNextU-Net follows the true plumes for 30 steps.
@@ -499,7 +522,8 @@ Report figures: `fig_released_by_window` (pipeline check), `fig_loader` (data su
 (loss and validation for all models; the learning-rate row of the exploratory figure is left out, the schedule
 is described in the text), `fig_test_by_window` (ours vs released vs persistence), `fig_spectra` (one regime at
 step 30, and predicted/true at steps 1 and 30), `fig_rollouts` (VRMSE vs rollout step from frames 80 and 140,
-and the Kaplan–Meier fraction staying below VRMSE 1), `fig_snapshots_buoyancy_*` (after `visualize_cpu.sbatch`).
+and the Kaplan–Meier fraction staying below VRMSE 1), `fig_accuracy_cost` (developed error against training
+time, GPU time held per run, and inference time per 30-step forecast), `fig_snapshots_buoyancy_*` (after `visualize_cpu.sbatch`).
 
 All are rebuilt by `.venv/bin/python scripts/findings.py` after `cluster/pull.sh`, as PDF (for LaTeX) and PNG,
 into `outputs/findings/` unless another folder is named. The evaluation figures pick up each run as soon as

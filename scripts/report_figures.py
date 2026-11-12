@@ -29,6 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import findings_figures as ff
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 from findings import load_metrics
 from matplotlib.lines import Line2D
 
@@ -247,6 +248,104 @@ def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", th
     return save(fig, out, "fig_rollouts")
 
 
+# --- 4c. accuracy against cost: training time, allocated GPU time, inference time --------------------------------
+
+def _developed(t: pd.DataFrame) -> float:
+    """One-step VRMSE (physical fields) over windows whose first input frame is >= ONSET_FRAMES."""
+    if "sigma" in t:
+        t = t[t.sigma == 0]
+    return float(t[t.start >= ONSET_FRAMES].vrmse_mean.mean())
+
+
+def _rollout_end(t: pd.DataFrame, step: int = 30, starts=(80, 140)) -> float:
+    """Rollout VRMSE at `step`, mean over rollouts from the developed-convection starts."""
+    if "sigma" in t:
+        t = t[t.sigma == 0]
+    return float(t[t.start.isin(starts) & (t.step == step)].vrmse_mean.mean())
+
+
+def accuracy_cost(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs)
+    res_csv = outputs / "tables" / "resource_use.csv"
+    if evals.empty or not res_csv.exists():
+        return []
+    one = {lab: ff._load(evals, "one_step", lab) for lab in ("1h", "4h")}
+    roll = ff._load(evals, "rollout", "4h")
+    if not one["4h"] or not roll:
+        return []
+    res = pd.read_csv(res_csv)
+    res = res[(res.budget == "4h") & (res.fraction.round(3) == 0.1)]
+    train = runs[(runs.manifest == "train") & (runs.fraction.round(3) == 0.1)]
+    released = ff._released(outputs, "cnext_unet", "one_step")
+    p_one, p_roll = ff._persistence(outputs, "one_step"), ff._persistence(outputs, "rollout")
+    models = [m for m in MODEL_NAMES if m in one["4h"]]
+
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(FULL, 2.35), gridspec_kw={"width_ratios": [0.8, 1, 1]})
+    for m in models:
+        st = dict(color=STYLE[m]["color"], marker=STYLE[m]["marker"])
+        # (a) developed one-step error at the 1 h and 4 h checkpoints, seed mean with seed range
+        xs, ys, lo, hi = [], [], [], []
+        for h, lab in ((1, "1h"), (4, "4h")):
+            v = [_developed(t) for t in one[lab].get(m, [])]
+            if v:
+                xs.append(h), ys.append(np.mean(v)), lo.append(np.mean(v) - min(v)), hi.append(max(v) - np.mean(v))
+        a.errorbar(xs, ys, yerr=[lo, hi], ms=4, capsize=2, lw=1.4, **st)
+        # (b) the same 4 h error against the GPU time each run held (training + data waits + overhead)
+        dev4 = np.mean([_developed(t) for t in one["4h"][m]])
+        wall = train[train.model == m].wall_hours
+        b.errorbar([wall.mean()], [dev4], xerr=[[wall.mean() - wall.min()], [wall.max() - wall.mean()]],
+                   ms=5, capsize=2, lw=1.0, ls="none", **st)
+        b.annotate(STYLE[m]["label"], (wall.max(), dev4), xytext=(5, 0), textcoords="offset points",
+                   va="center", fontsize=7, color=INK)
+        # (c) error after 30 steps from developed flow against the time to compute those 30 steps
+        r30 = np.mean([_rollout_end(t) for t in roll[m]])
+        ms = res[res.model == m].rollout_ms.mean()
+        c.plot([ms], [r30], ms=5, ls="none", **st)
+        above = m == "avit"                                    # keeps its label clear of the persistence line
+        c.annotate(f"{STYLE[m]['label']}\n{ms:.0f} ms", (ms, r30), xytext=(0, 7 if above else -7),
+                   textcoords="offset points", ha="center", va="bottom" if above else "top", fontsize=7, color=INK)
+    refs = []
+    if released is not None:
+        v = _developed(released)
+        for ax in (a, b):
+            ax.axhline(v, color=INK, lw=1.0, ls="--")
+        refs.append(Line2D([], [], color=INK, lw=1.0, ls="--", label="released CNextU-Net (100% data)"))
+    if p_one is not None:
+        v = _developed(p_one)
+        for ax in (a, b):
+            ax.axhline(v, color=PERSIST["color"], lw=1.2, ls=":")
+        refs.append(Line2D([], [], color=PERSIST["color"], lw=1.2, ls=":", label="persistence"))
+    if p_roll is not None:
+        c.axhline(_rollout_end(p_roll), color=PERSIST["color"], lw=1.2, ls=":")
+    for ax in (a, b):
+        ax.set_yscale("log")
+        ax.set_ylim(0.03, 0.3)
+        ax.set_yticks([0.03, 0.05, 0.1, 0.2, 0.3])
+        ax.yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%g"))
+        ax.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+        ax.set_ylabel("One-step VRMSE, developed")
+    a.set_xticks([1, 4])
+    a.set_xlim(0.4, 4.6)
+    a.set_xlabel("Active training time (h)")
+    a.set_title("(a) More training time")
+    b.axvline(4, color=MUTED, lw=0.8)
+    b.text(4.3, 0.16, "4 h of active\ntraining", fontsize=7, color=MUTED, va="center")
+    b.set_xlim(0, 15.5)
+    b.set_xlabel("Allocated GPU-hours per 4-h run")
+    b.set_title("(b) Cost to train")
+    c.set_xlim(0, 300)
+    c.set_ylim(0.3, 0.9)
+    c.set_xlabel("Inference time per 30-step rollout (ms)")
+    c.set_ylabel("VRMSE after 30 steps, developed")
+    c.set_title("(c) Cost to use (4-h models)")
+    handles = [Line2D([], [], color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=4, label=f"{STYLE[m]['label']} (ours, 10%)")
+               for m in models] + refs
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, 0.98),
+               columnspacing=1.2, handlelength=1.8)
+    fig.tight_layout()
+    return save(fig, out, "fig_accuracy_cost")
+
+
 # --- 5. spectra: where in scale the error is ----------------------------------------------------------------------
 
 def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", regime=(1e8, 1.0)) -> list[str]:
@@ -374,7 +473,7 @@ def main() -> int:
     written = released_by_window(outputs, out) + loader(outputs, out)
     if not runs.empty:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
-                    + spectra(outputs, runs, out))
+                    + accuracy_cost(outputs, runs, out) + spectra(outputs, runs, out))
     for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
         written += snapshots(npz, out)
     print("\n".join(f"wrote {p}" for p in written if p.endswith(".pdf")))

@@ -46,7 +46,13 @@
 
 \section*{Summary}
 
-The abstract set three milestones for this check-in. Their status:
+\textbf{Aim.} Neural PDE forecasting models must be useful under limited data and compute. This project compares
+how accurately and efficiently three architecture families (CNextU-Net, TFNO and AViT) learn Rayleigh--B\'enard
+convection when training data and GPU time are limited. This check-in covers the most constrained setting of the
+study: 10\% of the training data (140 trajectories, four per regime) and 1 or 4 hours of training on one A100 GPU.
+The 100\% runs, which complete the data axis, follow (Section~\ref{sec:plan}).
+
+\textbf{Milestones.} The abstract set three milestones for this check-in; all three are met:
 \begin{enumerate}
     \item \textbf{Data pipeline validated against The Well's released checkpoints: numerical agreement obtained.}
     Our data loading and metric code reproduce the paper's published test VRMSE for the released CNextU-Net and
@@ -57,12 +63,28 @@ The abstract set three milestones for this check-in. Their status:
     model (from an equal-budget search), and 4-hour budgets measured in active GPU training time, with allocated
     GPU time reported separately.
     \item \textbf{First 10\%-data results: done.} All six 10\% runs (3 models $\times$ 2 seeds) are trained and
-    evaluated on the full test set at 1 and 4 hours (Section~\ref{sec:results}). After 4 hours, among our models,
-    CNextU-Net is the most accurate in developed convection and the most stable in rollouts; AViT has a similar
-    one-step error but degrades fastest over a rollout; TFNO is too smooth. These findings hold for these
-    configurations, 10\% of the training data and the tested budgets. A revised plan is in
-    Section~\ref{sec:plan}.
+    evaluated on the full test set at 1 and 4 hours, together with what each model costs to train and to use
+    (Section~\ref{sec:results}). A revised plan is in Section~\ref{sec:plan}.
 \end{enumerate}
+
+\textbf{Findings under limited data and compute} (10\% data; they hold for these configurations and budgets,
+Table~\ref{tab:choice}):
+\begin{itemize}
+    \item \textbf{Accuracy.} After 4 hours CNextU-Net is the most accurate in developed convection (one-step VRMSE
+    0.050) and the most stable over 30-step rollouts. With a tenth of the data and 4 hours on an A100, its error is
+    1.3 times that of The Well's released CNextU-Net, trained on all the data for 12 hours on an H100 (0.038). TFNO's
+    predictions are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout.
+    \item \textbf{Returns on training time.} From 1 to 4 hours CNextU-Net's error in developed convection falls by
+    38\%, AViT's by 12\% and TFNO's by 9\%, so at the shorter budget the three are closer together.
+    \item \textbf{Cost to train.} In the same 4 hours AViT takes six times as many optimizer steps as CNextU-Net
+    with a seventh of its memory, but it reads data faster than our shared storage delivers, so a run held a GPU for
+    11--12 hours, against 5--6 hours for CNextU-Net.
+    \item \textbf{Cost to use.} Each model forecasts 30 steps (7.5 simulation time units) in at most a quarter of a
+    second on one A100, using under 0.5\,GB of GPU memory. TFNO is the fastest (135\,ms), then AViT (163\,ms) and
+    CNextU-Net (249\,ms): the most accurate model is 1.8 times slower than the fastest.
+    \item \textbf{Negative results.} No model beats copying the last frame (persistence) during convection onset,
+    and after 30 steps from developed flow AViT is no better than persistence.
+\end{itemize}
 
 \section{Setup}
 \label{sec:setup}
@@ -70,7 +92,10 @@ The abstract set three milestones for this check-in. Their status:
 \textbf{Data and task.} \texttt{rayleigh\_benard} from The Well~\cite{ohana2024well}: 1,750 trajectories of 200
 frames on a $512\times128$ grid, 35 (Rayleigh, Prandtl) regimes, official 80/10/10 splits. From four frames of
 buoyancy, pressure and both velocity components, a model predicts the next frame and is rolled out
-autoregressively. Fields are normalised with The Well's training statistics.
+autoregressively; consecutive frames are 0.25 simulation time units apart~\cite{wellrb}. Fields are normalised with
+The Well's training statistics. The study trains on nested subsets of the training split; this report uses the
+10\% subset (140 of the 1,400 training trajectories, four of the 40 in each regime) and evaluates on the full test
+split.
 
 \textbf{Models.} The Well's own implementations, trained from random initialisation, with matched parameter
 counts (Table~\ref{tab:models}). All three use GELU activations. For TFNO, released-checkpoint reproduction and
@@ -96,8 +121,9 @@ AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & GroupNorm, LayerNorm 
 
 \textbf{Training.} All models use AdamW, one-step MSE in normalised field values, batch size 64 and fp32, with a
 peak learning rate of $10^{-3}$, 500 warmup steps and cosine decay to zero over four hours of active GPU training
-on one A100. The paper trained for 12 hours on an H100 with its own learning rates and schedule, so ours is a
-different experiment (Appendix~\ref{app:recipe}). Checkpoints are saved at one and four hours. The one-hour
+on one A100. The one- and four-hour budgets are the study's compute axis. The paper trained for 12 hours on an
+H100 with its own learning rates and schedule, so ours is a different experiment (Appendix~\ref{app:recipe}).
+Checkpoints are saved at one and four hours. The one-hour
 checkpoint is an intermediate state of the four-hour schedule (learning rate about 85\% of peak), not a
 separately optimised one-hour run, so it measures progress along a shared schedule, not the best performance
 achievable in one hour.
@@ -132,6 +158,11 @@ periodic $x$ axis; $E(k_x)$ is the one-sided energy $\tfrac12(|\hat u|^2+|\hat w
 $k_x = 2\pi n/L_x$ ($L_x=4$), averaged over the Chebyshev-spaced rows with quadrature weights, so that summing over
 $k_x$ gives the domain-mean kinetic energy. Spectra are averaged over the rollouts of each regime (5 trajectories
 $\times$ 3 start frames) at steps 1, 10 and 30, separately for predictions and truth.
+
+\textbf{Inference time.} Measured as a scientist would use a model: one forecast at a time (batch 1), fp32, on one
+A100 80\,GB, with the input already on the GPU. After 10 warm-up predictions we time 50 one-step predictions
+(reported per step) and one full 30-step autoregressive rollout, with a CUDA synchronisation before each clock
+stops.
 
 \section{Milestone 1: pipeline validated against the released checkpoints}
 
@@ -224,8 +255,11 @@ implementation constraint, not a claim that mixed-precision TFNO is impossible.
 (CNextU-Net / TFNO / AViT) at the stall rate observed then; the 10\% runs took 5.2--6.0 / 6.9--7.1 /
 11.1--12.2\,h (Appendix~\ref{app:accounting}).
 
-\section{Milestone 3: first 10\%-data results}
+\section{Milestone 3: first results under limited data and compute}
 \label{sec:results}
+
+This section answers the project's question for its most constrained setting: how accurate each family becomes
+with 10\% of the training data and 1 or 4 hours of training, and what it costs to train and to use.
 
 \textbf{Training} (Fig.~\ref{fig:curves}). The six runs completed their 4-hour budgets (Table~\ref{tab:train}).
 On a fixed validation sample of 64 windows (Appendix~\ref{app:accounting}), AViT and CNextU-Net reach similar
@@ -292,8 +326,9 @@ Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}
 \textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). One-step accuracy does not carry over to
 rollouts in the same order. Among our trained models, CNextU-Net is the most stable: after 30 steps from frames 80
 and 140 its error (0.53, 0.40) is below persistence's (0.86, 0.54), and 89\% of its rollouts stay below VRMSE 1
-through step 30. AViT, despite a similar one-step error, degrades fastest (0.80, 0.65; 63\%), and from frame 20,
-during onset, its error grows to 5.4. TFNO lies in between. Persistence keeps more rollouts below the thresholds
+through step 30. AViT, despite a similar one-step error, degrades fastest (0.80, 0.65; 63\%): averaged over the
+rollouts from frames 80 and 140, its error after 30 steps (0.72) is no better than persistence's (0.70), and from
+frame 20, during onset, it grows to 5.4. TFNO lies in between. Persistence keeps more rollouts below the thresholds
 because its error levels off near 0.7, while it is 2--5 times less accurate than every model over the first steps
 from developed flow (Fig.~\ref{fig:rollouts}a). Under the paper's frame-0 protocol all three models land in the
 ``$>10$'' range; CNextU-Net (15 / 30) is below both released checkpoints.
@@ -330,23 +365,58 @@ have stayed below VRMSE 1 up to each step (Kaplan--Meier survival).}
 \label{fig:rollouts}
 \end{figure}
 
-\textbf{Speed and memory} (Table~\ref{tab:resources}). In the same 4 hours of GPU training AViT takes six times as
-many optimizer steps as CNextU-Net and allocates a seventh of the memory; TFNO is the fastest at inference.
+\textbf{Accuracy against cost} (Fig.~\ref{fig:cost}, Table~\ref{tab:resources}). Because data and compute are
+the limiting resources, we set each model's accuracy against what it costs to train and to use.
+\begin{itemize}
+    \item \emph{Training time} (Fig.~\ref{fig:cost}a). From one to four hours the developed-convection error falls
+    by 38\% for CNextU-Net (0.081 to 0.050), 12\% for AViT (0.085 to 0.075) and 9\% for TFNO (0.120 to 0.109). At
+    one hour CNextU-Net and AViT are close; CNextU-Net pulls ahead only with more training, while TFNO has nearly
+    plateaued. The one-hour points are checkpoints of the four-hour schedule; the dedicated one-hour runs will
+    replace them (Section~\ref{sec:plan}).
+    \item \emph{Cost to train} (Fig.~\ref{fig:cost}b). Every run trained for the same 4 hours, but the GPU time it
+    held differed. AViT is the most efficient on the GPU (six times as many optimizer steps as CNextU-Net, a
+    seventh of the memory), but it consumes 330 samples per second, more than our shared storage delivers
+    ($\sim$98; Fig.~\ref{fig:loader}). Each AViT run therefore held a GPU for 11--12 hours, against 6.9--7.1 for TFNO
+    and 5.2--6.0 for CNextU-Net. On faster storage this ranking would change; the demand per GPU-second is the
+    portable number. CNextU-Net's 61\,GB of training memory at batch 64 needs an 80\,GB GPU or a smaller batch.
+    \item \emph{Cost to use} (Fig.~\ref{fig:cost}c). For a scientist running forecasts, inference is the recurring
+    cost. Every model predicts the next $512\times128$ frame in 4--8\,ms and a 30-step forecast (7.5 time units) in
+    135--249\,ms, using under 0.5\,GB of GPU memory. TFNO is the fastest; AViT takes 1.2 times and CNextU-Net 1.8
+    times as long. CNextU-Net's extra 114\,ms per forecast buys a 30-step error of 0.47 instead of TFNO's 0.52,
+    while AViT is slower than TFNO and, after 30 steps, no more accurate than persistence. For context, The Well
+    reports that generating the data with the Dedalus solver took about 6,000 to 50,000\,s per parameter setting
+    on CPU nodes~\cite{wellrb}. That figure covers many trajectories with an unstated parallel layout, so it is not
+    comparable to a per-forecast time; the solver baseline in the plan would measure that comparison directly.
+\end{itemize}
+
+\begin{figure}[h]
+\centering
+\figureorpending{fig_accuracy_cost.pdf}{width=\linewidth}
+\caption{Accuracy against cost, 10\% data (seed mean; bars: range over seeds). (a) One-step test VRMSE in
+developed convection at the 1-hour and 4-hour checkpoints. (b) The same error after 4 hours against the GPU time
+each run held, including data waits and overhead; vertical line: the 4 hours of active training. (c) Rollout VRMSE
+after 30 steps from frames 80 and 140 against the time to compute one 30-step forecast (batch 1, A100). Dashed:
+the released CNextU-Net (100\% data); dotted: persistence.}
+\label{fig:cost}
+\end{figure}
 
 \begin{table}[h]
 \centering\footnotesize
-\begin{tabular}{@{}lccccc@{}}
+\begin{tabular}{@{}lccccccc@{}}
 \toprule
-& Optimizer steps & & Peak training memory & Inference & Inference per \\
-Model & in 4 h & Epochs & allocated (reserved) & per step & 30-step rollout \\
+& \multicolumn{4}{c}{Training (4-hour budget, batch 64)} & \multicolumn{3}{c}{Inference (batch 1)} \\
+\cmidrule(lr){2-5}\cmidrule(l){6-8}
+& Optimizer & & Peak memory, & GPU time & per & per 30-step & \\
+Model & steps & Epochs & alloc.\ (reserved) & held per run & step & rollout & Memory \\
 \midrule
-CNextU-Net & 12,122--12,194 & 28 & 60.9 (64.8)\,GB & 8.3\,ms & 249\,ms \\
-TFNO & 26,339--26,352 & 61 & 48.6 (56.9)\,GB & 4.4\,ms & 135\,ms \\
-AViT & 74,978--75,060 & 175 & 8.8 (8.9)\,GB & 5.4\,ms & 163\,ms \\
+CNextU-Net & 12,122--12,194 & 28 & 60.9 (64.8)\,GB & 5.2--6.0\,h & 8.3\,ms & 249\,ms & 0.31\,GB \\
+TFNO & 26,339--26,352 & 61 & 48.6 (56.9)\,GB & 6.9--7.1\,h & 4.4\,ms & 135\,ms & 0.44\,GB \\
+AViT & 74,978--75,060 & 175 & 8.8 (8.9)\,GB & 11.1--12.2\,h & 5.4\,ms & 163\,ms & 0.23\,GB \\
 \bottomrule
 \end{tabular}
-\caption{Training throughput and memory (batch 64, fp32) and inference latency (batch 1), on one A100 80\,GB.
-Allocated: tensors in use; reserved: memory held by PyTorch's allocator.}
+\caption{Cost to train and to use, on one A100 80\,GB in fp32. Peak training memory: allocated by tensors (reserved
+by PyTorch's allocator). GPU time held: allocated time of the training job, including data waits, start-up,
+validation and checkpoints (Appendix~\ref{app:accounting}). Inference memory: peak allocated at batch 1.}
 \label{tab:resources}
 \end{table}
 
@@ -392,11 +462,40 @@ saturates.}
 \label{fig:snapshots}
 \end{figure}
 
+\textbf{Choosing a model under limited data and compute} (Table~\ref{tab:choice}). No family is best on every
+count. CNextU-Net is the most useful forecaster in developed convection at 10\% data and 4 hours, at the price of
+the slowest inference and the most training memory; TFNO is the fastest but too smooth; AViT is the cheapest on
+the GPU but needs fast storage and does not stay accurate over a rollout.
+
+\begin{table}[h]
+\centering\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.27\linewidth}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+If the priority is & Best of the three & Trade-off \\
+\midrule
+Accurate forecasts of developed convection that stay stable over 30 steps & CNextU-Net & Slowest inference
+(249\,ms per 30 steps); 61\,GB training memory at batch 64; gains most from longer training \\ \addlinespace[3pt]
+Fastest forecasts & TFNO (135\,ms per 30 steps) & Too smooth: loses energy between $k_x\approx25$ and 100;
+largest one-step error in developed convection; gains least from longer training \\ \addlinespace[3pt]
+Least training memory, most optimizer steps per GPU-hour & AViT (8.8\,GB) & Needs storage delivering
+$\sim$330 samples/s; rollouts degrade fastest, no better than persistence after 30 steps \\ \addlinespace[3pt]
+Convection onset (first 50 frames) & None: persistence & Every model is less accurate than copying the last
+frame \\ \addlinespace[3pt]
+Tightest budget (1 hour) & Pending & Dedicated one-hour runs trained; test evaluation follows \\
+\bottomrule
+\end{tabularx}
+\caption{Which model to use under which constraint, from the 10\% results. These hold for these configurations
+and budgets and may change with all the training data.}
+\label{tab:choice}
+\end{table}
+
 \section{Revised plan}
 \label{sec:plan}
 
 The \emph{core comparison} remains three families, 10\% and 100\% training data, two seeds, and checkpoints at one
-and four hours. The main changes are:
+and four hours. The 100\% runs complete the data axis, so the accuracy--cost comparison of Fig.~\ref{fig:cost} and
+Table~\ref{tab:choice} can be repeated with all the data and the value of ten times more data measured at each
+budget. The main changes are:
 \begin{itemize}
     \item \textbf{Budget definition.} Experimental budgets count active GPU training time. Allocated GPU time, data
     waits and SU are reported separately so that storage costs remain visible.
@@ -412,7 +511,8 @@ and four hours. The main changes are:
     cores, 36 for the 4-core pipeline check), and 18.3 on the free partition, which is not billed.
     \item \textbf{Optional, outside the estimate.} 24-hour runs of CNextU-Net and TFNO with the paper's learning
     rates (roughly 60--90 allocated GPU-hours; not an exact replication of the paper's 12-hour H100 runs), and a
-    Dedalus~\cite{burns2020dedalus} solver baseline on CPUs, which first needs a feasibility check.
+    Dedalus~\cite{burns2020dedalus} solver baseline on CPUs, which first needs a feasibility check; it would set
+    the models' accuracy and forecast time against the solver's for the same 30-step forecasts.
 \end{itemize}
 
 \begin{table}[h]
@@ -437,9 +537,10 @@ would bring the total to $\sim$160--170.}
 \end{table}
 
 \textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
-failure horizons, spectra, latency and memory. Remaining for the final report: the 100\% runs and the data--compute
-comparison (10\% against 100\% at 1 and 4 hours), the dedicated one-hour runs' test evaluation, field-wise VRMSE
-and the Nusselt-number error per model, and the flow snapshots for the 100\% runs.
+failure horizons, spectra, training cost, inference time and memory. Remaining for the final report: the 100\%
+runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), with accuracy--cost curves at both
+data fractions; the dedicated one-hour runs' test evaluation; field-wise VRMSE and the Nusselt-number error per
+model; and the flow snapshots for the 100\% runs.
 
 \textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;
 (2) complete the six 100\% runs (estimated approximately 2,400 SU) and the core data--compute comparison;
@@ -650,6 +751,10 @@ The Well source code, commits \texttt{2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c} 
 \texttt{e4301602e57f2dddeaa87856dda49bbba47c663b} (2025-11-17).\\
 \url{https://github.com/PolymathicAI/the_well/commit/2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}\\
 \url{https://github.com/PolymathicAI/the_well/commit/e4301602e57f2dddeaa87856dda49bbba47c663b}
+
+\bibitem{wellrb}
+The Well, \texttt{rayleigh\_benard} dataset card, commit \texttt{e63dec8}.\\
+\url{https://github.com/PolymathicAI/the_well/blob/e63dec8/datasets/rayleigh_benard/README.md}
 
 \bibitem{wellissue}
 The Well, issue \#49, ``Inconsistent Pre-trained Baseline Performance'' (open since 2025-04-21).\\

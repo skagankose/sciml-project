@@ -340,3 +340,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * `tasks/train_1h.jsonl`: 6 rows, same recipe, cosine ending at 1 h, new run ids.
   * Estimate: ~12 GPU-h of training wall time plus ~2.5 GPU-h of evaluation, about 600 SU on the paid partition.
   * Commands are in `cluster/README.md` section 9.
+* 2026-11-12: the six dedicated 1 h runs finished (array 59487190, paid, one attempt each, ~305 SU).
+  * Short validation: CNextU-Net 0.33, TFNO 0.30–0.33, AViT 0.22. The 4 h runs' 1 h checkpoints were 0.77–1.04 /
+    0.51–0.52 / 0.42–0.47.
+  * Test evaluation next: `eval_a100.sbatch` with `MANIFEST=tasks/train_1h.jsonl`.

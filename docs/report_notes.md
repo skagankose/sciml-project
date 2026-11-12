@@ -305,6 +305,23 @@ partition; seed 0, 4 h, from frame 80):
   middle- and small-scale energy gain.
 * At Ra = 1e10 all three miss the finest structures; CNextU-Net keeps the large-scale plume pattern.
 
+### Dedicated 1 h runs at 10% data (array 59487190, 2026-11-11/12; D6)
+
+Same recipe as the 4 h runs, with the cosine ending at 1 h. All six ran in one attempt on the paid partition and
+reached 1.000 h of GPU training, with the learning rate at ~0 at the end. Data waits were small this time
+(0.04–0.34 h); wall time per run was 1.09–1.44 h (~305 SU in all).
+
+| Short validation VRMSE (seed 0 / 1) | dedicated 1 h run | 1 h checkpoint of the 4 h run | 4 h run |
+|---|---|---|---|
+| CNextU-Net | 0.327 / 0.324 | 1.043 / 0.772 | 0.167 / 0.178 |
+| TFNO | 0.327 / 0.304 | 0.508 / 0.524 | 0.310 / 0.325 |
+| AViT | 0.219 / 0.221 | 0.468 / 0.418 | 0.161 / 0.167 |
+
+* Letting the schedule finish matters. The dedicated 1 h runs beat the 4 h runs' 1 h checkpoints by 1.6–3x. A
+  1 h TFNO run is as good as its 4 h run on this sample.
+* The seeds agree within 0.02, unlike the 1 h checkpoints.
+* Validation only (64 windows); the test evaluation is next.
+
 ### Model architectures and training recipe
 
 Full tables in `docs/architectures.md`. In short: all three are The Well's implementations at `e63dec8`, from

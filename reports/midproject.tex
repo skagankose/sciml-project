@@ -135,12 +135,15 @@ The kinetic-energy spectrum and the inference-time measurements are defined in A
 
 
 \section{Milestone 1: Pipeline Validated Against the Released Checkpoints}
+\label{sec:m1}
 
 We loaded The Well's released CNextU-Net and TFNO weights and scored them with our own data path and metric on
 every window of the 175 test trajectories (Table~\ref{tab:released}). The released TFNO also reproduces its
-published value, but only with the paper-era forward pass, under which it is effectively a per-pixel model that
-tracks persistence. Because of that bug it is not shown in the main text; its results, and why it behaves this
-way, are in Appendix~\ref{app:tfno}.
+published value, but only with the forward pass it was trained with. A bug in The Well's code at the time skipped
+TFNO's Fourier layers, so the released model is effectively a per-pixel network: each output pixel depends only on
+the same pixel's input frames, and it cannot move structures across the grid. It therefore learned little more
+than copying the last frame, and its error tracks persistence (Fig.~\ref{fig:released}): slightly lower in
+developed convection, much higher during onset. Its full results are in Appendix~\ref{app:tfno}.
 
 \begin{table}[!htbp]
 \centering\small
@@ -171,12 +174,13 @@ Three observations shape how we report results (the second and third are in Appe
 
 \begin{figure}[!htbp]
 \centering
-\figureorpending{fig_released_cnext_by_window.pdf}{scale=1}
-\caption{The released CNextU-Net's one-step VRMSE by window on the test set, mean over the 175 trajectories, under
+\figureorpending{fig_released_by_window.pdf}{scale=1}
+\caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, under
 the paper protocol (left) and on physical fields (right). Shaded: windows whose first input frame is below 50,
 reported as \emph{onset}; the others are \emph{developed}. The cut at frame 50 is operational, chosen where the
 released checkpoints' error levels off on the validation split; it is not a transition verified for every
-regime. Persistence copies the last input frame. The released TFNO is shown in Fig.~\ref{fig:released_tfno}.}
+regime. Persistence copies the last input frame. The released TFNO tracks persistence because of the paper-era bug
+(Section~\ref{sec:m1}, Appendix~\ref{app:tfno}).}
 \label{fig:released}
 \end{figure}
 
@@ -647,15 +651,7 @@ persistence.}
 \label{tab:released_tfno}
 \end{table}
 
-\begin{figure}[!htbp]
-\centering
-\figureorpending{fig_released_tfno_by_window.pdf}{scale=1}
-\caption{The released TFNO's one-step VRMSE by window on the test set (mean over the 175 trajectories), against
-persistence, on normalised (left) and physical fields (right). Shaded: onset windows.}
-\label{fig:released_tfno}
-\end{figure}
-
-\textbf{Why the released TFNO tracks persistence} (Fig.~\ref{fig:released_tfno}). With its Fourier blocks
+\textbf{Why the released TFNO tracks persistence} (Fig.~\ref{fig:released}). With its Fourier blocks
 skipped, the model is only its lifting and projection layers, which act on each grid point separately: every
 output pixel is computed from the same pixel's four input frames (and at most its position), with no information
 from neighbouring pixels. Such a model cannot move structures, such as rising plumes or flow carried by the

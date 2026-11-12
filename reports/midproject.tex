@@ -18,6 +18,12 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}
 \graphicspath{{figures/}}
+% Pages holding only floats fill from the top instead of spreading the floats over the page.
+\makeatletter
+\setlength{\@fptop}{0pt}
+\setlength{\@fpsep}{14pt plus 2pt}
+\setlength{\@fpbot}{0pt plus 1fil}
+\makeatother
 
 \newcommand{\pending}{\textcolor{gray}{\textit{pending}}}
 % Include a figure if it exists yet, otherwise a placeholder box naming it.
@@ -443,6 +449,26 @@ ConvLSTM. The optional runs above should not delay the core deliverables.
 
 \clearpage
 \appendix
+% Appendix headings read "Appendix A: ..."; \ref still gives the bare letter, so "Appendix~\ref{...}" is unchanged.
+\makeatletter
+\renewcommand{\@seccntformat}[1]{\ifcsname prefix@#1\endcsname\csname prefix@#1\endcsname\fi
+  \csname the#1\endcsname\ifcsname prefix@#1\endcsname:\fi\quad}
+\newcommand{\prefix@section}{Appendix~}
+\makeatother
+
+\section*{Appendices}
+\addcontentsline{toc}{section}{Appendices}
+The appendices hold details that support the main text but are not needed to follow it.
+\begin{description}
+    \item[A\quad Detailed training recipe.] Our training settings against the paper's and The Well's code, with
+        their sources (Table~\ref{tab:recipe}).
+    \item[B\quad TFNO forward pass.] Why the released TFNO is scored with the forward pass it was trained with,
+        and our runs with the corrected one.
+    \item[C\quad Resource accounting.] How active training time is measured, the validation sample, billing, and
+        cost and time per run (Tables~\ref{tab:train} and~\ref{tab:time}, Fig.~\ref{fig:loader}).
+    \item[D\quad Flow snapshots at $\mathrm{Ra}=10^{10}$.] The second regime of Fig.~\ref{fig:snapshots}
+        (Fig.~\ref{fig:snapshots10}).
+\end{description}
 
 \section{Detailed training recipe}
 \label{app:recipe}

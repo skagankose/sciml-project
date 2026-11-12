@@ -48,6 +48,9 @@ evaluations everywhere, and an override replaces the whole mapping rather than m
   0 at 1 h. Manifest `tasks/train_1h.jsonl`: `make-sweep --experiment main` with
   `--override 'train.budgets_seconds={1h: 3600}'`. The override makes new run ids, so nothing clashes with the 4 h
   runs. Whether the 100% runs also get dedicated 1 h runs is decided after these.
+* *Owner, 2026-11-12:* the dedicated 1 h runs are not needed and are not reported (they were never promised). The
+  1 h results are the 1 h checkpoints of the 4 h runs, at 10% and at 100%. The dedicated runs' data stay on disk.
+  Their training cost (~305 SU, after the 2026-11-11 accounting) is recorded in `docs/report_notes.md`.
 
 **D7 — Learning rate and batch size (fixed 2026-11-09: batch 64, learning rate 1e-3 for every model).** One shared batch size for all models, chosen from the
 Phase G memory/throughput table. The final abstract commits to an equal-budget learning-rate search on

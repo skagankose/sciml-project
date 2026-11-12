@@ -367,3 +367,10 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * New "which model under which constraint" table (`tab:choice`). The plan names the accuracy–cost curves at both
     data fractions.
   * Numbers are in `docs/report_notes.md`.
+* 2026-11-12: the owner dropped the dedicated 1 h runs from the reports (never promised); the 1 h checkpoints of the
+  4 h runs stand (D6). Report changes:
+  * Table 5 gains 1 h rollout rows, and Tables 4–5 bold the best model at each budget.
+  * New paragraph "With only one hour of training": AViT is best for one-step predictions, TFNO for rollouts,
+    and CNextU-Net varies most between seeds.
+  * The choice table gains a 1 h row, and the summary bullet is updated.
+  * Mentions of the dedicated runs are removed from the plan and deliverables.

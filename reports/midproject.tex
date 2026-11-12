@@ -74,8 +74,10 @@ Table~\ref{tab:choice}):
     0.050) and the most stable over 30-step rollouts. With a tenth of the data and 4 hours on an A100, its error is
     1.3 times that of The Well's released CNextU-Net, trained on all the data for 12 hours on an H100 (0.038). TFNO's
     predictions are too smooth; AViT matches CNextU-Net over all windows but degrades fastest over a rollout.
-    \item \textbf{Returns on training time.} From 1 to 4 hours CNextU-Net's error in developed convection falls by
-    38\%, AViT's by 12\% and TFNO's by 9\%, so at the shorter budget the three are closer together.
+    \item \textbf{With only one hour of training} the ranking differs. AViT has the lowest one-step error and TFNO
+    the most stable rollouts, while CNextU-Net, the best after four hours, varies most between seeds. CNextU-Net
+    gains most from the extra three hours: its error in developed convection falls by 38\%, AViT's by 12\% and
+    TFNO's by 9\%.
     \item \textbf{Cost to train.} In the same 4 hours AViT takes six times as many optimizer steps as CNextU-Net
     with a seventh of its memory, but it reads data faster than our shared storage delivers, so a run held a GPU for
     11--12 hours, against 5--6 hours for CNextU-Net.
@@ -124,9 +126,9 @@ peak learning rate of $10^{-3}$, 500 warmup steps and cosine decay to zero over 
 on one A100. The one- and four-hour budgets are the study's compute axis. The paper trained for 12 hours on an
 H100 with its own learning rates and schedule, so ours is a different experiment (Appendix~\ref{app:recipe}).
 Checkpoints are saved at one and four hours. The one-hour
-checkpoint is an intermediate state of the four-hour schedule (learning rate about 85\% of peak), not a
-separately optimised one-hour run, so it measures progress along a shared schedule, not the best performance
-achievable in one hour.
+results are those checkpoints after one hour of the four-hour schedule, with the learning rate still at about 85\%
+of its peak: they show what each model has learned after one hour of training, not the best a schedule ending at
+one hour could reach.
 
 \textbf{VRMSE.} For one window (one predicted frame) and one field $f$, The Well's metric code (its
 \texttt{VRMSE} class at commit \texttt{e63dec8}) computes
@@ -279,10 +281,8 @@ Vertical lines: the 1-hour and 4-hour checkpoints.}
 \textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow}).
 After 4 hours AViT and CNextU-Net have similar one-step error over all windows (0.134 and 0.136) and TFNO a
 higher one (0.209), but the two phases separate them: in developed convection CNextU-Net is clearly the most
-accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), while AViT is the most accurate during onset. At four
-hours the across-seed standard deviation of the all-window VRMSE is at most 0.006; at one hour it is up to 0.18
-(CNextU-Net: 0.85 and 0.60), and the order is reversed: AViT (0.39) and TFNO (0.47) are ahead of CNextU-Net
-(0.73), whose one-hour checkpoint is far from converged. The released CNextU-Net, trained on all the data for
+accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), while AViT is the most accurate during onset. The
+across-seed standard deviation of the all-window VRMSE is at most 0.006. The released CNextU-Net, trained on all the data for
 longer, remains better in developed convection (0.038 against 0.050). Our TFNO, which uses its Fourier layers, is
 better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
 despite 10\% of the data and 4 hours. Persistence is better than every model during onset and 2--4.5 times worse
@@ -300,9 +300,9 @@ CNextU-Net, 4 h & 0.136 $\pm$ 0.006 & 0.387 $\pm$ 0.025 & \textbf{0.050} $\pm$ 0
 TFNO, 4 h & 0.209 $\pm$ 0.001 & 0.502 $\pm$ 0.003 & 0.109 $\pm$ 0.000 & 0.488 $\pm$ 0.001 \\
 AViT, 4 h & \textbf{0.134} $\pm$ 0.001 & \textbf{0.308} $\pm$ 0.003 & 0.075 $\pm$ 0.000 & \textbf{0.298} $\pm$ 0.002 \\
 \midrule
-CNextU-Net, 1 h & 0.728 $\pm$ 0.176 & 2.618 $\pm$ 0.681 & 0.081 $\pm$ 0.003 & 2.345 $\pm$ 0.600 \\
+CNextU-Net, 1 h & 0.728 $\pm$ 0.176 & 2.618 $\pm$ 0.681 & \textbf{0.081} $\pm$ 0.003 & 2.345 $\pm$ 0.600 \\
 TFNO, 1 h & 0.473 $\pm$ 0.078 & 1.505 $\pm$ 0.305 & 0.120 $\pm$ 0.000 & 1.362 $\pm$ 0.249 \\
-AViT, 1 h & 0.394 $\pm$ 0.036 & 1.299 $\pm$ 0.140 & 0.085 $\pm$ 0.000 & 1.171 $\pm$ 0.125 \\
+AViT, 1 h & \textbf{0.394} $\pm$ 0.036 & \textbf{1.299} $\pm$ 0.140 & 0.085 $\pm$ 0.000 & \textbf{1.171} $\pm$ 0.125 \\
 \midrule
 Released CNextU-Net (100\%, paper) & 0.224 & 0.766 & 0.038 & 0.669 \\
 Released TFNO (100\%, paper) & 0.300 & 0.623 & 0.190 & 0.663 \\
@@ -310,7 +310,7 @@ Persistence & 0.199 & 0.121 & 0.226 & 0.202 \\
 \bottomrule
 \end{tabular}
 \caption{One-step test error: mean $\pm$ standard deviation over the two seeds (0.000: below 0.0005). Onset:
-first input frame $<50$; developed: $\geq 50$. Bold: best of our 4-hour models.}
+first input frame $<50$; developed: $\geq 50$. Bold: best of our models at each budget.}
 \label{tab:test}
 \end{table}
 
@@ -344,6 +344,10 @@ CNextU-Net, 4 h & 1.78 / \textbf{0.53} / \textbf{0.40} & \textbf{0.89} / \textbf
 TFNO, 4 h & 1.79 / 0.59 / 0.45 & 0.75 / 0.85 / 0.91 & 51 / 77 \\
 AViT, 4 h & 5.42 / 0.80 / 0.65 & 0.63 / 0.80 / 0.87 & 75 / 167 \\
 \midrule
+CNextU-Net, 1 h & 3.60 / 1.09 / 1.04 & 0.34 / 0.74 / 0.79 & 202 / 148 \\
+TFNO, 1 h & \textbf{2.67} / \textbf{0.90} / \textbf{0.78} & \textbf{0.60} / \textbf{0.77} / \textbf{0.86} & \textbf{81} / \textbf{116} \\
+AViT, 1 h & 4.67 / 1.11 / 0.98 & 0.34 / 0.74 / 0.83 & 129 / 184 \\
+\midrule
 Released CNextU-Net (100\%) & & & 36 / 35 \\
 Released TFNO (100\%) & & & 142 / 169 \\
 Persistence & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
@@ -352,9 +356,20 @@ Persistence & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
 \caption{Rollouts on the test set, physical-field VRMSE unless stated, mean over the two seeds. Middle column:
 fraction of the 525 rollouts (175 trajectories $\times$ 3 start frames) whose error stays below each threshold at
 every step through step 30. Right: the paper's Table 3 protocol (published: $>10$ in both windows); bold: best of
-our models.}
+our models at each budget.}
 \label{tab:rollout}
 \end{table}
+
+\textbf{With only one hour of training} (Tables~\ref{tab:test} and~\ref{tab:rollout}; the four-hour runs'
+checkpoints after one hour). The ranking differs from four hours, and no model is best on every count. AViT has the
+lowest one-step error over all windows (0.39, against 0.47 for TFNO and 0.73 for CNextU-Net) and during onset; in
+developed convection CNextU-Net (0.081) and AViT (0.085) are close and TFNO trails (0.120). Over rollouts TFNO is
+the most stable: 60\% of its rollouts stay below VRMSE 1 through step 30, against 34\% for the other two, and from
+developed flow it stays more accurate than persistence for the first 21 steps, against 14 for CNextU-Net and 12
+for AViT. CNextU-Net, the best model after four hours, is the least reliable after one: its two seeds differ most
+(all-window VRMSE 0.85 and 0.60), and none of one seed's rollouts stays below VRMSE 1, against 69\% for the other.
+With one hour of training, AViT is the better choice for one-step predictions and TFNO for multi-step forecasts;
+after 30 steps none of the three is more accurate than persistence.
 
 \begin{figure}[h]
 \centering
@@ -371,8 +386,7 @@ the limiting resources, we set each model's accuracy against what it costs to tr
     \item \emph{Training time} (Fig.~\ref{fig:cost}a). From one to four hours the developed-convection error falls
     by 38\% for CNextU-Net (0.081 to 0.050), 12\% for AViT (0.085 to 0.075) and 9\% for TFNO (0.120 to 0.109). At
     one hour CNextU-Net and AViT are close; CNextU-Net pulls ahead only with more training, while TFNO has nearly
-    plateaued. The one-hour points are checkpoints of the four-hour schedule; the dedicated one-hour runs will
-    replace them (Section~\ref{sec:plan}).
+    plateaued.
     \item \emph{Cost to train} (Fig.~\ref{fig:cost}b). Every run trained for the same 4 hours, but the GPU time it
     held differed. AViT is the most efficient on the GPU (six times as many optimizer steps as CNextU-Net, a
     seventh of the memory), but it consumes 330 samples per second, more than our shared storage delivers
@@ -481,11 +495,13 @@ Least training memory, most optimizer steps per GPU-hour & AViT (8.8\,GB) & Need
 $\sim$330 samples/s; rollouts degrade fastest, no better than persistence after 30 steps \\ \addlinespace[3pt]
 Convection onset (first 50 frames) & None: persistence & Every model is less accurate than copying the last
 frame \\ \addlinespace[3pt]
-Tightest budget (1 hour) & Pending & Dedicated one-hour runs trained; test evaluation follows \\
+Only one hour of training & AViT (one step); TFNO (rollouts) & AViT: lowest one-step error (0.39);
+TFNO: 60\% of rollouts stay below VRMSE 1, against 34\%; CNextU-Net varies most between seeds; none beats
+persistence after 30 steps \\
 \bottomrule
 \end{tabularx}
-\caption{Which model to use under which constraint, from the 10\% results. These hold for these configurations
-and budgets and may change with all the training data.}
+\caption{Which model to use under which constraint, from the 10\% results, after four hours of training unless
+the row says otherwise. These hold for these configurations and budgets and may change with all the training data.}
 \label{tab:choice}
 \end{table}
 
@@ -501,9 +517,6 @@ budget. The main changes are:
     waits and SU are reported separately so that storage costs remain visible.
     \item \textbf{Evaluation.} Report the paper protocol for reference comparisons alongside the physical-field
     VRMSE, separate onset from developed convection, and report the failure horizon at thresholds 1, 2 and 5.
-    \item \textbf{One-hour budget.} Dedicated one-hour runs at 10\% data (same recipe, cosine ending at one hour)
-    have been trained to check the one-hour comparison: on the validation sample they reach 0.22--0.33, against
-    0.42--1.04 for the one-hour checkpoints above. Their test evaluation follows.
     \item \textbf{Core resource estimate.} The 48 hours of active training are unchanged; the working estimate is
     approximately 135 allocated GPU-hours for the core study and its supporting work (Table~\ref{tab:budget}),
     instead of the abstract's approximately 100. With all 10\% work complete, Slurm accounting gives 72.6
@@ -539,7 +552,7 @@ would bring the total to $\sim$160--170.}
 \textbf{Remaining deliverables.} The 10\% evaluation is complete for all three models and both seeds, including
 failure horizons, spectra, training cost, inference time and memory. Remaining for the final report: the 100\%
 runs and the data--compute comparison (10\% against 100\% at 1 and 4 hours), with accuracy--cost curves at both
-data fractions; the dedicated one-hour runs' test evaluation; field-wise VRMSE and the Nusselt-number error per
+data fractions; field-wise VRMSE and the Nusselt-number error per
 model; and the flow snapshots for the 100\% runs.
 
 \textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;

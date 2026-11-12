@@ -305,6 +305,22 @@ Findings:
   (CNextU-Net 0.85 and 0.60).
 * Our TFNO, with its Fourier layers, beats the released per-pixel TFNO everywhere.
 
+With only 1 h of training (the 4 h runs' 1 h checkpoints; report section 4, Tables 4–5):
+* One step: AViT is best over all windows (0.394 vs TFNO 0.473, CNextU-Net 0.728) and in onset (1.30). In developed
+  convection CNextU-Net (0.081) and AViT (0.085) are close, and TFNO trails (0.120).
+* Rollouts: TFNO is most stable.
+  * VRMSE after 30 steps from frame 20 / 80 / 140: TFNO 2.67 / 0.90 / 0.78, CNextU-Net 3.60 / 1.09 / 1.04, AViT
+    4.67 / 1.11 / 0.98.
+  * Fraction staying below 1 / 2 / 5 through step 30: TFNO 0.60 / 0.77 / 0.86, CNextU-Net 0.34 / 0.74 / 0.79, AViT
+    0.34 / 0.74 / 0.83.
+  * Paper protocol, steps 6–12 / 13–30: TFNO 81 / 116, AViT 129 / 184, CNextU-Net 202 / 148.
+* From developed starts (80, 140), mean VRMSE per step stays below persistence's for the first 21 steps (TFNO), 14
+  (CNextU-Net) and 12 (AViT). At 4 h, CNextU-Net and TFNO stay below for all 30 steps and AViT through step 25.
+  After 30 steps at 1 h no model beats persistence.
+* Seed spread is largest for CNextU-Net: all-window 0.85 vs 0.60. One seed has 0% of rollouts below VRMSE 1, the
+  other 69% (TFNO 67 / 53%, AViT 41 / 26%).
+* With 1 h: AViT for one-step predictions, TFNO for multi-step forecasts.
+
 Accuracy against cost: the project's aim, "useful under limited data and compute" (owner 2026-11-12, report
 reframed). Source: `fig_accuracy_cost`, from `scripts/report_figures.py`.
 * Returns on training time, developed one-step VRMSE from 1 h to 4 h (seed means):
@@ -337,6 +353,9 @@ partition; seed 0, 4 h, from frame 80):
 * At Ra = 1e10 all three miss the finest structures; CNextU-Net keeps the large-scale plume pattern.
 
 ### Dedicated 1 h runs at 10% data (array 59487190, 2026-11-11/12; D6)
+
+**Not used in the reports (owner, 2026-11-12):** the 1 h results are the 4 h runs' checkpoints after 1 h (D6).
+Their cost stays in the ledger.
 
 Same recipe as the 4 h runs, with the cosine ending at 1 h. All six ran in one attempt on the paid partition and
 reached 1.000 h of GPU training, with the learning rate at ~0 at the end. Data waits were small this time

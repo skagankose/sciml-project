@@ -437,3 +437,4 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     table with `fig_time` (J). Every number of the previous version is still in the file.
 
 * 2026-11-12: "Where feedback would help" (the four questions for the professor) removed from both reports (owner).
+* 2026-11-12: long report, Issues section: new paragraph "Which one-step number to lead with" and `tab:headline` (onset windows give 87% of the released CNextU-Net's all-window mean, 96% under the paper protocol; three comparisons that reverse between all windows and developed convection).

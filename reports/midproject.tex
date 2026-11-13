@@ -757,6 +757,35 @@ not billed.}
 \label{fig:time}
 \end{figure}
 
+\textbf{Which one-step number to lead with.} The paper's protocol averages VRMSE over all 196 one-step windows of
+each test trajectory. VRMSE divides a model's error by how much the true field varies across the grid. During onset
+the fluid is almost at rest, so the velocity barely varies and the score divides by a number close to zero: errors
+that are tiny in absolute terms give very large scores, and the score swings with errors that do not matter
+physically. The 50 onset windows are only a quarter of the total, yet they produce most of the all-window mean:
+87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol. The
+all-window mean therefore mostly measures how a model handles the nearly still start rather than how well it
+forecasts convection, and it can reverse comparisons (Table~\ref{tab:headline}). We report both: the
+developed-convection error says more about forecasting the flow, and the all-window mean is the number comparable
+with the paper's published values.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.3\linewidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Comparison & All windows & Developed convection \\
+\midrule
+AViT against CNextU-Net (4 h) & 0.134 against 0.136: level & 0.075 against 0.050: CNextU-Net 1.5 times better \\
+Our 10\% CNextU-Net against the released one & 0.136 against 0.224: ours looks better & 0.050 against 0.038:
+the released one is better \\
+Persistence against TFNO (4 h) & 0.199 against 0.209: persistence looks as good & 0.226 against 0.109:
+persistence 2 times worse \\
+\bottomrule
+\end{tabularx}
+\caption{How the all-window mean can reverse comparisons (physical-field one-step test VRMSE, from
+Table~\ref{tab:test}).}
+\label{tab:headline}
+\end{table}
+
 \section{Revised Plan}
 \label{sec:plan}
 

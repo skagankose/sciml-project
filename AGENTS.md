@@ -416,3 +416,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * New section "Issues" (`tab:issues`, `fig_time`: where each run's GPU time went) with questions for feedback.
   * Revised Plan: "Changes since the abstract" (budget clock, estimate, baselines, pipeline check, training
     settings, evaluation, optional work); the solver baseline is step 3 of the next steps.
+* 2026-11-12: `reports/midproject_short.tex` re-created (owner): the long report reorganised, with nothing removed.
+  * The main body keeps what the check-in asks for and the abstract's three milestones: goal, setup (system, data,
+    task, models, training, baselines, metrics), milestones 1-3 (training curves, one-step and rollout tables,
+    snapshots), findings, open issues and the revised plan.
+  * Moved to new appendices: rollout curves, field-wise error and spectra (F); accuracy against cost and the
+    choice table (G); the Rayleigh / Nusselt analysis (H); resolved or handled issues, split from the issues
+    table (I); `fig_system` (J).
+  * Main body 11 pages instead of 16 (25 in all). A word count of the two sources shows no text lost; only
+    references to the moved parts were added. Later edits to the long report are not carried over automatically.
+

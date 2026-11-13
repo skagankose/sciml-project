@@ -57,7 +57,7 @@
 \begin{enumerate}
     \item \textbf{Data pipeline validated against The Well's released checkpoints.}
     Our data loading and metric code reproduce the paper's published test VRMSE for the released CNextU-Net and
-    TFNO to within 1\%, and recover rollout errors in the same reported range (``$>10$''). The released TFNO
+    TFNO (0.6688 against 0.6699 and 0.6634 against 0.6566, within 0.2\% and 1.0\%), and recover rollout errors in the same reported range (``$>10$''). The released TFNO
     needs the forward pass it was trained with, which differs from the corrected one our runs use
     (Section~\ref{sec:setup}, Appendix~\ref{app:tfno}).
     \item \textbf{Budgets fixed from pilot timings.} Batch 64, fp32, peak learning rate $10^{-3}$ for every
@@ -223,7 +223,7 @@ developed convection, much higher during onset. Its full results are in Appendix
 \cmidrule(lr){2-3}\cmidrule(l){4-5}
 Model & Ours (released weights) & Published & Ours & Published \\
 \midrule
-CNextU-Net & 0.669 & 0.670 & 36 / 35 & $>10$ / $>10$ \\
+CNextU-Net & 0.6688 & 0.6699 & 36 / 35 & $>10$ / $>10$ \\
 \bottomrule
 \end{tabular}
 \caption{The released CNextU-Net scored by our pipeline against the paper's Tables 2 and 3 (test split). The
@@ -763,7 +763,7 @@ its published test values this way (Section~\ref{sec:m1}). We call this the all-
 the fluid is almost at rest, so the velocity barely varies and the score divides by a number close to zero: errors
 that are tiny in absolute terms give very large scores, and the score swings with errors that do not matter
 physically. The 50 onset windows are only a quarter of the total, yet they produce most of the all-window mean:
-87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol, in which the paper's published values (0.670 for CNextU-Net, 0.657 for TFNO)
+87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol, in which the paper's published values (0.6699 for CNextU-Net, 0.6566 for TFNO)
 are given, so those values are dominated by the onset windows as well. The
 all-window mean therefore mostly measures how a model handles the nearly still start rather than how well it
 forecasts convection, and it can reverse comparisons (Table~\ref{tab:headline}). We report both: the
@@ -957,7 +957,7 @@ numbers~\cite{wellissue}.
 & Paper-protocol one-step & Physical-field one-step & Rollout from frame 0, \\
 Model & VRMSE (published) & all / onset / developed & steps 6--12 / 13--30 \\
 \midrule
-Released TFNO (paper-era forward) & 0.663 (0.657) & 0.300 / 0.623 / 0.190 & 142 / 169 (published $>10$) \\
+Released TFNO (paper-era forward) & 0.6634 (0.6566) & 0.300 / 0.623 / 0.190 & 142 / 169 (published $>10$) \\
 Our TFNO (10\% data, 4 h) & 0.488 & 0.209 / 0.502 / 0.109 & 51 / 77 \\
 Persistence & 0.202 & 0.199 / 0.121 / 0.226 & 0.27 / 0.50 \\
 \bottomrule
@@ -975,7 +975,7 @@ convection rolls, so what it learns is close to copying each pixel's last value 
 recent trend: persistence with a little extrapolation. In developed convection it is therefore only slightly
 better than persistence (physical-field VRMSE 0.190 against 0.226). During onset the fields barely change, so
 copying is nearly exact, while the model's small per-pixel adjustments are divided by a near-zero spatial variance
-and become large relative errors. The published all-window value (0.657) hides this, because every model scores
+and become large relative errors. The published all-window value (0.6566) hides this, because every model scores
 poorly on the onset windows. Our TFNO, which uses its Fourier layers, is
 better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
 despite 10\% of the data and 4 hours.
@@ -987,8 +987,9 @@ despite 10\% of the data and 4 hours.
     \item \textbf{Rollout error varies substantially with Rayleigh number.} At $\mathrm{Ra}=10^{10}$ the released
     CNextU-Net's median over steps 13--30 is 1.7; at $10^{6}$ it is 69.
     \item \textbf{The fixed test evaluation is the clearer reproduction target.} The paper's validation values
-    use 20 random batches per epoch; exact agreement would additionally require the same sampled batches and
-    evaluation state.
+    (its Table 5: 0.4807 for CNextU-Net, 0.8568 for TFNO) use 20 random batches per epoch; exact agreement would
+    additionally require the same sampled batches and evaluation state. On the full validation split, in
+    normalised fields, the released checkpoints score 0.7006 and 0.6754, so these values are not reproduced.
 \end{itemize}
 
 \section{Resource Accounting}
@@ -1106,7 +1107,7 @@ Test error by window (Fig.~\ref{fig:testwindow}) and flow snapshots at $\mathrm{
 
 \begin{figure}[!htbp]
 \centering
-\figureorpending{fig_test_by_window.pdf}{scale=1}
+\figureorpending{fig_test_by_window.pdf}{scale=0.9}
 \caption{One-step test VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models at
 4 hours (seed mean; band: range over seeds), the released CNextU-Net trained on all the data, and persistence.
 Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}

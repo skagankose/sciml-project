@@ -757,20 +757,6 @@ not billed.}
 \label{fig:time}
 \end{figure}
 
-\needspace{6\baselineskip}
-\textbf{Where feedback would help.}
-\begin{enumerate}
-    \item The six 100\% runs need about 2,400 SU of the shared class allocation (Section~\ref{sec:plan}). Is that
-    acceptable, or should they run on the free partition, accepting preemptions and longer queues?
-    \item Is there storage on HPC3 that serves a 294\,GB training set faster than \texttt{/pub}, or is staging the
-    data to node-local disk the recommended route?
-    \item The all-window mean (the paper's protocol) is dominated by the onset windows, where VRMSE is
-    ill-conditioned. Should the developed-convection error be the headline number, with the all-window mean kept for
-    comparison with the paper?
-    \item Should CNextU-Net and AViT train in bf16 (faster, so more optimizer steps in the same budget) although
-    TFNO cannot, or should all models keep one precision?
-\end{enumerate}
-
 \section{Revised Plan}
 \label{sec:plan}
 

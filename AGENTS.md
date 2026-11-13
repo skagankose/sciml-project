@@ -436,3 +436,4 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     released-checkpoint figure (E), the budget clock (F), the full results discussion (G) and the full issues
     table with `fig_time` (J). Every number of the previous version is still in the file.
 
+* 2026-11-12: "Where feedback would help" (the four questions for the professor) removed from both reports (owner).

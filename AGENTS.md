@@ -438,3 +438,4 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
 
 * 2026-11-12: "Where feedback would help" (the four questions for the professor) removed from both reports (owner).
 * 2026-11-12: long report, Issues section: new paragraph "Which one-step number to lead with" and `tab:headline` (onset windows give 87% of the released CNextU-Net's all-window mean, 96% under the paper protocol; three comparisons that reverse between all windows and developed convection).
+* 2026-11-12: long report, "Which one-step number to lead with" now states that The Well paper reports the all-window mean (normalised fields; reproduced by the pipeline check), so its published values are dominated by onset windows too.

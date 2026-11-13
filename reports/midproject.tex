@@ -757,12 +757,14 @@ not billed.}
 \label{fig:time}
 \end{figure}
 
-\textbf{Which one-step number to lead with.} The paper's protocol averages VRMSE over all 196 one-step windows of
-each test trajectory. VRMSE divides a model's error by how much the true field varies across the grid. During onset
+\textbf{Which one-step number to lead with.} The Well paper reports one-step error as the mean VRMSE over all
+one-step windows of the test trajectories (196 per trajectory), in normalised fields; our pipeline check reproduces
+its published test values this way (Section~\ref{sec:m1}). We call this the all-window mean. VRMSE divides a model's error by how much the true field varies across the grid. During onset
 the fluid is almost at rest, so the velocity barely varies and the score divides by a number close to zero: errors
 that are tiny in absolute terms give very large scores, and the score swings with errors that do not matter
 physically. The 50 onset windows are only a quarter of the total, yet they produce most of the all-window mean:
-87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol. The
+87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol, in which the paper's published values (0.670 for CNextU-Net, 0.657 for TFNO)
+are given, so those values are dominated by the onset windows as well. The
 all-window mean therefore mostly measures how a model handles the nearly still start rather than how well it
 forecasts convection, and it can reverse comparisons (Table~\ref{tab:headline}). We report both: the
 developed-convection error says more about forecasting the flow, and the all-window mean is the number comparable

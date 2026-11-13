@@ -11,6 +11,7 @@
 \usepackage{xcolor}
 \usepackage[font=small,labelfont=bf]{caption}
 \usepackage{placeins} % floats stay in their section
+\usepackage{needspace} % keeps short headings with what follows
 \usepackage{xurl}  % long commit URLs break across lines
 \usepackage[hidelinks]{hyperref}
 
@@ -70,13 +71,55 @@
 \section{Setup}
 \label{sec:setup}
 
-\textbf{Data and task.} \texttt{rayleigh\_benard} from The Well~\cite{ohana2024well}: 1,750 trajectories of 200
-frames on a $512\times128$ grid, 35 (Rayleigh, Prandtl) regimes, official 80/10/10 splits. From four frames of
-buoyancy, pressure and both velocity components, a model predicts the next frame and is rolled out
-autoregressively; consecutive frames are 0.25 simulation time units apart~\cite{wellrb}. Fields are normalised with
-The Well's training statistics. The study trains on nested subsets of the training split; this report uses the
-10\% subset (140 of the 1,400 training trajectories, four of the 40 in each regime) and evaluates on the full test
-split.
+\textbf{Physical system} (Fig.~\ref{fig:system}). Rayleigh--B\'enard convection is a horizontal layer of fluid
+heated from below and cooled from above. Warm fluid near the bottom is lighter than the cold fluid above it; once
+this buoyancy forcing is strong enough to overcome the damping by viscosity and heat diffusion, the layer overturns
+into rising warm and sinking cold plumes, with thin thermal boundary layers along both walls. It is the classical
+model of buoyancy-driven convection, as in the atmosphere, the oceans, stellar interiors and the Earth's mantle,
+and a standard test problem for turbulence and heat transfer. The data solve the two-dimensional Boussinesq
+equations for buoyancy $b$ (the temperature variable), velocity $(u, w)$ and pressure $p$ in a $4\times1$ box,
+periodic in $x$, between no-slip walls held at $b=1$ (bottom) and $b=0$ (top)~\cite{wellrb}. Two dimensionless
+numbers set a regime:
+\begin{itemize}
+    \item the \emph{Rayleigh number} $\mathrm{Ra}=g\alpha\,\Delta T\,H^3/(\nu\kappa)$, the buoyancy forcing
+    relative to viscous and thermal damping (layer height $H$, temperature difference $\Delta T$, thermal
+    expansion $\alpha$, viscosity $\nu$, thermal diffusivity $\kappa$). A larger Rayleigh number means stronger,
+    more turbulent convection with finer plumes and thinner boundary layers (Fig.~\ref{fig:system}). The data
+    span $\mathrm{Ra}=10^6, 10^7, \dots, 10^{10}$;
+    \item the \emph{Prandtl number} $\mathrm{Pr}=\nu/\kappa$, how fast momentum diffuses relative to heat (about
+    0.7 for air and 7 for water). The data span $\mathrm{Pr}=0.1, 0.2, 0.5, 1, 2, 5, 10$.
+\end{itemize}
+In the data's units $\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$ and $\nu=(\mathrm{Ra}/\mathrm{Pr})^{-1/2}$. Each
+trajectory starts from rest, with a linear (purely conductive) buoyancy profile plus a small random perturbation.
+Convection first has to grow out of this nearly still state (\emph{onset}) and then settles into statistically
+steady, \emph{developed} convection.
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_system.pdf}{width=\linewidth}
+\caption{The physical system: true buoyancy on two test trajectories in developed convection, at two Rayleigh
+numbers. Warm fluid rises from the hot bottom wall in plumes, and the flow becomes much finer at the higher
+Rayleigh number. The grid is uniform in $x$ and clustered towards the walls in $y$.}
+\label{fig:system}
+\end{figure}
+
+\textbf{Data.} \texttt{rayleigh\_benard} from The Well~\cite{ohana2024well,wellrb}: 1,750 trajectories, 50 in each
+of the 35 (Rayleigh, Prandtl) regimes, differing in the amplitude and random seed of the initial perturbation;
+367\,GB in all (listed as 342\,GB on the dataset card, which counts in units of $2^{30}$ bytes). Each trajectory has
+200 frames, 0.25 simulation time units apart, of the four fields on a $512\times128$ grid: uniform and periodic in
+$x$, and on Chebyshev--Gauss nodes in $y$, which cluster near the walls to resolve the boundary layers (the files
+store a uniform placeholder for $y$; we identified the nodes from the data, Appendix~\ref{app:metrics}). We keep The
+Well's official split, which assigns whole trajectories: 1,400 for training, 175 for validation and 175 for testing
+(40 / 5 / 5 in each regime), so no frame of a validation or test trajectory is seen in training. The study trains
+on nested subsets of the training split; this report uses the 10\% subset (140 trajectories, four of the 40 in
+each regime, 29\,GB) and evaluates on the full test split. The validation split serves every choice made before
+testing: the learning-rate search, monitoring during training (64 fixed windows), the frame at which onset is
+separated from developed convection, and the start frames of the rollouts. The test split is used only for the
+final evaluation, after these choices were fixed. Fields are normalised with The Well's training statistics.
+
+\textbf{Task.} From four consecutive frames of buoyancy, pressure and both velocity components, a model predicts
+the next frame; longer forecasts come from feeding its predictions back in (autoregressive rollout). Each
+trajectory gives 196 one-step windows.
 
 \textbf{Models.} The Well's own implementations, trained from random initialisation, with matched parameter
 counts (Table~\ref{tab:models}). All three use GELU activations. For TFNO, released-checkpoint reproduction and
@@ -112,6 +155,31 @@ of the training data. All runs share one 10\% subset, so the spread between seed
 which four trajectories per regime were drawn, which may be larger. With two seeds, differences within the seed
 range are not read as rankings.
 
+\textbf{Method and baselines.} The method is a controlled comparison: the three families are trained from scratch
+with one recipe on the same data and budgets, and compared on accuracy and on cost to train and to use. Two
+references anchor the comparison:
+\begin{itemize}
+    \item \emph{Persistence} predicts that the next frame equals the last input frame. It needs no training and
+    almost no computation, so a model is worth its training cost only where it beats persistence. It is hard to
+    beat where the flow changes slowly, as during onset.
+    \item \emph{The released CNextU-Net} (The Well's, trained on all the training data for 12 hours on an H100)
+    shows what this architecture reaches with ten times the data and a longer, different schedule. It also
+    validates our pipeline (Section~\ref{sec:m1}).
+\end{itemize}
+Planned for the final report is a \emph{numerical-solver baseline}. The data were generated with the spectral
+solver Dedalus~\cite{burns2020dedalus}, and our solver driver is set up as the data's generator was (same
+equations, boundary conditions and grid; written, not yet run). Restarted from a model's last input frame at the
+data's own resolution, the solver reproduces the data up to the chaotic growth of tiny differences, so it would show
+the dataset's own reproducibility limit rather than a fair competitor for surrogates trained for a few hours. The
+informative comparison is the solver on coarser grids ($256\times64$ and $128\times32$), which costs less and is
+less accurate: at what grid and CPU cost does it match each model's accuracy? Comparing against a numerical method
+at equal accuracy or equal cost follows McGreivy and Hakim~\cite{mcgreivy2024weak}. Three cheaper baselines need no
+GPU training and can be added to the final evaluation: \emph{linear extrapolation} in time ($2\,y_t-y_{t-1}$),
+which extends persistence by the latest rate of change; \emph{climatology}, the mean training state of the same
+regime (a vertical profile of each field), the best constant forecast at long lead times; and \emph{dynamic mode
+decomposition}~\cite{schmid2010dmd}, a linear model fitted by least squares and the classical data-driven baseline in
+fluid dynamics, which would show how much of the networks' accuracy needs a nonlinear model.
+
 \textbf{VRMSE.} For one window (one predicted frame) and one field $f$, The Well's metric code (its
 \texttt{VRMSE} class at commit \texttt{e63dec8}) computes
 \[
@@ -127,7 +195,9 @@ training statistics ($\sigma_f = 0.249, 0.149, 0.208, 0.180$ for $b, p, u, w$); 
 scores the fields as stored. Appendix~\ref{app:metrics} explains how and where the two differ.
 
 \textbf{Failure horizon.} For a rollout, the first step whose field-mean physical-field VRMSE exceeds a threshold
-(1, 2 or 5, all reported). Rollouts start at frames 20, 80 and 140 of every test trajectory and run 30 steps. We
+(1, 2 or 5, all reported). A field held constant at the target's spatial mean scores VRMSE $\approx 1$, so a
+forecast above threshold 1 says less about the spatial pattern than that mean alone. Rollouts start at frames 20,
+80 and 140 of every test trajectory and run 30 steps. We
 report the fraction of rollouts that stay below each threshold through step 30 (Table~\ref{tab:rollout}) and,
 for threshold 1, its value at every step (Kaplan--Meier survival; Fig.~\ref{fig:rollouts}b).
 
@@ -185,6 +255,7 @@ regime. Persistence copies the last input frame. The released TFNO tracks persis
 \end{figure}
 
 \section{Milestone 2: Budgets Determined from Pilot Timings}
+\label{sec:m2}
 
 \textbf{Resource accounting.} \emph{Active GPU training time} is the measured training time counted against the
 budget (optimizer steps only; Appendix~\ref{app:accounting} gives the timer boundaries). \emph{Allocated GPU time}
@@ -619,28 +690,125 @@ The main findings at 10\% data hold for these configurations and budgets (Table~
     of the tested grid.
 \end{itemize}
 
+\section{Issues}
+\label{sec:issues}
+
+Nothing blocks the study: every planned 10\% run and evaluation finished, and the pipeline reproduces the paper's
+test values. Table~\ref{tab:issues} lists what cost time and money or limits what the results can show. The main
+open issue is reading the data fast enough on HPC3 (Fig.~\ref{fig:time}): more than half of the GPU time each AViT
+run held was spent waiting for data.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.11\linewidth}>{\raggedright\arraybackslash}p{0.27\linewidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.25\linewidth}@{}}
+\toprule
+Area & Issue & Effect so far & Status \\
+\midrule
+Data on HPC3 & The shared file system (\texttt{/pub}) delivers at most $\sim$98 training samples per second into one
+node and stalls for 5--22 minutes at a time, on all nodes at once & TFNO and AViT need 116 and 330 samples/s; per
+4-hour run they waited 2.5--2.8\,h and 6.1--7.3\,h for data (Fig.~\ref{fig:time}) & \textbf{Open.} Assess
+node-local staging before the 100\% runs, whose 294\,GB training split no longer fits in a node's page cache \\
+\addlinespace[3pt]
+& File-system errors (\texttt{Errno 70}) & Crashed both AViT runs at the same moment on two nodes, and two
+learning-rate-search runs & \textbf{Mitigated.} Runs resume from their last checkpoint \\ \addlinespace[3pt]
+& The upstream loader reopened every file for each sample & The first replication attempt ran at 5.8--47\,s per
+step instead of 0.55--1.42\,s & \textbf{Resolved.} Our loader keeps files open (same samples bit for bit, 1.2--1.4
+times faster) and uses more workers \\ \addlinespace[3pt]
+& The files store a uniform placeholder for the vertical coordinate & Boundary checks, spectra and the Nusselt
+number would be wrong & \textbf{Resolved.} Nodes identified from the data (Appendix~\ref{app:metrics}) \\
+\midrule
+Compute on HPC3 & The free GPU partition preempts jobs, and its A100s were often held for higher-priority jobs &
+Three 10\% runs were preempted; jobs waited without starting & \textbf{Worked around.} Training and evaluation
+moved to the paid partition (class account) \\ \addlinespace[3pt]
+& Queue waits on the paid partition & Median about 3\,h; up to 12\,h before training and 15\,h before evaluation &
+\textbf{Open.} The 100\% runs need about a day of slack \\ \addlinespace[3pt]
+& Allocated time is billed, including data waits & 2,160 SU of the shared class allocation so far; the 100\% runs
+need about 2,400 more & \textbf{Open.} Falls if staging removes the waits \\
+\midrule
+Training & TFNO's Fourier layers fail in bf16 & Every model trains in fp32, which favours TFNO: bf16 would speed up
+a training step 1.7 times for CNextU-Net and 2.2 times for AViT & \textbf{Accepted} for this comparison; stated as
+a caveat \\ \addlinespace[3pt]
+& The learning rate $10^{-3}$ is the largest tried, from a 20-minute search & The optimum may be higher;
+CNextU-Net's validation error peaks near one hour, where its two seeds differ most & \textbf{Accepted}; stated as a
+caveat \\
+\midrule
+Evaluation & VRMSE is ill-conditioned during onset, where the velocity is nearly zero & Persistence beats every
+model on the four-field mean during onset & \textbf{Handled.} Onset and developed convection reported separately,
+and per field \\ \addlinespace[3pt]
+& Models are trained only on one-step targets & AViT's rollouts are no better than persistence after 30 steps; no
+model keeps the heat transport right over a rollout & \textbf{Open.} Rollout-aware training is outside the study's
+fixed recipe \\ \addlinespace[3pt]
+& The released TFNO was trained with a bug that skipped its Fourier layers; the paper's validation values cannot
+be reproduced & Only the released CNextU-Net is a valid reference, compared on the test split &
+\textbf{Documented} (Appendix~\ref{app:tfno}) \\
+\bottomrule
+\end{tabularx}
+\caption{Issues met so far, their effect and their status.}
+\label{tab:issues}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_time.pdf}{width=\linewidth}
+\caption{Where each 10\% run's GPU time went: active training (the 4-hour budget), waiting for data from the
+shared file system, and other overhead (start-up, validation, checkpoint writes, and steps replayed after a
+preemption or crash). SU: billed on the paid partition; the CNextU-Net runs started on the free partition, which is
+not billed.}
+\label{fig:time}
+\end{figure}
+
+\needspace{6\baselineskip}
+\textbf{Where feedback would help.}
+\begin{enumerate}
+    \item The six 100\% runs need about 2,400 SU of the shared class allocation (Section~\ref{sec:plan}). Is that
+    acceptable, or should they run on the free partition, accepting preemptions and longer queues?
+    \item Is there storage on HPC3 that serves a 294\,GB training set faster than \texttt{/pub}, or is staging the
+    data to node-local disk the recommended route?
+    \item The all-window mean (the paper's protocol) is dominated by the onset windows, where VRMSE is
+    ill-conditioned. Should the developed-convection error be the headline number, with the all-window mean kept for
+    comparison with the paper?
+    \item Should CNextU-Net and AViT train in bf16 (faster, so more optimizer steps in the same budget) although
+    TFNO cannot, or should all models keep one precision?
+\end{enumerate}
+
 \section{Revised Plan}
 \label{sec:plan}
 
 The \emph{core comparison} remains three families, 10\% and 100\% training data, two seeds, and checkpoints at one
 and four hours. The 100\% runs complete the data axis, so the accuracy--cost comparison of Fig.~\ref{fig:cost} and
 Table~\ref{tab:choice} can be repeated with all the data and the value of ten times more data measured at each
-budget. The main changes are:
+budget. The models, data fractions, seeds, budgets and the extensions with their order are as in the abstract.
+
+\textbf{Changes since the abstract.}
 \begin{itemize}
-    \item \textbf{Budget definition.} Experimental budgets count active GPU training time. Allocated GPU time, data
-    waits and SU are reported separately so that storage costs remain visible.
-    \item \textbf{Evaluation.} Report the paper protocol for reference comparisons alongside the physical-field
-    VRMSE, separate onset from developed convection, and report the failure horizon at thresholds 1, 2 and 5.
+    \item \textbf{Budget clock.} The 1-hour and 4-hour budgets count active GPU training time, not wall time,
+    because waiting for data on the shared file system would otherwise be measured as training (Section~\ref{sec:m2}).
+    Allocated GPU time, data waits and SU are reported separately so that storage costs remain visible; a 4-hour
+    run held a GPU for 5--12 hours (Fig.~\ref{fig:time}).
     \item \textbf{Core resource estimate.} The 48 hours of active training are unchanged; the working estimate is
     approximately 135 allocated GPU-hours for the core study and its supporting work (Table~\ref{tab:budget}, Appendix~\ref{app:accounting}),
-    instead of the abstract's approximately 100. With all 10\% work complete, Slurm accounting gives 72.6
-    allocated GPU-hours: 54.2 on the paid partition, billed 2,160 SU (40 SU per allocated hour for jobs with 8
-    cores, 36 for the 4-core pipeline check), and 18.3 on the free partition, which is not billed.
+    instead of the abstract's approximately 100, the difference being waits for data. With all 10\% work complete,
+    Slurm accounting gives 72.6 allocated GPU-hours: 54.2 on the paid partition, billed 2,160 SU (40 SU per
+    allocated hour for jobs with 8 cores, 36 for the 4-core pipeline check), and 18.3 on the free partition, which
+    is not billed.
+    \item \textbf{Baselines.} Persistence is added as the baseline that costs nothing to train. A
+    Dedalus~\cite{burns2020dedalus} solver baseline on coarser grids is planned after the 100\% runs (CPUs on the
+    free partition, so no SU; it first needs a feasibility check). It would set the models' accuracy and forecast
+    time against the solver's for the same 30-step forecasts. Linear extrapolation, climatology and dynamic mode
+    decomposition are candidate baselines that need no GPU training (Section~\ref{sec:setup}).
+    \item \textbf{Pipeline check.} It found that the released TFNO was trained with a bug that skipped its Fourier
+    layers and reproduces its published value only with that forward pass. The released CNextU-Net is therefore the
+    only valid released reference; our TFNO uses the fixed code.
+    \item \textbf{Training settings fixed.} Peak learning rate $10^{-3}$ for every model, from the equal-budget
+    search (the paper's lower rates suit its 12-hour runs, not our budgets); batch 64; fp32 for every model, because
+    TFNO's Fourier layers fail in bf16.
+    \item \textbf{Evaluation.} Report the paper protocol for reference comparisons alongside the physical-field
+    VRMSE, separate onset from developed convection, and report the failure horizon at thresholds 1, 2 and 5
+    instead of one predefined threshold. Error by Rayleigh number and heat transport (Nusselt number) are added
+    (Section~\ref{sec:extra}).
     \item \textbf{Optional, outside the estimate.} 24-hour runs of CNextU-Net and TFNO with the paper's learning
-    rates (roughly 60--90 allocated GPU-hours; not an exact replication of the paper's 12-hour H100 runs), and a
-    Dedalus~\cite{burns2020dedalus} solver baseline on CPUs, which first needs a feasibility check; it would set
-    the models' accuracy and forecast time against the solver's for the same 30-step forecasts. A second draw of
-    the 10\% subset (one run per model, about 25 allocated GPU-hours) would measure how much the choice of
+    rates (roughly 60--90 allocated GPU-hours; not an exact replication of the paper's 12-hour H100 runs). A second
+    draw of the 10\% subset (one run per model, about 25 allocated GPU-hours) would measure how much the choice of
     trajectories matters, and batched inference timing can be added to the 100\% evaluations at little cost.
 \end{itemize}
 
@@ -651,7 +819,8 @@ data fractions; the Rayleigh-number and heat-transport analyses for the 100\% ru
 
 \textbf{Next steps, in priority order.} (1) Improve data-loading robustness and assess node-local staging;
 (2) complete the six 100\% runs (estimated approximately 2,400 SU) and the core data--compute comparison;
-(3) complete the promised metrics and the reproducible final report. Only after core completion, consider the
+(3) run the numerical-solver baseline on CPUs; (4) complete the promised metrics and the reproducible final
+report. Only after core completion, consider the
 abstract's extensions in their original order: input-noise robustness, a third seed, a 30\% fraction, and
 ConvLSTM. The optional runs above should not delay the core deliverables.
 
@@ -729,6 +898,14 @@ first $\sim$50 frames the velocity is nearly zero (exactly zero at $t=0$) and it
 $10^{-7}$, so the physical-field score is damped there and the normalised one is not. This is the whole difference
 between the released CNextU-Net's 0.669 (paper protocol) and 0.224 (physical fields): on early windows they score
 2.510 and 0.766, while from frame 50 on both give 0.038.
+
+\textbf{Vertical grid.} The files store evenly spaced $y$ coordinates, but the values lie on the 128
+Chebyshev--Gauss nodes of the solver's grid. With these nodes the data satisfy the boundary conditions: the
+Chebyshev interpolant gives $b=1$ and $0$ at the walls to within $6\times10^{-10}$, the velocity vanishes there to
+within $9\times10^{-8}$ of its root-mean-square value, and the conductive part of the Nusselt number (the
+volume-averaged $-\partial b/\partial y$) is 1 to within $3\times10^{-9}$; evenly spaced and Gauss--Lobatto nodes
+fail these checks. The spectrum and the Nusselt number use
+these nodes; the models and VRMSE treat the 128 rows as an image and use no coordinates.
 
 \textbf{Kinetic-energy spectrum.} At each grid row, the two velocity components are Fourier-transformed along the
 periodic $x$ axis; $E(k_x)$ is the one-sided energy $\tfrac12(|\hat u|^2+|\hat w|^2)$ at
@@ -1011,6 +1188,19 @@ The Well, \texttt{rayleigh\_benard} dataset card, commit \texttt{e63dec8}.\\
 \bibitem{wellissue}
 The Well, issue \#49, ``Inconsistent Pre-trained Baseline Performance'' (open since 2025-04-21).\\
 \url{https://github.com/PolymathicAI/the_well/issues/49}
+
+\bibitem{mcgreivy2024weak}
+McGreivy, N., and Hakim, A.
+``Weak baselines and reporting biases lead to overoptimism in machine learning for fluid-related partial
+differential equations.''
+Nature Machine Intelligence 6, 2024.\\
+\url{https://arxiv.org/abs/2407.07218}
+
+\bibitem{schmid2010dmd}
+Schmid, P. J.
+``Dynamic mode decomposition of numerical and experimental data.''
+Journal of Fluid Mechanics 656, 5--28, 2010.\\
+\url{https://doi.org/10.1017/S0022112010001217}
 
 \end{thebibliography}
 

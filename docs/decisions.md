@@ -484,6 +484,8 @@ nodes in y (D18) and a RealFourier x grid without a Nyquist mode (the data's Nyq
   hardware differs (CPU core vs A100), so both wall time and SU-equivalents (1 SU per core-hour, 32 per GPU-hour)
   are reported. The Well reports 6,000–50,000 s per simulation of 200 frames, ~60 h in all on 12 × 64 cores.
 * *Free partition only.* No SUs; the preemptible jobs resume rollout by rollout.
+* *Mid-project report (owner, 2026-11-12).* Named there as a planned baseline, with the coarse grids as the
+  comparison and 512 x 128 as the reproducibility limit; runs still after the 100% runs.
 
 **D26 — One-step results split by phase (owner, 2026-11-11).** Besides the mean over all windows (the paper's
 protocol), one-step VRMSE is reported separately for convection onset (first input frame < 50) and developed

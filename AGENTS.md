@@ -405,3 +405,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Nusselt errors are now reported as medians and as the error of the rollout-averaged Nu. The means were
     dominated by near-zero and negative instantaneous true values.
   * A findings bullet was added, and the remaining deliverables were updated.
+* 2026-11-12: report checked against the course's check-in items (problem and goal, data, method, progress, issues,
+  plan); the owner keeps the long format. Added to `reports/midproject.tex`:
+  * Setup: the physical system (heated layer; Ra and Pr defined, with their values; onset and developed
+    convection) with `fig_system` (true buoyancy at Ra = 1e8 and 1e10), a fuller data paragraph (367 GB,
+    1,400 / 175 / 175 by trajectory, 40 / 5 / 5 per regime, grid, what validation is used for), and "Method and
+    baselines": persistence and the released CNextU-Net, the planned Dedalus baseline on coarser grids, and
+    candidate baselines (linear extrapolation, climatology, DMD; McGreivy & Hakim 2024 and Schmid 2010 cited).
+  * Appendix B: the vertical-grid identification.
+  * New section "Issues" (`tab:issues`, `fig_time`: where each run's GPU time went) with questions for feedback.
+  * Revised Plan: "Changes since the abstract" (budget clock, estimate, baselines, pipeline check, training
+    settings, evaluation, optional work); the solver baseline is step 3 of the next steps.

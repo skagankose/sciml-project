@@ -635,6 +635,12 @@ its evaluation is pulled.
   (frames < 50) and developed convection (D26).
 * End of the project (not mid-project): the numerical-solver baseline (section 8): build `rb-dedalus`, pass the
   self-test, run the rollouts at three resolutions, then `eval-solver`.
+* Candidate baselines that need no GPU training, named in the mid-project report (owner, 2026-11-12), not yet
+  implemented: linear extrapolation in time (2 y_t - y_{t-1}), climatology (the regime's mean training state, a
+  vertical profile per field) and dynamic mode decomposition (Schmid 2010). Note for interpretation: a field held
+  constant at the target's spatial mean scores VRMSE = sqrt((N-1)/N) ~ 1, so threshold 1 is the "mean only" level.
+* Dataset size: 367 GB in decimal units (train 293.6, valid 36.7, test 36.7 GB; 10% subset ~29 GB). The dataset
+  card's "342 GB" is 341.8 GiB. The report gives both.
 * The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
   section 3).
 * The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
@@ -657,3 +663,6 @@ its evaluation is pulled.
 * Status (2026-11-11): code and tests done on the Mac (Dedalus itself is not installed there). The owner moved
   the runs to the end of the project, after the 100% runs; they are not part of the mid-project report. The HPC3
   env, self-test and runs are pending. Results go here.
+* 2026-11-12 (owner): the mid-project report names the solver as a planned baseline (Setup, "Method and
+  baselines"; Revised Plan) with the emphasis on the coarse grids, since at 512 x 128 it only measures the data's
+  reproducibility limit. Still run after the 100% runs.

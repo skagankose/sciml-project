@@ -534,15 +534,88 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
     return save(fig, out, f"fig_snapshots_{field}_{tag}")
 
 
+# --- 10. the physical system: true buoyancy at two Rayleigh numbers ---------------------------------------------
+
+def system(outputs: Path, out: Path, frame_of: str = "last_input") -> list[str]:
+    """True buoyancy at Ra = 1e8 and 1e10 (Pr = 1), the last input frame of the snapshot rollouts, on the true grid."""
+    from rbbench.solver_grid import LX, LY, gauss_nodes, x_grid
+
+    vis = outputs / "visuals"
+    cases = []
+    for ra, tex in (("1e8", r"10^8"), ("1e10", r"10^{10}")):
+        hits = sorted(vis.glob(f"rollout_*_Rayleigh_{ra}_Prandtl_1__*.npz")) if vis.exists() else []
+        if hits:
+            cases.append((hits[0], tex))
+    if len(cases) < 2:
+        return []
+    fig, axes = plt.subplots(1, 2, figsize=(FULL, 1.45), sharey=True, gridspec_kw={"wspace": 0.06})
+    mesh = None
+    for ax, (npz, tex) in zip(axes, cases):
+        d = np.load(npz)
+        meta = json.loads(str(d["meta"]))
+        b = d[frame_of][..., meta["fields"].index("buoyancy")]
+        x, y = x_grid(b.shape[0], LX), gauss_nodes(b.shape[1], LY)
+        mesh = ax.pcolormesh(x, y, b.T, shading="nearest", cmap="inferno", vmin=0, vmax=1, rasterized=True)
+        ax.set_aspect("equal")
+        ax.grid(False)
+        ax.set_xticks([0, 1, 2, 3, 4])
+        ax.set_yticks([0, 1])
+        ax.set_xlabel("$x$ (periodic)")
+        frame = int(meta["start"]) + 3 if frame_of == "last_input" else None
+        ax.set_title(rf"$\mathrm{{Ra}}={tex}$, $\mathrm{{Pr}}=1$, frame {frame}", fontsize=8)
+    axes[0].set_yticklabels(["hot wall\n$b=1$", "cold wall\n$b=0$"])
+    axes[0].set_ylabel("$y$")
+    cbar = fig.colorbar(mesh, ax=axes, orientation="vertical", fraction=0.02, pad=0.015, aspect=12)
+    cbar.set_label("Buoyancy $b$", fontsize=7, color=INK)
+    cbar.ax.tick_params(labelsize=6.5)
+    return save(fig, out, "fig_system")
+
+
+# --- 11. where each run's GPU time went (the storage issue) -------------------------------------------------------
+
+def time_breakdown(runs: pd.DataFrame, out: Path) -> list[str]:
+    r = runs[(runs.manifest == "train") & (runs.fraction == 0.1)]
+    if r.empty:
+        return []
+    rows = [row for m in MODEL_NAMES for _, row in r[r.model == m].sort_values("seed").iterrows()]
+    fig, ax = plt.subplots(figsize=(FULL, 1.95))
+    other_color = "#c9c9c9"
+    for i, row in enumerate(rows):
+        yy = len(rows) - 1 - i
+        c = STYLE[row.model]["color"]
+        ax.barh(yy, row.train_hours, color=c, height=0.62, lw=0)
+        ax.barh(yy, row.data_wait_hours, left=row.train_hours, height=0.62, facecolor="white", edgecolor=c,
+                hatch="/////", lw=0)
+        ax.barh(yy, row.other_hours, left=row.train_hours + row.data_wait_hours, height=0.62, color=other_color, lw=0)
+        ax.text(row.wall_hours + 0.15, yy, f"{row.wall_hours:.1f} h held, {row.su_estimate:.0f} SU", va="center",
+                fontsize=7, color=INK)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([f"{STYLE[row.model]['label']}, seed {int(row.seed)}" for row in reversed(rows)])
+    ax.tick_params(axis="y", length=0)
+    ax.grid(axis="y", visible=False)
+    ax.axvline(4, color=MUTED, lw=0.6, ls="--")
+    ax.set_xlim(0, 14.6)
+    ax.set_xticks(range(0, 15, 2))
+    ax.set_xlabel("GPU time held per run (h)")
+    handles = [plt.Rectangle((0, 0), 1, 1, color=MUTED, lw=0, label="training (the 4 h budget)"),
+               plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor=MUTED, hatch="/////", lw=0,
+                             label="waiting for data from the shared file system"),
+               plt.Rectangle((0, 0), 1, 1, color=other_color, lw=0,
+                             label="start-up, validation, checkpoints, replayed steps")]
+    fig.legend(handles=handles, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.98))
+    fig.tight_layout()
+    return save(fig, out, "fig_time")
+
+
 def main() -> int:
     outputs, out = REPO / "outputs", REPO / "reports" / "figures"
     runs_csv = outputs / "findings" / "runs.csv"
     runs = pd.read_csv(runs_csv) if runs_csv.exists() else pd.DataFrame()
-    written = released_by_window(outputs, out) + loader(outputs, out)
+    written = released_by_window(outputs, out) + loader(outputs, out) + system(outputs, out)
     if not runs.empty:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
                     + accuracy_cost(outputs, runs, out) + by_rayleigh(outputs, runs, out)
-                    + spectra(outputs, runs, out))
+                    + spectra(outputs, runs, out) + time_breakdown(runs, out))
     for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
         written += snapshots(npz, out)
     print("\n".join(f"wrote {p}" for p in written if p.endswith(".pdf")))

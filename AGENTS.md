@@ -425,4 +425,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     table (I); `fig_system` (J).
   * Main body 11 pages instead of 16 (25 in all). A word count of the two sources shows no text lost; only
     references to the moved parts were added. Later edits to the long report are not carried over automatically.
+* 2026-11-12: `reports/midproject_short.tex` condensed further (owner): main body 6 pages instead of 11 (25 in all).
+  * The main body follows the check-in items: goal, problem and data, method and baselines, milestones 1-3
+    (training curves, one-step and rollout tables, example predictions, a short summary), open issues with the
+    questions for feedback, and the revised plan with the changes since the abstract.
+  * Repetition removed: the milestone list at the top, the long Findings section (now a five-bullet summary) and
+    the long plan bullets. The issues table has 3 columns and open issues only.
+  * The original detailed paragraphs moved to the matching appendices: system, data and baselines (new App. A),
+    training, learning rate and precision (B), VRMSE and failure horizon (C), the onset observation with the
+    released-checkpoint figure (E), the budget clock (F), the full results discussion (G) and the full issues
+    table with `fig_time` (J). Every number of the previous version is still in the file.
 

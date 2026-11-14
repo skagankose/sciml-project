@@ -158,6 +158,42 @@ def test_eval_released_command(dataset_dir, fake_fetch, tmp_path):
     assert partial == 0 and record["passed"] is None  # a partial run is never reported as a check
 
 
+def test_eval_baseline_released_runs_the_study_evaluation(dataset_dir, fake_fetch, tmp_path):
+    """`eval-baseline --released` puts the released checkpoint through the study evaluation (the cohort's rollouts and
+    failure horizons, as for our runs and persistence), with the same weights the pipeline check scores."""
+    cfg = load_config("cnext_unet", "smoke", "tiny", [GRID])
+    _, total = full_trajectory_dataset(dataset_dir, "test")
+    cohort = make_cohort(dataset_dir, cfg["eval"], 4, total)
+    cohort_path = tmp_path / "cohort.json"
+    cohort_path.write_text(json.dumps(cohort))
+    out = tmp_path / "out"
+    common = ["--data-root", str(dataset_dir.parents[1]), "--output-root", str(out), "--device", "cpu",
+              "--experiment", "smoke", "--size", "tiny", "--override", GRID, "--cohort", str(cohort_path),
+              "--audit", str(tmp_path / "no_audit.json")]
+    main(["eval-baseline", "--released", "cnext_unet", *common])
+    main(["eval-baseline", *common])  # persistence, unchanged
+    main(["eval-released", "--data-root", str(dataset_dir.parents[1]), "--output-root", str(out), "--device", "cpu",
+          "--size", "tiny", "--override", GRID, "--models", "cnext_unet", "--splits", "test",
+          "--allow-unverified-data"])
+
+    ev = out / "baselines" / "released" / "cnext_unet" / "evaluations"
+    persistence = out / "baselines" / "persistence" / "evaluations"
+    roll, roll_p = pd.read_parquet(ev / "rollout_na.parquet"), pd.read_parquet(persistence / "rollout_na.parquet")
+    starts = {(e["id"], s) for e in cohort["trajectories"] for s in e["starts"]}
+    assert set(zip(roll.traj_id, roll.start)) == starts == set(zip(roll_p.traj_id, roll_p.start))
+    assert len(roll) == len(roll_p) == len(starts) * cohort["rollout_steps"] * len(cohort["noise_sigmas"])
+    assert not np.allclose(roll.vrmse_mean, roll_p.vrmse_mean)  # the model, not persistence
+    clean = json.loads((ev / "clean_na.json").read_text())
+    assert clean["meta"]["baseline"] == "released_cnext_unet"
+    assert clean["meta"]["checkpoint"] == {"repo_id": "local/cnext_unet", "revision": "test", "sha256": "test",
+                                           "forward": "pinned the_well"}
+    assert clean["failure"]  # failure horizons, as in Table 4
+    # same weights and the same one-step code as the pipeline check
+    one = pd.read_parquet(ev / "one_step_na.parquet")
+    check = pd.read_parquet(out / "baselines" / "released" / "cnext_unet" / "one_step_test.parquet")
+    pd.testing.assert_frame_equal(one, check[one.columns])
+
+
 def test_paper_forward_skips_the_fno_blocks(fake_fetch):
     """the_well <= v1.2.0 dropped the FNO block outputs (fixed in e430160), so the released TFNO is
     lifting -> projection; only TFNO gets that forward back."""

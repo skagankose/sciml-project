@@ -440,3 +440,72 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
 * 2026-11-12: long report, Issues section: new paragraph "Which one-step number to lead with" and `tab:headline` (onset windows give 87% of the released CNextU-Net's all-window mean, 96% under the paper protocol; three comparisons that reverse between all windows and developed convection).
 * 2026-11-12: long report, "Which one-step number to lead with" now states that The Well paper reports the all-window mean (normalised fields; reproduced by the pipeline check), so its published values are dominated by onset windows too.
 * 2026-11-12: both reports quote the paper's values at its precision (test 0.6699 / 0.6566 against our 0.6688 / 0.6634) and now give the paper's validation values (Table 5: 0.4807 / 0.8568; ours 0.7006 / 0.6754 on the full validation split, not reproduced). The milestone line's "within 1%" was wrong for TFNO (1.04%); now "within 0.2% and 1.0%".
+* 2026-11-13: `fig_system` redrawn (owner: "a bit off"). The panels are stacked at full width, since side by side
+  they were too small for the Ra = 1e10 structures. The colour scale is a square root, because on a linear scale
+  the interior (b ≈ 0.1–0.3) was almost black. Wall, gravity and periodicity labels and two plume pointers were
+  added, with Gouraud shading and a 400 dpi raster in the PDF. Caption updated; the long report is now 24 pages,
+  the last holding only references.
+* 2026-11-13: owner's subsection "Rayleigh–Prandtl Parameter Regimes" (`app:rb_regimes`) added to Appendix B of the
+  long report, then moved to its own appendix, Appendix A (owner); the later appendices shift by one letter. Its values (Ra, Pr, δb0 ∈ {0.2,…,1.0}, seeds 40–49, 1,750
+  trajectories, 200 steps, 512 × 128) were checked against the dataset card at e63dec8. Report now 25 pages.
+* 2026-11-13: long report, Milestone 1 table (`tab:released`) gains the released TFNO row (0.6634 vs 0.6566; rollouts
+  142 / 169 vs >10), marked as scored with its paper-era forward pass; details stay in the TFNO appendix (owner).
+* 2026-11-13: long report, Setup's "Physical system" simplified (owner): Ra and Pr named in words, value ranges and a
+  pointer to Appendix A. The Ra formula and its symbols, Pr for air and water, κ and ν in data units, no-slip walls
+  and the initial condition moved to Appendix A, retitled "Physical System and Rayleigh–Prandtl Regimes". 24 pages.
+* 2026-11-13: Appendix A of the long report shortened to two paragraphs (owner): Ra and Pr in one equation, value sets
+  and the trajectory count inline; every value kept.
+* 2026-11-13: Appendix B (training recipe) of the long report rewritten as explanation, without file paths or commit
+  hashes (owner): task and loss, optimizer, schedule (ours on the compute clock; The Well's per epoch from 0.1·lr,
+  checked in its pinned scheduler), checkpoints and seeds (validation is monitoring only), the learning-rate search,
+  the released CNextU-Net's epoch estimate, and the software. Both tables kept. Note: tectonic's console does not
+  show undefined references; check the log (`--keep-logs`).
+* 2026-11-13: commit numbers removed from the long report's main body (owner): "Models" and "VRMSE" paragraphs. They
+  remain only in the TFNO appendix and the reference list.
+* 2026-11-13: "Additional Analysis" (`sec:extra`: error by Rayleigh number, heat transport) moved from the long
+  report's main body to Appendix G, before "Additional Figures" (now H) (owner). Its two references now read
+  "Appendix". Main body ends on page 15; 25 pages in all.
+* 2026-11-13: long report, Setup: "Physical system" now describes only the physics (owner). The regime values
+  (5 Ra × 7 Pr), the initial condition and the dataset citation moved to "Data", which no longer repeats them
+  elsewhere.
+* 2026-11-13: long report, Setup's "Training" paragraph rewritten for clarity and split into "Training" and "Seeds"
+  (owner); same facts.
+* 2026-11-13: long report, "Seeds" paragraph shortened to two sentences (owner).
+* 2026-11-13: long report: section "Issues" renamed "Issues and Decisions for the Final Submission" (owner). The
+  planned baselines (Dedalus on coarser grids, linear extrapolation, climatology, DMD) moved from "Method and
+  baselines" to its new subsection 6.1 (`sec:planned_baselines`); "Method and baselines" keeps persistence and the
+  released CNextU-Net and points to 6.1.
+* 2026-11-13: long report, section 6 split into 6.1 "Decisions for the Final Submission" (`sec:decisions`: baselines to
+  add, which one-step number to lead with) and 6.2 "Issues" (`sec:issues_met`: intro, issues table, GPU-time figure)
+  (owner). "Method and baselines" now points to 6.1.
+* 2026-11-13: long report, "Method and baselines": persistence is the only reference for now; The Well's released
+  CNextU-Net and TFNO (100% data, 12 h H100) are named as references for the final report, with the TFNO-bug caveat
+  (owner). The results tables still carry the released CNextU-Net row.
+* 2026-11-13: long report: the Setup's VRMSE paragraph now says briefly why we lead with the physical-field VRMSE
+  (fixed before training, i.e. in the methodology since 2026-10-22; less onset-dominated; agrees with the paper
+  protocol in developed convection). Appendix C explains it in detail (owner): onset vs developed in plain terms
+  with the frame-50 cut, why VRMSE blows up at onset, how ε differs between the two units, `tab:units` (0.766 /
+  2.510 onset, 0.0382 / 0.0383 developed, 0.224 / 0.669 all, 87% / 96% onset share), the rollout protocols, and
+  the reasons. 26 pages.
+* 2026-11-13: long report, "Method and baselines": the released CNextU-Net is named as the full-data reference shown
+  in the results (not a baseline to beat), and why only CNextU-Net: the released TFNO has the Fourier-layer bug,
+  and The Well fixed the code (2025-11-17) but never released a retrained TFNO (Hugging Face
+  polymathic-ai/TFNO-rayleigh_benard has one upload, 2025-03-28, checked 2026-11-13; issue #49 still open). A working
+  full-data TFNO comes from our 100% runs (owner).
+* 2026-11-13: long report, "Method and baselines" rewritten as one consistent account (owner): two references in the
+  results, persistence (the baseline to beat) and the released CNextU-Net (full-data reference point, also the
+  pipeline check); then why the released TFNO is not a reference, and the planned baselines (6.1).
+* 2026-11-13: long report, model table (`tab:models`): the Normalisation column removed (owner).
+* 2026-11-13: long report, `tab:models`: columns spread evenly over the line width (`tabular*` with `\extracolsep{\fill}`), so the right side has no empty gap (owner).
+* 2026-11-13: long report, the difference between the physical-field VRMSE and the paper protocol rewritten in plain terms (owner): Setup's VRMSE paragraph (now two paragraphs) and Appendix C's "Why VRMSE is large during onset" and "How the two variants differ" explain epsilon as the constant that stops division by zero, which rescaling leaves unchanged; "floor" wording removed.
+* 2026-11-13: long report, Setup's VRMSE paragraph simplified to one short paragraph (owner); the training standard deviations moved to Appendix C. Appendix F's (Additional Analysis) dangling reference to the removed `app:pipeline` appendix now points to Milestone 1 (`sec:m1`), where that observation now sits.
+* 2026-11-13: long report, `fig_released_by_window` (Fig. 2) redrawn with the paper protocol only (owner): one full-width panel; the physical-field panel and its caption mention removed. The text's claims about it hold under the paper protocol (released TFNO vs persistence: onset 2.05 vs 0.13, developed 0.190 vs 0.226).
+* 2026-11-13: long report, Milestone 1 observations: the Rayleigh-number bullet now says how it shapes the reporting (owner): the frame-0 rollouts are named, the low-Ra values are linked to later onset (next bullet), and errors are reported per Rayleigh number (Appendix F).
+* 2026-11-13: long report, commit numbers are now links to the commits on GitHub (owner): Appendix D (TFNO) `2d8d7eaf`, `e4301602`, `e63dec8`, and the hashes in references [12] and [13]. All three commits checked through the GitHub API (dates and messages match; `e63dec8` is 29 commits after the fix). The links are clickable but not coloured (`hidelinks`).
+* 2026-11-13: long report, Milestone 2: "Resource accounting" rewritten in plain terms as "Budget and cost" (what the budget clock counts, what the job holds and is billed for, queue time), and "Budget clock" (why) moved directly after it, before "Learning rate" (owner).
+* 2026-11-13: long report, Milestone 2 keeps only what matters for the study (owner): "Budget and cost" and "Budget clock" merged into "Training budget" (active GPU time, why not elapsed time: data supply ~98 samples/s vs TFNO 116 and AViT 330, and allocated GPU time defined as training plus data waits and overhead). Cluster-specific details moved to Appendix E (Resource Accounting): the file-system stalls (new "Shared storage" paragraph), service units and queue time (added to "Billing"). Learning rate and batch size/precision unchanged.
+* 2026-11-13: long report, `tab:time` (Appendix E): the two queue-wait rows removed; the caption now says queue waits are not included and gives their range for the 10% runs (0.1-8.8 h before training, 1-14 h before evaluation). The Billing paragraph no longer points to the table for queue time (owner).
+* 2026-11-13: long report: main-body references to appendix tables now read "Appendix Table N" (owner): Tables 11 (learning-rate search), 14 (10% runs), 15 (time per run) and 16 (GPU-hours). The redundant "Appendix B" / "Appendix E" next to Tables 11 and 16 dropped.
+* 2026-11-13: long report: `fig:testwindow` (one-step test VRMSE by window) moved from Appendix H to Milestone 3, directly after the Test evaluation paragraph (now Fig. 4); the paragraph cites it without "in Appendix", and the Additional Figures appendix now introduces only the Ra = 1e10 snapshots (owner). Report now 25 pages.
+* 2026-11-13: long report, Milestone 3 "Rollouts" paragraph rewritten in shorter sentences, as three paragraphs (what a rollout is and why the ranking changes; model results; persistence and the paper protocol) (owner). Same numbers; the 89% / 63% are now stated as over all three start frames.
+* 2026-11-13: `eval-baseline --released cnext_unet` (owner): the released CNextU-Net goes through the study evaluation (same cohort, rollouts from frames 20/80/140, failure horizons, spectra, physics) and writes `outputs/baselines/released/cnext_unet/evaluations/`, so Table 4 can get its released row. Until now the released checkpoints were scored only by `eval-released` (one step and the frame-0 rollout). Job: `sbatch --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch` (about 0.5 GPU-h; cluster/README.md section 6). New test checks the cohort rollouts, the checkpoint provenance, and that its one-step rows equal the pipeline check's. 147 tests pass; smoke passes.

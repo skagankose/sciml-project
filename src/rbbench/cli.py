@@ -117,6 +117,26 @@ def run_baseline(cfg: dict, output_root: Path, dataset_dir: Path, device, cohort
                     audit_path=audit_path, meta={"baseline": "persistence"}, max_trajectories=max_trajectories)
 
 
+def run_released_baseline(name: str, cfg: dict, output_root: Path, dataset_dir: Path, device, cohort_path: Path,
+                          audit_path: Path | None, max_trajectories: int | None = None) -> dict:
+    """The Well's released checkpoint `name` through the study evaluation: the same cohort, rollouts, failure
+    horizons, spectra and physics as our runs and persistence (the pipeline check, `eval-released`, scores only one
+    step and the paper's rollout from frame 0). Loaded as in `eval-released`, so the released TFNO runs with the
+    forward pass it was trained with."""
+    from rbbench.evaluate import evaluate, model_predictor
+    from rbbench.released import fetch, load_released
+
+    fetched = fetch(name)
+    model = load_released(name, cfg, fetched)
+    meta = {"baseline": f"released_{name}",
+            "checkpoint": {**{k: fetched[k] for k in ("repo_id", "revision", "sha256")},
+                           "forward": model.released_forward or "pinned the_well"}}
+    out = output_root / "baselines" / "released" / name / "evaluations"
+    return evaluate({"na": model_predictor(model.to(device), device, "fp32")}, cfg, dataset_dir,
+                    read_json(cohort_path), out, device, audit_path=audit_path, meta=meta,
+                    max_trajectories=max_trajectories)
+
+
 # --- commands -----------------------------------------------------------------------------
 
 def cmd_models(args):
@@ -248,9 +268,11 @@ def cmd_eval_task(args):
 def cmd_eval_baseline(args):
     from rbbench.config import load_config
 
-    cfg = load_config("cnext_unet", args.experiment)
-    res = run_baseline(cfg, _output_root(args), _dataset_dir(args), _device(args.device), Path(args.cohort),
-                       Path(args.audit) if args.audit else None, args.max_trajectories)
+    # Persistence reads only the shared eval and physics sections, which are the same for every model.
+    cfg = load_config(args.released or "cnext_unet", args.experiment, args.size, args.override)
+    shared = (cfg, _output_root(args), _dataset_dir(args), _device(args.device), Path(args.cohort),
+              Path(args.audit) if args.audit else None, args.max_trajectories)
+    res = run_released_baseline(args.released, *shared) if args.released else run_baseline(*shared)
     print(json.dumps(res["na"]["by_sigma"]["0"].get("one_step")))
 
 
@@ -730,8 +752,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--skip-if-complete", action="store_true")
     sp.set_defaults(func=cmd_eval_task)
 
-    sp = sub.add_parser("eval-baseline", help="persistence baseline on the same cohort")
+    sp = sub.add_parser("eval-baseline",
+                        help="persistence, or a released checkpoint (--released), on the same cohort as our runs")
     common(sp, out=True, device=True)
+    sp.add_argument("--released", choices=["cnext_unet", "tfno"],
+                    help="evaluate The Well's released checkpoint instead of persistence "
+                         "(writes baselines/released/<model>/evaluations)")
+    sp.add_argument("--size", default="full", choices=["full", "tiny"], help="tiny is for tests only")
+    sp.add_argument("--override", action="append", default=[])
     sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)

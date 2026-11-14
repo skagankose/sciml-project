@@ -246,6 +246,15 @@ sbatch -p gpu -A eecs195221_class_gpu --array=0 --export=ALL,BASELINE=1 cluster/
 sbatch -p gpu -A eecs195221_class_gpu --array=1,4,5,8,9 cluster/slurm/eval_a100.sbatch   # after row 0 passes
 ```
 
+The released CNextU-Net through the same evaluation (study rollouts from frames 20, 80, 140 and failure horizons,
+for the reference row of the rollout table; the pipeline check scores only one step and the rollout from frame 0).
+One checkpoint, about 0.5 GPU-hours; it writes `outputs/baselines/released/cnext_unet/evaluations/`:
+
+```bash
+sbatch --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch                              # free-gpu
+sbatch -p gpu -A eecs195221_class_gpu --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch  # paid
+```
+
 `eval-task` evaluates every milestone of a run (1 h and 4 h) in one pass, including the paper's protocol
 (normalised one-step VRMSE and the rollout from frame 0; D15, D20). The core evaluation is clean only
 (`eval.noise_sigmas: [0.0]`). `tables/gpu_hours.csv` sums the measured training attempts and evaluation passes

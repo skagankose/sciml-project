@@ -50,10 +50,11 @@ plt.rcParams.update({
 })
 
 
-def save(fig, out: Path, name: str) -> list[str]:
+def save(fig, out: Path, name: str, pdf_dpi: float | None = None) -> list[str]:
+    """pdf_dpi sets the resolution of rasterized artists in the PDF (matplotlib's default is the figure's 100 dpi)."""
     out.mkdir(parents=True, exist_ok=True)
     paths = []
-    for ext, kw in (("pdf", {}), ("png", {"dpi": 220})):
+    for ext, kw in (("pdf", {"dpi": pdf_dpi} if pdf_dpi else {}), ("png", {"dpi": 220})):
         p = out / f"{name}.{ext}"
         fig.savefig(p, **kw)
         paths.append(str(p))
@@ -74,27 +75,25 @@ def onset_band(ax, label: bool = True):
 
 def released_by_window(outputs: Path, out: Path, models=("cnext_unet", "tfno"),
                        name: str = "fig_released_by_window") -> list[str]:
-    """Released checkpoints' one-step VRMSE by window (the released TFNO uses its paper-era forward pass)."""
+    """Released checkpoints' one-step VRMSE by window under the paper protocol (normalised fields), the protocol of
+    the published values; the released TFNO uses its paper-era forward pass."""
     tables = {m: t for m in models if (t := ff._released(outputs, m, "one_step")) is not None}
     if not tables:
         return []
     persist = ff._persistence(outputs, "one_step")
-    fig, axes = plt.subplots(1, 2, figsize=(FULL, 2.35), sharey=True)
-    for ax, col, title in ((axes[0], "normalised_vrmse_mean", "Paper protocol (normalised fields)"),
-                           (axes[1], "vrmse_mean", "Physical fields")):
-        onset_band(ax)
-        for model, t in tables.items():
-            g = t.groupby("start")[col].mean()
-            ax.plot(g.index, g.values, color=STYLE[model]["color"])
-        if persist is not None:
-            g = persist.groupby("start")[col].mean()
-            ax.plot(g.index, g.values, color=PERSIST["color"], ls=":", lw=1.3)
-        ax.set_yscale("log")
-        ax.set_xlim(-2, 197)
-        ax.set_title(title)
-        ax.set_xlabel("Input-window start frame")
-    axes[0].set_ylabel("One-step VRMSE")
-    axes[1].tick_params(labelleft=True)    # shared scale, but labelled on both panels
+    col = "normalised_vrmse_mean"
+    fig, ax = plt.subplots(figsize=(FULL, 2.2))
+    onset_band(ax)
+    for model, t in tables.items():
+        g = t.groupby("start")[col].mean()
+        ax.plot(g.index, g.values, color=STYLE[model]["color"])
+    if persist is not None:
+        g = persist.groupby("start")[col].mean()
+        ax.plot(g.index, g.values, color=PERSIST["color"], ls=":", lw=1.3)
+    ax.set_yscale("log")
+    ax.set_xlim(-2, 197)
+    ax.set_xlabel("Input-window start frame")
+    ax.set_ylabel("One-step VRMSE\n(paper protocol)")
     handles = [Line2D([], [], color=STYLE[m]["color"], label=f"released {STYLE[m]['label']}") for m in tables]
     if persist is not None:
         handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence (copy last frame)"))
@@ -537,38 +536,81 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
 # --- 10. the physical system: true buoyancy at two Rayleigh numbers ---------------------------------------------
 
 def system(outputs: Path, out: Path, frame_of: str = "last_input") -> list[str]:
-    """True buoyancy at Ra = 1e8 and 1e10 (Pr = 1), the last input frame of the snapshot rollouts, on the true grid."""
+    """True buoyancy at Ra = 1e8 and 1e10 (Pr = 1), the last input frame of the snapshot rollouts, on the true grid.
+
+    The panels are stacked so each spans the text width (the 4:1 box is too small side by side to show the
+    Ra = 1e10 structures). Most of the interior lies at b = 0.1-0.3, so the colour scale is a square root:
+    on a linear scale the interior is nearly uniform black and only the plumes show.
+    """
+    import matplotlib.patheffects as pe
+    from matplotlib.colors import PowerNorm
+
     from rbbench.solver_grid import LX, LY, gauss_nodes, x_grid
 
     vis = outputs / "visuals"
     cases = []
-    for ra, tex in (("1e8", r"10^8"), ("1e10", r"10^{10}")):
+    for ra, title in (("1e8", r"$\mathrm{Ra}=10^{8}$: a few broad plumes"),
+                      ("1e10", r"$\mathrm{Ra}=10^{10}$: much finer, turbulent structures")):
         hits = sorted(vis.glob(f"rollout_*_Rayleigh_{ra}_Prandtl_1__*.npz")) if vis.exists() else []
         if hits:
-            cases.append((hits[0], tex))
+            cases.append((hits[0], title))
     if len(cases) < 2:
         return []
-    fig, axes = plt.subplots(1, 2, figsize=(FULL, 1.45), sharey=True, gridspec_kw={"wspace": 0.06})
-    mesh = None
-    for ax, (npz, tex) in zip(axes, cases):
+
+    # Layout in inches: two 4:1 panels, wall labels on the right, a horizontal colour bar below.
+    W, left, pw, top, title_h, gap, below = FULL, 0.42, 5.4, 0.04, 0.2, 0.1, 0.42
+    ph = pw * LY / LX
+    cbar_h, cbar_lab = 0.08, 0.36
+    H = top + 2 * (title_h + ph) + gap + below + cbar_h + cbar_lab
+    fig = plt.figure(figsize=(W, H))
+    norm = PowerNorm(0.5, vmin=0, vmax=1, clip=True)
+    halo = [pe.withStroke(linewidth=1.6, foreground="black")]
+    mesh, axes = None, []
+    for k, (npz, title) in enumerate(cases):
+        y0 = H - top - title_h - ph - k * (title_h + ph + gap)
+        ax = fig.add_axes((left / W, y0 / H, pw / W, ph / H), sharex=axes[0] if axes else None)
+        axes.append(ax)
         d = np.load(npz)
         meta = json.loads(str(d["meta"]))
         b = d[frame_of][..., meta["fields"].index("buoyancy")]
-        x, y = x_grid(b.shape[0], LX), gauss_nodes(b.shape[1], LY)
-        mesh = ax.pcolormesh(x, y, b.T, shading="nearest", cmap="inferno", vmin=0, vmax=1, rasterized=True)
+        # Smooth (Gouraud) shading between the grid points; the first column is repeated at x = LX (periodic).
+        x, y = np.append(x_grid(b.shape[0], LX), LX), gauss_nodes(b.shape[1], LY)
+        mesh = ax.pcolormesh(x, y, np.vstack([b, b[:1]]).T, shading="gouraud", cmap="inferno", norm=norm,
+                             rasterized=True)
+        ax.set_xlim(0, LX)
+        ax.set_ylim(0, LY)
         ax.set_aspect("equal")
         ax.grid(False)
-        ax.set_xticks([0, 1, 2, 3, 4])
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(True)
         ax.set_yticks([0, 1])
-        ax.set_xlabel("$x$ (periodic)")
-        frame = int(meta["start"]) + 3 if frame_of == "last_input" else None
-        ax.set_title(rf"$\mathrm{{Ra}}={tex}$, $\mathrm{{Pr}}=1$, frame {frame}", fontsize=8)
-    axes[0].set_yticklabels(["hot wall\n$b=1$", "cold wall\n$b=0$"])
-    axes[0].set_ylabel("$y$")
-    cbar = fig.colorbar(mesh, ax=axes, orientation="vertical", fraction=0.02, pad=0.015, aspect=12)
-    cbar.set_label("Buoyancy $b$", fontsize=7, color=INK)
-    cbar.ax.tick_params(labelsize=6.5)
-    return save(fig, out, "fig_system")
+        ax.set_ylabel("$y$", labelpad=1)
+        ax.set_title(title, fontsize=8, loc="left", pad=3)
+        for yy, text in ((LY, "cold wall, $b=0$"), (0, "hot wall, $b=1$")):
+            ax.text(LX + 0.05, yy, text, ha="left", va="center", fontsize=7, color=INK, clip_on=False)
+        ax.text(LX + 0.05, LY / 2, r"gravity $\downarrow$", ha="left", va="center", fontsize=7, color=MUTED,
+                clip_on=False)
+    axes[0].tick_params(labelbottom=False)
+    axes[1].set_xticks(range(int(LX) + 1))
+    axes[1].set_xlabel("$x$ (periodic: the left and right edges join)", labelpad=1)
+
+    # Two pointers on the first panel; positions are the plumes of this snapshot (test trajectory, frame 83).
+    ax = axes[0]
+    for text, xy, xytext, ha in (("rising hot plume", (1.10, 0.36), (0.98, 0.20), "right"),
+                                 ("sinking cold plume", (1.53, 0.80), (1.68, 0.58), "left")):
+        ax.annotate(text, xy=xy, xytext=xytext, fontsize=7, color="white", ha=ha, va="center",
+                    path_effects=halo,
+                    arrowprops={"arrowstyle": "-|>", "color": "white", "lw": 0.8, "shrinkA": 1, "shrinkB": 1,
+                                "mutation_scale": 7, "path_effects": halo})
+
+    cax = fig.add_axes(((left + pw * 0.2) / W, cbar_lab / H, pw * 0.6 / W, cbar_h / H))
+    cbar = fig.colorbar(mesh, cax=cax, orientation="horizontal")
+    cbar.set_ticks([0, 0.05, 0.2, 0.5, 1])
+    cbar.ax.set_xticklabels(["0\n(cold)", "0.05", "0.2", "0.5", "1\n(hot)"])
+    cbar.ax.tick_params(labelsize=7, length=2)
+    cbar.outline.set_visible(False)
+    cbar.set_label("Buoyancy (temperature) $b$, square-root colour scale", fontsize=7, color=INK, labelpad=2)
+    return save(fig, out, "fig_system", pdf_dpi=400)
 
 
 # --- 11. where each run's GPU time went (the storage issue) -------------------------------------------------------

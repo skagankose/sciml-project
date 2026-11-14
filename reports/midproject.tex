@@ -64,7 +64,7 @@
     model (from an equal-budget search), and 4-hour budgets measured in active GPU training time, with allocated
     GPU time reported separately.
     \item \textbf{First 10\%-data results.} All six 10\% runs (3 models $\times$ 2 seeds) are trained and
-    evaluated on the full test set at 1 and 4 hours, together with what each model costs to train and to use
+    evaluated on the full test set at 1 and 4 hours. Reported together with what each model costs to train and to use
     (Section~\ref{sec:results}). A revised plan is in Section~\ref{sec:plan}.
 \end{enumerate}
 
@@ -76,46 +76,44 @@ heated from below and cooled from above. Warm fluid near the bottom is lighter t
 this buoyancy forcing is strong enough to overcome the damping by viscosity and heat diffusion, the layer overturns
 into rising warm and sinking cold plumes, with thin thermal boundary layers along both walls. It is the classical
 model of buoyancy-driven convection, as in the atmosphere, the oceans, stellar interiors and the Earth's mantle,
-and a standard test problem for turbulence and heat transfer. The data solve the two-dimensional Boussinesq
-equations for buoyancy $b$ (the temperature variable), velocity $(u, w)$ and pressure $p$ in a $4\times1$ box,
-periodic in $x$, between no-slip walls held at $b=1$ (bottom) and $b=0$ (top)~\cite{wellrb}. Two dimensionless
-numbers set a regime:
-\begin{itemize}
-    \item the \emph{Rayleigh number} $\mathrm{Ra}=g\alpha\,\Delta T\,H^3/(\nu\kappa)$, the buoyancy forcing
-    relative to viscous and thermal damping (layer height $H$, temperature difference $\Delta T$, thermal
-    expansion $\alpha$, viscosity $\nu$, thermal diffusivity $\kappa$). A larger Rayleigh number means stronger,
-    more turbulent convection with finer plumes and thinner boundary layers (Fig.~\ref{fig:system}). The data
-    span $\mathrm{Ra}=10^6, 10^7, \dots, 10^{10}$;
-    \item the \emph{Prandtl number} $\mathrm{Pr}=\nu/\kappa$, how fast momentum diffuses relative to heat (about
-    0.7 for air and 7 for water). The data span $\mathrm{Pr}=0.1, 0.2, 0.5, 1, 2, 5, 10$.
-\end{itemize}
-In the data's units $\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$ and $\nu=(\mathrm{Ra}/\mathrm{Pr})^{-1/2}$. Each
-trajectory starts from rest, with a linear (purely conductive) buoyancy profile plus a small random perturbation.
-Convection first has to grow out of this nearly still state (\emph{onset}) and then settles into statistically
-steady, \emph{developed} convection.
+and a standard test problem for turbulence and heat transfer. We consider its two-dimensional form: buoyancy $b$
+(the temperature variable), velocity $(u, w)$ and pressure $p$ in a $4\times1$ box, periodic in $x$, between a hot
+bottom wall ($b=1$) and a cold top wall ($b=0$). Two dimensionless numbers set a regime: the \emph{Rayleigh number}
+$\mathrm{Ra}$, the strength of the buoyancy forcing relative to viscous and thermal damping, and the
+\emph{Prandtl number} $\mathrm{Pr}$, how fast momentum diffuses relative to heat (definitions in
+Appendix~\ref{app:rb_regimes}). A larger Rayleigh number means stronger, more turbulent convection with finer
+plumes and thinner boundary layers. Started from a fluid at rest, convection first has to grow out of the nearly
+still state (\emph{onset}) and then settles into statistically steady, \emph{developed} convection.
 
 \begin{figure}[!htbp]
 \centering
 \figureorpending{fig_system.pdf}{width=\linewidth}
-\caption{The physical system: true buoyancy on two test trajectories in developed convection, at two Rayleigh
-numbers. Warm fluid rises from the hot bottom wall in plumes, and the flow becomes much finer at the higher
-Rayleigh number. The grid is uniform in $x$ and clustered towards the walls in $y$.}
+\caption{The physical system: true buoyancy (temperature) in two trajectories of The Well's test split, both at
+$\mathrm{Pr}=1$, at frame 83 of 200 (developed convection). The bottom wall is hot ($b=1$), the top wall is cold
+($b=0$), gravity points down and $x$ is periodic. Hot plumes rise from the bottom wall and cold plumes sink from
+the top; at the higher Rayleigh number the plumes break up into much finer structures.}
 \label{fig:system}
 \end{figure}
 
+\newpage
 \textbf{Data.} \texttt{rayleigh\_benard} from The Well~\cite{ohana2024well,wellrb}: 1,750 trajectories, 50 in each
-of the 35 (Rayleigh, Prandtl) regimes, differing in the amplitude and random seed of the initial perturbation;
-367\,GB in all (listed as 342\,GB on the dataset card, which counts in units of $2^{30}$ bytes). Each trajectory has
+of 35 regimes (five Rayleigh numbers from $10^6$ to $10^{10}$ $\times$ seven Prandtl numbers from 0.1 to 10;
+Appendix~\ref{app:rb_regimes}); 367\,GB in all. Each trajectory starts from rest, with a linear buoyancy profile plus a small random perturbation;
+within a regime, trajectories differ in the profile's amplitude and the perturbation's random seed. Each has
 200 frames, 0.25 simulation time units apart, of the four fields on a $512\times128$ grid: uniform and periodic in
 $x$, and on Chebyshev--Gauss nodes in $y$, which cluster near the walls to resolve the boundary layers (the files
 store a uniform placeholder for $y$; we identified the nodes from the data, Appendix~\ref{app:metrics}). We keep The
 Well's official split, which assigns whole trajectories: 1,400 for training, 175 for validation and 175 for testing
-(40 / 5 / 5 in each regime), so no frame of a validation or test trajectory is seen in training. The study trains
+(40 / 5 / 5 in each regime). The study trains
 on nested subsets of the training split; this report uses the 10\% subset (140 trajectories, four of the 40 in
-each regime, 29\,GB) and evaluates on the full test split. The validation split serves every choice made before
-testing: the learning-rate search, monitoring during training (64 fixed windows), the frame at which onset is
-separated from developed convection, and the start frames of the rollouts. The test split is used only for the
-final evaluation, after these choices were fixed. Fields are normalised with The Well's training statistics.
+each regime, 29\,GB) and evaluates on the full test split. Fields are normalised with The Well's training statistics.
+
+% The validation split serves every choice made before
+% testing: the learning-rate search, monitoring during training (64 fixed windows), the frame at which onset is
+% separated from developed convection, and the start frames of the rollouts. The test split is used only for the
+% final evaluation, after these choices were fixed. 
+
+
 
 \textbf{Task.} From four consecutive frames of buoyancy, pressure and both velocity components, a model predicts
 the next frame; longer forecasts come from feeding its predictions back in (autoregressive rollout). Each
@@ -125,83 +123,81 @@ trajectory gives 196 one-step windows.
 counts (Table~\ref{tab:models}). All three use GELU activations. For TFNO, released-checkpoint reproduction and
 training with the current code must be distinguished: the paper-era code skipped TFNO's Fourier layers, an error
 fixed upstream in November 2025. We scored the released TFNO weights with the forward pass they were trained
-with, and our own TFNO, trained with the fixed code (The Well at \texttt{e63dec8}), uses its Fourier layers
+with, and our own TFNO, trained with the fixed code, uses its Fourier layers
 (Appendix~\ref{app:tfno}).
 
 \begin{table}[!htbp]
 \centering\footnotesize
-\begin{tabularx}{\linewidth}{@{}llrl>{\raggedright\arraybackslash}X@{}}
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}llrl@{}}
 \toprule
-Model & Family & Parameters & Normalisation & Relation to released checkpoint \\
+Model & Family & Parameters & Relation to released checkpoint \\
 \midrule
-CNextU-Net~\cite{liu2022convnext} & ConvNeXt U-Net, 4 stages & 18.58M & LayerNorm & same architecture \\
-TFNO~\cite{li2021fno,kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & none & same configuration, fixed forward \\
-AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & GroupNorm, LayerNorm & none released; width 384 $\to$ 432 \\
+CNextU-Net~\cite{liu2022convnext} & ConvNeXt U-Net, 4 stages & 18.58M & same architecture \\
+TFNO~\cite{li2021fno,kossaifi2024tfno} & Fourier operator, $16{\times}16$ modes & 19.28M & same configuration, fixed forward \\
+AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & none released; width 384 $\to$ 432 \\
 \bottomrule
-\end{tabularx}
+\end{tabular*}
 \caption{The three model families.}
 \label{tab:models}
 \end{table}
 
-\textbf{Training.} All models use AdamW, one-step MSE in normalised field values, batch size 64 and fp32, with a
-peak learning rate of $10^{-3}$, 500 warmup steps and cosine decay to zero over four hours of active GPU training
-on one A100. The one- and four-hour budgets are the study's compute axis. The paper trained for 12 hours on an
-H100 with its own learning rates and schedule, so ours is a different experiment (Appendix~\ref{app:recipe}).
-Checkpoints are saved at one and four hours. The one-hour
-results are those checkpoints after one hour of the four-hour schedule, with the learning rate still at about 85\%
-of its peak: they show what each model has learned after one hour of training, not the best a schedule ending at
-one hour could reach. Each configuration is trained with two seeds, which change the initialisation and the order
-of the training data. All runs share one 10\% subset, so the spread between seeds does not include the effect of
-which four trajectories per regime were drawn, which may be larger. With two seeds, differences within the seed
-range are not read as rankings.
+\textbf{Training.} Every model is trained the same way: AdamW on the one-step MSE of the normalised fields, batch
+64, fp32, on one A100. The learning rate warms up over 500 steps to a peak of $10^{-3}$, then decays to zero along a
+cosine over four hours of active GPU training. Each run is evaluated at one and four hours, the two budgets of the
+study's compute axis. The paper trained for 12 hours on an H100 with its own learning rates and schedule, so our runs are a
+different experiment, not a replication (Appendix~\ref{app:recipe}).
+\textbf{Seeds.} Each configuration is trained with two seeds (initial weights and data order) on the same 10\%
+subset.
+
+% so their spread omits the effect of which trajectories were drawn. Differences within that spread are not read as rankings.
+
+% The one-hour result is the same run's checkpoint after one hour, when the learning rate is
+% still about 85\% of its peak: it shows what a model has learned in one hour, not the best a one-hour schedule could
+% reach. 
 
 \textbf{Method and baselines.} The method is a controlled comparison: the three families are trained from scratch
 with one recipe on the same data and budgets, and compared on accuracy and on cost to train and to use. Two
-references anchor the comparison:
+references are shown next to them in the results:
 \begin{itemize}
-    \item \emph{Persistence} predicts that the next frame equals the last input frame. It needs no training and
-    almost no computation, so a model is worth its training cost only where it beats persistence. It is hard to
-    beat where the flow changes slowly, as during onset.
-    \item \emph{The released CNextU-Net} (The Well's, trained on all the training data for 12 hours on an H100)
-    shows what this architecture reaches with ten times the data and a longer, different schedule. It also
-    validates our pipeline (Section~\ref{sec:m1}).
+    \item \emph{Persistence}, the baseline to beat, predicts that the next frame equals the last input frame. It
+    needs no training and almost no computation, so a model is worth its training cost only where it beats
+    persistence. It is hard to beat where the flow changes slowly, as during onset.
+    \item The Well's released \emph{CNextU-Net}, trained on all the training data for 12 hours on an H100, shows what
+    this architecture reaches with ten times the data and a longer schedule. It is a reference point, not a
+    baseline to beat. It also validated our pipeline (Section~\ref{sec:m1}).
 \end{itemize}
-Planned for the final report is a \emph{numerical-solver baseline}. The data were generated with the spectral
-solver Dedalus~\cite{burns2020dedalus}, and our solver driver is set up as the data's generator was (same
-equations, boundary conditions and grid; written, not yet run). Restarted from a model's last input frame at the
-data's own resolution, the solver reproduces the data up to the chaotic growth of tiny differences, so it would show
-the dataset's own reproducibility limit rather than a fair competitor for surrogates trained for a few hours. The
-informative comparison is the solver on coarser grids ($256\times64$ and $128\times32$), which costs less and is
-less accurate: at what grid and CPU cost does it match each model's accuracy? Comparing against a numerical method
-at equal accuracy or equal cost follows McGreivy and Hakim~\cite{mcgreivy2024weak}. Three cheaper baselines need no
-GPU training and can be added to the final evaluation: \emph{linear extrapolation} in time ($2\,y_t-y_{t-1}$),
-which extends persistence by the latest rate of change; \emph{climatology}, the mean training state of the same
-regime (a vertical profile of each field), the best constant forecast at long lead times; and \emph{dynamic mode
-decomposition}~\cite{schmid2010dmd}, a linear model fitted by least squares and the classical data-driven baseline in
-fluid dynamics, which would show how much of the networks' accuracy needs a nonlinear model.
+The released TFNO is not used as a reference. It was trained with a version of The Well's code that skipped its
+Fourier layers, so it is effectively a per-pixel network that does little more than copy the last frame
+(Appendix~\ref{app:tfno}). 
+% The Well fixed the code in November 2025 but has not released a retrained TFNO: the
+% checkpoint online is still the one uploaded in March 2025. It serves only to validate our pipeline, since it
+% reproduces the paper's TFNO value, which came from the same model (Section~\ref{sec:m1}). 
+% A working TFNO trained on
+% all the data will come from our own 100\% runs, which use the fixed code. 
+A numerical-solver baseline and three
+cheaper baselines are planned for the final report (Section~\ref{sec:decisions}).
 
-\textbf{VRMSE.} For one window (one predicted frame) and one field $f$, The Well's metric code (its
-\texttt{VRMSE} class at commit \texttt{e63dec8}) computes
+\textbf{VRMSE.} For one predicted frame and one field $f$, The Well's metric code computes
 \[
 \mathrm{VRMSE}_f=\sqrt{\frac{\frac{1}{N}\sum_{i=1}^{N}(\hat y_{f,i}-y_{f,i})^2}{s_f^2+\varepsilon}},
 \qquad s_f^2=\frac{1}{N-1}\sum_{i=1}^{N}(y_{f,i}-\bar y_f)^2,\qquad \varepsilon=10^{-7},
 \]
-over the $N=512\times128$ grid points of the target frame. The four fields (buoyancy $b$, pressure $p$, and the
-velocity components $u$, $w$) are averaged with equal weights, and reported values are means over windows with
-equal weight per window (one-step: all 196 windows of each of the 175 test trajectories; rollouts: per step, over
-trajectories and start frames). Two variants use the same formula and averaging and differ only in the field
-values passed in: the \emph{paper protocol} scores normalised fields, $(y_f-\mu_f)/\sigma_f$ with The Well's
-training statistics ($\sigma_f = 0.249, 0.149, 0.208, 0.180$ for $b, p, u, w$); our \emph{physical-field VRMSE}
-scores the fields as stored. Appendix~\ref{app:metrics} explains how and where the two differ.
+over the $N=512\times128$ grid points. It compares the size of the error with how much the true frame varies across
+the grid; $\varepsilon$ only keeps it from dividing by zero. Scores are averaged over the four fields (buoyancy $b$,
+pressure $p$, velocities $u$, $w$) and over windows (one-step: all 196 windows of each of the 175 test trajectories;
+rollouts: at each step). The paper first
+rescales each field by its training mean and standard deviation (\emph{paper protocol}); we score the fields as stored in the data (\emph{physical-field VRMSE}). During
+onset, when the fluid is nearly still and the denominator is close to zero: $\varepsilon$ then holds the
+physical-field score down but barely affects the rescaled fields, so the paper protocol gives much larger scores. To avaoid this, we
+lead with the physical-field VRMSE, which these first frames dominate less, and report the paper protocol wherever we
+compare with the paper (details in Appendix~\ref{app:metrics}).
 
 \textbf{Failure horizon.} For a rollout, the first step whose field-mean physical-field VRMSE exceeds a threshold
 (1, 2 or 5, all reported). A field held constant at the target's spatial mean scores VRMSE $\approx 1$, so a
 forecast above threshold 1 says less about the spatial pattern than that mean alone. Rollouts start at frames 20,
 80 and 140 of every test trajectory and run 30 steps. We
 report the fraction of rollouts that stay below each threshold through step 30 (Table~\ref{tab:rollout}) and,
-for threshold 1, its value at every step (Kaplan--Meier survival; Fig.~\ref{fig:rollouts}b).
-
-The kinetic-energy spectrum and the inference-time measurements are defined in Appendix~\ref{app:metrics}.
+for threshold 1, its value at every step (Kaplan--Meier survival; Fig.~\ref{fig:rollouts}b). Additionally, the kinetic-energy spectrum and the inference-time measurements, that are included in this report are also defined in Appendix~\ref{app:metrics}.
 
 
 \section{Milestone 1: Pipeline Validated Against the Released Checkpoints}
@@ -221,32 +217,21 @@ developed convection, much higher during onset. Its full results are in Appendix
 \toprule
 & \multicolumn{2}{c}{Paper-protocol one-step VRMSE} & \multicolumn{2}{c}{Rollout from frame 0, steps 6--12 / 13--30} \\
 \cmidrule(lr){2-3}\cmidrule(l){4-5}
-Model & Ours (released weights) & Published & Ours & Published \\
+Model & Ours  (released weights) & Published & Ours & Published \\
 \midrule
 CNextU-Net & 0.6688 & 0.6699 & 36 / 35 & $>10$ / $>10$ \\
+TFNO$^{*}$ & 0.6634 & 0.6566 & 142 / 169 & $>10$ / $>10$ \\
 \bottomrule
 \end{tabular}
-\caption{The released CNextU-Net scored by our pipeline against the paper's Tables 2 and 3 (test split). The
-released TFNO is in Appendix~\ref{app:tfno} (Table~\ref{tab:released_tfno}).}
+\caption{The released CNextU-Net and TFNO scored by our pipeline against the paper's Tables 2 and 3.}
 \label{tab:released}
 \end{table}
-
-Three observations shape how we report results (the second and third are in Appendix~\ref{app:pipeline}):
-\begin{itemize}
-    \item \textbf{Aggregate relative error is sensitive to the early frames} (Fig.~\ref{fig:released}). For the
-    first $\sim$50 frames the fluid is nearly at rest; the evaluated models have large relative velocity errors
-    there, and copying the last frame (persistence) is nearly exact. From frame 50 on, the released CNextU-Net
-    scores 0.038, against an all-window mean of 0.224 in physical fields (0.669 under the paper protocol).
-    Near-zero target variability can amplify relative error, so this does not establish that absolute errors are
-    largest early on. We therefore also report early (\emph{onset}) and later (\emph{developed}) windows
-    separately.
-\end{itemize}
 
 \begin{figure}[!htbp]
 \centering
 \figureorpending{fig_released_by_window.pdf}{scale=1}
-\caption{Released checkpoints' one-step VRMSE by window on the test set, mean over the 175 trajectories, under
-the paper protocol (left) and on physical fields (right). Shaded: windows whose first input frame is below 50,
+\caption{Released checkpoints' one-step VRMSE by window on the test set under the paper protocol, mean over the 175
+trajectories. Shaded: windows whose first input frame is below 50,
 reported as \emph{onset}; the others are \emph{developed}. The cut at frame 50 is operational, chosen where the
 released checkpoints' error levels off on the validation split; it is not a transition verified for every
 regime. Persistence copies the last input frame. The released TFNO tracks persistence because of the paper-era bug
@@ -254,37 +239,57 @@ regime. Persistence copies the last input frame. The released TFNO tracks persis
 \label{fig:released}
 \end{figure}
 
+% \begin{itemize}
+    % \item \textbf{Aggregate relative error is sensitive to the early frames} (Fig.~\ref{fig:released}). For the
+    % first $\sim$50 frames the fluid is nearly at rest; the evaluated models have large relative velocity errors
+    % there, and copying the last frame (persistence) is nearly exact. From frame 50 on, the released CNextU-Net
+    % scores 0.038, against an all-window mean of 0.224 in physical fields (0.669 under the paper protocol).
+    % Near-zero target variability can amplify relative error, so this does not establish that absolute errors are
+    % largest early on. We therefore also report early (\emph{onset}) and later (\emph{developed}) windows
+    % separately.
+    % \item \textbf{Rollout error varies substantially with Rayleigh number.} In rollouts from frame 0, the released
+    % CNextU-Net's median over steps 13--30 is 1.7 at $\mathrm{Ra}=10^{10}$ but 69 at $10^{6}$, likely because
+    % convection starts later at low Rayleigh number, so these rollouts stay longer in the nearly still onset (next
+    % item). A mean over all regimes hides this spread, so we also report errors at each Rayleigh number
+    % (Appendix~\ref{sec:extra}).
+    % \item \textbf{The fixed test evaluation is the clearer reproduction target.} The paper's validation values
+    % (its Table 5: 0.4807 for CNextU-Net, 0.8568 for TFNO) use 20 random batches per epoch; exact agreement would
+    % additionally require the same sampled batches and evaluation state. On the full validation split, in
+    % normalised fields, the released checkpoints score 0.7006 and 0.6754, so these values are not reproduced.
+% \end{itemize}
+
 \section{Milestone 2: Budgets Determined from Pilot Timings}
 \label{sec:m2}
-
-\textbf{Resource accounting.} \emph{Active GPU training time} is the measured training time counted against the
-budget (optimizer steps only; Appendix~\ref{app:accounting} gives the timer boundaries). \emph{Allocated GPU time}
-is the duration for which a job occupies a GPU, including data waits and other overhead. \emph{Service units (SU)}
-are the cluster's charges on its paid partition. Queue time is reported separately and is not allocated GPU time.
-
-\textbf{Budget clock.} Data are read from the cluster's shared file system, which delivers at most $\sim$98
-training samples per second into one node and stalls for 5--22 minutes at a time, on all nodes at once. TFNO and
-AViT consume 116 and 330 samples per second of GPU time (Fig.~\ref{fig:loader}), so a wall-clock budget would
-partly measure our storage. The 1-hour and 4-hour budgets therefore count active GPU training time; waiting for
-data is logged separately.
 
 \textbf{Learning rate.} The paper's rates ($5\cdot10^{-4}$ for CNextU-Net, $10^{-4}$ for TFNO) were chosen for
 12-hour runs. With one to four hours a model takes far fewer optimizer steps, and a small learning rate that pays off
 over a long run may not get far enough in a short one, so we tested whether a higher rate suits our budgets. An
 equal-budget search (20 minutes of GPU training per run, 10\% data, validation only) chose $10^{-3}$ for all three
-models (Table~\ref{tab:lr}, Appendix~\ref{app:recipe}). At this budget the higher rate was clearly better than the paper's: 0.408 against 0.469
-for CNextU-Net at $5\cdot10^{-4}$, and 0.302 against 0.603 for TFNO at $10^{-4}$. The Well swept $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
-5\cdot10^{-3}, 10^{-2}\}$; we tested its lower three rates and omitted the two largest to limit tuning cost. Since
-$10^{-3}$ is the largest rate tried, it is the best candidate tested, not an established optimum, and the
-20-minute ranking may differ from the ranking after four hours.
+models (Appendix Table~\ref{tab:lr}). At this budget the higher rate was clearly better than the paper's: 0.408 against 0.469
+for CNextU-Net at $5\cdot10^{-4}$, and 0.302 against 0.603 for TFNO at $10^{-4}$. 
+
+% Since
+% $10^{-3}$ is the largest rate tried, it is the best candidate tested, not an established optimum, and the
+% 20-minute ranking may differ from the ranking after four hours. The Well swept $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
+% 5\cdot10^{-3}, 10^{-2}\}$; we tested its lower three rates and omitted the two largest to limit tuning cost. 
 
 \textbf{Batch size and precision.} Batch 64 (The Well's) fits every model in fp32 on an A100 80\,GB; CNextU-Net
 peaks at 64.8\,GB of memory reserved by PyTorch (60.9\,GB allocated, Table~\ref{tab:resources}). The current TFNO
-implementation requires fp32 FFT operations, so all models use fp32 for this comparison. This is an
-implementation constraint, not a claim that mixed-precision TFNO is impossible. The choice favours TFNO: in the
-batch-64 profile, bf16 cuts the GPU time of a training step by a factor of 1.7 for CNextU-Net and 2.2 for AViT,
-and CNextU-Net's memory from 58.7 to 34.5\,GB. With mixed precision both would take more optimizer steps in the
-same budget; AViT would also need faster storage to benefit, since it already waits for data.
+implementation requires fp32 FFT operations, so all models use fp32 for this comparison. 
+% This is an
+% implementation constraint, not a claim that mixed-precision TFNO is impossible. The choice favours TFNO: in the
+% batch-64 profile, bf16 cuts the GPU time of a training step by a factor of 1.7 for CNextU-Net and 2.2 for AViT,
+% and CNextU-Net's memory from 58.7 to 34.5\,GB. With mixed precision both would take more optimizer steps in the
+% same budget; AViT would also need faster storage to benefit, since it already waits for data.
+
+\textbf{Training budget.} A run's 1-hour or 4-hour budget counts only \emph{active GPU training time}: the clock
+runs while the GPU computes training steps (forward pass, backward pass and weight update) and stops otherwise
+(Appendix~\ref{app:accounting} gives the exact timer boundaries). We count GPU time rather than elapsed time because
+data loading cannot keep up with every model: the shared storage delivers at most $\sim$98 training samples per
+second into one node, while TFNO and AViT consume 116 and 330 per second on the GPU (Fig.~\ref{fig:loader}). An
+elapsed-time budget would therefore partly measure the storage rather than the model. The time a run spends waiting
+for data, starting up, validating and saving checkpoints is recorded separately; together with the training time it
+makes up the GPU time the run holds (\emph{allocated GPU time}; Appendix Table~\ref{tab:time}).
 
 \section{Milestone 3: First Results Under Limited Data and Compute}
 \label{sec:results}
@@ -292,7 +297,7 @@ same budget; AViT would also need faster storage to benefit, since it already wa
 This section answers the project's question for its most constrained setting: how accurate each family becomes
 with 10\% of the training data and 1 or 4 hours of training, and what it costs to train and to use.
 
-\textbf{Training} (Fig.~\ref{fig:curves}). The six runs completed their 4-hour budgets (Table~\ref{tab:train}).
+\textbf{Training} (Fig.~\ref{fig:curves}). The six runs completed their 4-hour budgets (Appendix Table~\ref{tab:train}).
 On a fixed validation sample of 64 windows (Appendix~\ref{app:accounting}), AViT and CNextU-Net reach similar
 error after 4 hours; TFNO's loss plateaus after $\sim$1.5 hours. CNextU-Net's validation error peaks near one
 hour while its learning rate is still high; this temporal association does not establish the learning rate as
@@ -307,7 +312,7 @@ Vertical lines: the 1-hour and 4-hour checkpoints.}
 \label{fig:curves}
 \end{figure}
 
-\textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow} in Appendix~\ref{app:figs}).
+\textbf{Test evaluation} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow}).
 After 4 hours AViT and CNextU-Net have similar one-step error over all windows (0.134 and 0.136) and TFNO a
 higher one (0.209), but the two phases separate them: in developed convection CNextU-Net is clearly the most
 accurate (0.050, against 0.075 for AViT and 0.109 for TFNO), consistent with U-Net variants being among the
@@ -318,6 +323,15 @@ released CNextU-Net, trained on all the data for longer, remains better in devel
 learning rate and schedule (Appendix~\ref{app:recipe}). The 100\% runs will
 measure the effect of data with everything else fixed. Persistence is better than every model during onset on the four-field mean, a velocity effect
 (Table~\ref{tab:fields}), and 2--4.5 times worse in developed convection.
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_test_by_window.pdf}{scale=0.9}
+\caption{On test data, one-step VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models at
+4 hours (seed mean; band: range over seeds), the released CNextU-Net trained on all the data, and persistence.
+Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}
+\label{fig:testwindow}
+\end{figure}
 
 \begin{table}[!htbp]
 \centering\small
@@ -344,17 +358,24 @@ first input frame $<50$; developed: $\geq 50$. Bold: best of our models at each 
 \label{tab:test}
 \end{table}
 
-\textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). One-step accuracy does not carry over to
-rollouts in the same order. This is expected for models trained only on one-step targets: in a rollout they receive
-their own slightly wrong outputs, inputs they never saw in training~\cite{brandstetter2022mp}, and uncontrolled error
-growth over an autoregressive rollout is a known failure mode~\cite{mccabe2023stability}. Among our trained models, CNextU-Net is the most stable: after 30 steps from frames 80
-and 140 its error (0.53, 0.40) is below persistence's (0.86, 0.54), and 89\% of its rollouts stay below VRMSE 1
-through step 30. AViT, despite a similar one-step error, degrades fastest (0.80, 0.65; 63\%): averaged over the
-rollouts from frames 80 and 140, its error after 30 steps (0.72) is no better than persistence's (0.70), and from
-frame 20, during onset, it grows to 5.4. TFNO lies in between. Persistence keeps more rollouts below the thresholds
-because its error levels off near 0.7, while it is 2--5 times less accurate than every model over the first steps
-from developed flow (Fig.~\ref{fig:rollouts}a). Under the paper's frame-0 protocol all three models land in the
-``$>10$'' range; CNextU-Net (15 / 30) is below the released CNextU-Net (36 / 35).
+\textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). In a rollout, each prediction becomes the
+model's next input. Our models were trained only to predict one step ahead from true frames, so in a rollout they
+receive their own slightly wrong outputs, inputs they never saw in training~\cite{brandstetter2022mp}, and their
+errors can grow from step to step~\cite{mccabe2023stability}. The best one-step model is therefore not necessarily
+the best over a rollout.
+
+CNextU-Net is the most stable of our models. Started from developed flow (frames 80 and 140), its error after 30
+steps is 0.53 and 0.40, below persistence's 0.86 and 0.54. Over all three start frames, 89\% of its rollouts stay
+below VRMSE 1 for all 30 steps. AViT has about the same one-step error as CNextU-Net but degrades fastest. After 30
+steps from developed flow its error is 0.80 and 0.65, on average no better than persistence (0.72 against 0.70);
+only 63\% of its rollouts stay below VRMSE 1; and from frame 20, during onset, its error reaches 5.4. TFNO lies in
+between.
+
+Persistence keeps the most rollouts below the thresholds, but not because it forecasts well: its error quickly
+levels off near 0.7 instead of growing. Over the first steps from developed flow it is 2--5 times less accurate than
+every model (Fig.~\ref{fig:rollouts}a). Under the paper's protocol (rollouts from frame 0, normalised fields), all
+three models score above 10, as every model does in the paper; our CNextU-Net (15 and 30 over steps 6--12 and
+13--30) is below the released one (36 and 35).
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -371,7 +392,7 @@ CNextU-Net, 1 h & 3.60 / 1.09 / 1.04 & 0.34 / 0.74 / 0.79 & 202 / 148 \\
 TFNO, 1 h & \textbf{2.67} / \textbf{0.90} / \textbf{0.78} & \textbf{0.60} / \textbf{0.77} / \textbf{0.86} & \textbf{81} / \textbf{116} \\
 AViT, 1 h & 4.67 / 1.11 / 0.98 & 0.34 / 0.74 / 0.83 & 129 / 184 \\
 \midrule
-Released CNextU-Net (100\%) & & & 36 / 35 \\
+Released CNextU-Net (100\%) & \emph{TBA} & \emph{TBA} & 36 / 35 \\
 Persistence & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
 \bottomrule
 \end{tabular}
@@ -382,6 +403,16 @@ our models at each budget.}
 \label{tab:rollout}
 \end{table}
 
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_rollouts.pdf}{scale=1}
+\caption{Rollouts of our 10\% models at 4 hours (seed mean) and persistence. (a) Physical-field VRMSE at each
+step, mean over the rollouts from frames 80 and 140 (developed convection). (b) Fraction of all 525 rollouts that
+have stayed below VRMSE 1 up to each step (Kaplan--Meier survival).}
+\label{fig:rollouts}
+\end{figure}
+
+\newpage
 \textbf{With only one hour of training} (Tables~\ref{tab:test} and~\ref{tab:rollout}; the four-hour runs'
 checkpoints after one hour). The ranking differs from four hours, and no model is best on every count. AViT has the
 lowest one-step error over all windows (0.39, against 0.47 for TFNO and 0.73 for CNextU-Net) and during onset; in
@@ -392,15 +423,6 @@ for AViT. CNextU-Net, the best model after four hours, is the least reliable aft
 (all-window VRMSE 0.85 and 0.60), and none of one seed's rollouts stays below VRMSE 1, against 69\% for the other.
 With one hour of training, AViT is the better choice for one-step predictions and TFNO for multi-step forecasts;
 after 30 steps none of the three is more accurate than persistence.
-
-\begin{figure}[!htbp]
-\centering
-\figureorpending{fig_rollouts.pdf}{scale=1}
-\caption{Rollouts of our 10\% models at 4 hours (seed mean) and persistence. (a) Physical-field VRMSE at each
-step, mean over the rollouts from frames 80 and 140 (developed convection). (b) Fraction of all 525 rollouts that
-have stayed below VRMSE 1 up to each step (Kaplan--Meier survival).}
-\label{fig:rollouts}
-\end{figure}
 
 \textbf{Field-wise error} (Table~\ref{tab:fields}). The four-field mean hides where the error lies. In developed
 convection buoyancy is the hardest field for every model (CNextU-Net: 0.092, against 0.024 for pressure and about
@@ -576,84 +598,6 @@ the row says otherwise. These hold for these configurations and budgets and may 
 \label{tab:choice}
 \end{table}
 
-\section{Additional Analysis}
-\label{sec:extra}
-
-Two analyses go beyond the abstract's metrics: how the error depends on the Rayleigh number, and whether the models
-reproduce the heat that convection carries across the layer.
-
-\textbf{Error by Rayleigh number} (Fig.~\ref{fig:rayleigh}a, b). Each Rayleigh number groups seven Prandtl numbers
-(35 test trajectories). The one-step error in developed convection grows four- to tenfold from $\mathrm{Ra}=10^6$ to
-$10^{10}$ (CNextU-Net 0.016 to 0.111, TFNO 0.042 to 0.191, AViT 0.016 to 0.154), as convection becomes more turbulent, with finer plumes and
-thinner boundary layers; persistence's error grows too (0.098 to 0.351), because the flow changes more between
-frames. The ranking is the same at every Rayleigh number, except that AViT ties CNextU-Net at $10^6$. The released
-CNextU-Net, trained on all the data, matches ours at $10^6$ and $10^7$ (0.018 and 0.017, against 0.016 and 0.020)
-and is better only at higher Rayleigh numbers (0.085 against 0.111 at $10^{10}$): the 10\% model falls short where
-the flow is most complex, with the caveat that the two runs also differ in schedule and hardware. After 30 steps from
-developed flow, CNextU-Net and TFNO stay below persistence at every Rayleigh number, while AViT is worse than
-persistence up to $10^8$ (0.81 against 0.66 at $10^6$) and better only at $10^9$ and $10^{10}$. Over all three
-start frames, the fraction of CNextU-Net's rollouts that stay below VRMSE 1 instead rises with Rayleigh number (0.67
-at $10^6$, 0.98 at $10^{10}$). This is consistent with convection starting later at low Rayleigh number, so that
-more rollouts from frame 20 begin in the near-quiescent onset, where relative errors are large; the same effect
-underlies the released model's Rayleigh-number dependence (Appendix~\ref{app:pipeline}).
-
-\begin{figure}[!htbp]
-\centering
-\figureorpending{fig_by_rayleigh.pdf}{width=\linewidth}
-\caption{Error by Rayleigh number, four-hour models (seed mean; each point averages seven Prandtl numbers, 35 test
-trajectories). (a) One-step VRMSE in developed convection. (b) VRMSE after 30 steps from frames 80 and 140. (c)
-Median relative error of the Nusselt number averaged over those 30-step rollouts. Dashed: released CNextU-Net
-(100\% data); dotted: persistence.}
-\label{fig:rayleigh}
-\end{figure}
-
-\textbf{Heat transport} (Table~\ref{tab:nusselt}, Fig.~\ref{fig:rayleigh}c). The Nusselt number is the heat carried
-across the layer relative to conduction alone. Volume-averaged, and in the units of the data (diffusivity
-$\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$, unit height and temperature difference), it is
-$\mathrm{Nu}=1+\sqrt{\mathrm{Ra}\,\mathrm{Pr}}\,\langle w\,b\rangle$, computed for every predicted and true frame of
-each rollout. Two properties shape the comparison. The factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$, $3\times10^4$ to $3\times10^5$ at
-$\mathrm{Ra}=10^{10}$, amplifies small errors in the correlation between vertical velocity and buoyancy. And the
-instantaneous value fluctuates strongly: across test trajectories the true Nusselt number one step after frame 80
-ranges from $-249$ to 1,363, so relative errors near zero crossings are unbounded and means are dominated by outliers. We
-therefore report medians, and the error of the Nusselt number averaged over each 30-step rollout from frames 80 and
-140; its sign shows whether a model predicts too much or too little heat transport.
-
-\begin{table}[!htbp]
-\centering\small
-\begin{tabular}{@{}lccc@{}}
-\toprule
-& One step & \multicolumn{2}{c}{Averaged over 30 steps} \\
-\cmidrule(l){3-4}
-Model (10\% data, checkpoint) & median $|$error$|$ & median $|$error$|$ & median signed error \\
-\midrule
-CNextU-Net, 4 h & \textbf{0.020} & 0.485 & $-0.015$ \\
-TFNO, 4 h & 0.072 & \textbf{0.196} & $+0.064$ \\
-AViT, 4 h & 0.037 & 0.275 & $-0.167$ \\
-\midrule
-CNextU-Net, 1 h & 0.265 & 5.479 & $+5.451$ \\
-TFNO, 1 h & 0.285 & 0.906 & $+0.205$ \\
-AViT, 1 h & \textbf{0.081} & \textbf{0.353} & $+0.138$ \\
-\midrule
-Persistence & 0.076 & 0.267 & $+0.023$ \\
-\bottomrule
-\end{tabular}
-\caption{Relative error of the volume-averaged Nusselt number on the 350 rollouts from frames 80 and 140 (175
-trajectories $\times$ 2), median over rollouts, mean over the two seeds. One step: the instantaneous value after
-the first step. Signed: negative means too little heat transport. Bold: best of our models at each budget.}
-\label{tab:nusselt}
-\end{table}
-
-After one step the four-hour CNextU-Net reproduces the instantaneous Nusselt number to within 2\% (median), better
-than AViT (3.7\%), TFNO (7.2\%) and persistence (7.6\%), and it is the best or tied at every Rayleigh number. Over a 30-step
-rollout the picture changes. TFNO comes closest to the true heat transport (0.20, against 0.27 for persistence).
-AViT systematically predicts too little (median $-17$\%, down to $-43$\% at $\mathrm{Ra}=10^{10}$). CNextU-Net is
-unbiased on average ($-1.5$\%) but has the largest spread (0.49), which grows with Rayleigh number to 1.0 at
-$10^{10}$. Its excess small-scale energy (Fig.~\ref{fig:spectra}) could create spurious correlations between $w$ and
-$b$ that the factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$ amplifies; this is consistent with the data but not
-established. After one hour CNextU-Net predicts about six times the true heat transport. Heat transport is
-therefore largely a negative result: a low one-step VRMSE does not guarantee the right heat flux over a rollout, and
-the MSE objective does not constrain it.
-
 \section{Findings Under Limited Data and Compute}
 \label{sec:findings}
 
@@ -683,15 +627,68 @@ The main findings at 10\% data hold for these configurations and budgets (Table~
     \item \textbf{Rayleigh number and heat transport.} Error grows four- to tenfold from $\mathrm{Ra}=10^6$ to
     $10^{10}$ for every model, and the released full-data model's advantage is confined to high Rayleigh numbers.
     After one step CNextU-Net reproduces the Nusselt number best (2\% median error); over a 30-step rollout only TFNO
-    predicts the averaged heat transport better than persistence, and AViT predicts too little (Section~\ref{sec:extra}).
+    predicts the averaged heat transport better than persistence, and AViT predicts too little (Appendix~\ref{sec:extra}).
     \item \textbf{Caveats.} Two seeds on one fixed 10\% subset do not measure how much the choice of trajectories
     matters. Training in fp32 for every model favours TFNO, since bf16 would speed up CNextU-Net (1.7 times) and
     AViT (2.2 times) but is not available for our TFNO. The learning rate is the best of a short search, at the top
     of the tested grid.
 \end{itemize}
 
-\section{Issues}
+\section{Issues and Decisions for the Final Submission}
 \label{sec:issues}
+
+\subsection{Decisions for the Final Submission}
+\label{sec:decisions}
+
+Two decisions shape the final evaluation: which baselines to add, and which one-step number to lead with.
+
+\textbf{Baselines to add.} Planned for the final report is a \emph{numerical-solver baseline}. The data were generated with the spectral
+solver Dedalus~\cite{burns2020dedalus}, and our solver driver is set up as the data's generator was (same
+equations, boundary conditions and grid; written, not yet run). Restarted from a model's last input frame at the
+data's own resolution, the solver reproduces the data up to the chaotic growth of tiny differences, so it would show
+the dataset's own reproducibility limit rather than a fair competitor for surrogates trained for a few hours. The
+informative comparison is the solver on coarser grids ($256\times64$ and $128\times32$), which costs less and is
+less accurate: at what grid and CPU cost does it match each model's accuracy? Comparing against a numerical method
+at equal accuracy or equal cost follows McGreivy and Hakim~\cite{mcgreivy2024weak}. Three cheaper baselines need no
+GPU training and can be added to the final evaluation: \emph{linear extrapolation} in time ($2\,y_t-y_{t-1}$),
+which extends persistence by the latest rate of change; \emph{climatology}, the mean training state of the same
+regime (a vertical profile of each field), the best constant forecast at long lead times; and \emph{dynamic mode
+decomposition}~\cite{schmid2010dmd}, a linear model fitted by least squares and the classical data-driven baseline in
+fluid dynamics, which would show how much of the networks' accuracy needs a nonlinear model.
+
+\textbf{Which one-step number to lead with.} The Well paper reports one-step error as the mean VRMSE over all
+one-step windows of the test trajectories (196 per trajectory), in normalised fields; our pipeline check reproduces
+its published test values this way (Section~\ref{sec:m1}). We call this the all-window mean. VRMSE divides a model's error by how much the true field varies across the grid. During onset
+the fluid is almost at rest, so the velocity barely varies and the score divides by a number close to zero: errors
+that are tiny in absolute terms give very large scores, and the score swings with errors that do not matter
+physically. The 50 onset windows are only a quarter of the total, yet they produce most of the all-window mean:
+87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol, in which the paper's published values (0.6699 for CNextU-Net, 0.6566 for TFNO)
+are given, so those values are dominated by the onset windows as well. The
+all-window mean therefore mostly measures how a model handles the nearly still start rather than how well it
+forecasts convection, and it can reverse comparisons (Table~\ref{tab:headline}). We report both: the
+developed-convection error says more about forecasting the flow, and the all-window mean is the number comparable
+with the paper's published values.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.3\linewidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Comparison & All windows & Developed convection \\
+\midrule
+AViT against CNextU-Net (4 h) & 0.134 against 0.136: level & 0.075 against 0.050: CNextU-Net 1.5 times better \\
+Our 10\% CNextU-Net against the released one & 0.136 against 0.224: ours looks better & 0.050 against 0.038:
+the released one is better \\
+Persistence against TFNO (4 h) & 0.199 against 0.209: persistence looks as good & 0.226 against 0.109:
+persistence 2 times worse \\
+\bottomrule
+\end{tabularx}
+\caption{How the all-window mean can reverse comparisons (physical-field one-step test VRMSE, from
+Table~\ref{tab:test}).}
+\label{tab:headline}
+\end{table}
+
+\subsection{Issues}
+\label{sec:issues_met}
 
 Nothing blocks the study: every planned 10\% run and evaluation finished, and the pipeline reproduces the paper's
 test values. Table~\ref{tab:issues} lists what cost time and money or limits what the results can show. The main
@@ -757,37 +754,6 @@ not billed.}
 \label{fig:time}
 \end{figure}
 
-\textbf{Which one-step number to lead with.} The Well paper reports one-step error as the mean VRMSE over all
-one-step windows of the test trajectories (196 per trajectory), in normalised fields; our pipeline check reproduces
-its published test values this way (Section~\ref{sec:m1}). We call this the all-window mean. VRMSE divides a model's error by how much the true field varies across the grid. During onset
-the fluid is almost at rest, so the velocity barely varies and the score divides by a number close to zero: errors
-that are tiny in absolute terms give very large scores, and the score swings with errors that do not matter
-physically. The 50 onset windows are only a quarter of the total, yet they produce most of the all-window mean:
-87\% of the released CNextU-Net's 0.224 (onset 0.766, developed 0.038), and 96\% under the paper protocol, in which the paper's published values (0.6699 for CNextU-Net, 0.6566 for TFNO)
-are given, so those values are dominated by the onset windows as well. The
-all-window mean therefore mostly measures how a model handles the nearly still start rather than how well it
-forecasts convection, and it can reverse comparisons (Table~\ref{tab:headline}). We report both: the
-developed-convection error says more about forecasting the flow, and the all-window mean is the number comparable
-with the paper's published values.
-
-\begin{table}[!htbp]
-\centering\footnotesize
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.3\linewidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
-\toprule
-Comparison & All windows & Developed convection \\
-\midrule
-AViT against CNextU-Net (4 h) & 0.134 against 0.136: level & 0.075 against 0.050: CNextU-Net 1.5 times better \\
-Our 10\% CNextU-Net against the released one & 0.136 against 0.224: ours looks better & 0.050 against 0.038:
-the released one is better \\
-Persistence against TFNO (4 h) & 0.199 against 0.209: persistence looks as good & 0.226 against 0.109:
-persistence 2 times worse \\
-\bottomrule
-\end{tabularx}
-\caption{How the all-window mean can reverse comparisons (physical-field one-step test VRMSE, from
-Table~\ref{tab:test}).}
-\label{tab:headline}
-\end{table}
-
 \section{Revised Plan}
 \label{sec:plan}
 
@@ -803,7 +769,7 @@ budget. The models, data fractions, seeds, budgets and the extensions with their
     Allocated GPU time, data waits and SU are reported separately so that storage costs remain visible; a 4-hour
     run held a GPU for 5--12 hours (Fig.~\ref{fig:time}).
     \item \textbf{Core resource estimate.} The 48 hours of active training are unchanged; the working estimate is
-    approximately 135 allocated GPU-hours for the core study and its supporting work (Table~\ref{tab:budget}, Appendix~\ref{app:accounting}),
+    approximately 135 allocated GPU-hours for the core study and its supporting work (Appendix Table~\ref{tab:budget}),
     instead of the abstract's approximately 100, the difference being waits for data. With all 10\% work complete,
     Slurm accounting gives 72.6 allocated GPU-hours: 54.2 on the paid partition, billed 2,160 SU (40 SU per
     allocated hour for jobs with 8 cores, 36 for the 4-core pipeline check), and 18.3 on the free partition, which
@@ -822,7 +788,7 @@ budget. The models, data fractions, seeds, budgets and the extensions with their
     \item \textbf{Evaluation.} Report the paper protocol for reference comparisons alongside the physical-field
     VRMSE, separate onset from developed convection, and report the failure horizon at thresholds 1, 2 and 5
     instead of one predefined threshold. Error by Rayleigh number and heat transport (Nusselt number) are added
-    (Section~\ref{sec:extra}).
+    (Appendix~\ref{sec:extra}).
     \item \textbf{Optional, outside the estimate.} 24-hour runs of CNextU-Net and TFNO with the paper's learning
     rates (roughly 60--90 allocated GPU-hours; not an exact replication of the paper's 12-hour H100 runs). A second
     draw of the 10\% subset (one run per model, about 25 allocated GPU-hours) would measure how much the choice of
@@ -850,20 +816,34 @@ ConvLSTM. The optional runs above should not delay the core deliverables.
 \newcommand{\prefix@section}{Appendix~}
 \makeatother
 
+\section{Physical System and Rayleigh--Prandtl Regimes}
+\label{app:rb_regimes}
+
+The data solve the two-dimensional Boussinesq equations for buoyancy $b$ (the temperature variable), velocity
+$(u, w)$ and pressure $p$ in a $4\times1$ box, periodic in $x$, between no-slip walls held at $b=1$ (bottom) and
+$b=0$ (top)~\cite{wellrb}. A regime is set by two dimensionless numbers,
+\begin{equation}
+    \mathrm{Ra} = \frac{g\alpha\,\Delta T\,H^3}{\nu\kappa}, \qquad \mathrm{Pr} = \frac{\nu}{\kappa},
+\end{equation}
+with gravitational acceleration $g$, thermal expansion coefficient $\alpha$, temperature difference $\Delta T$
+between the walls, layer height $H$, kinematic viscosity $\nu$ and thermal diffusivity $\kappa$. The Rayleigh
+number measures the buoyancy forcing against viscous and thermal diffusion: larger values give stronger
+convection, with finer plumes and thinner boundary layers (Fig.~\ref{fig:system}). The Prandtl number measures how
+fast momentum diffuses relative to heat (about 0.7 for air and 7 for water). In the data's units
+$\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$ and $\nu=(\mathrm{Ra}/\mathrm{Pr})^{-1/2}$.
+
+The dataset crosses five Rayleigh numbers, $\mathrm{Ra}\in\{10^6,10^7,10^8,10^9,10^{10}\}$, with seven Prandtl
+numbers, $\mathrm{Pr}\in\{0.1,0.2,0.5,1,2,5,10\}$, giving 35 regimes. Each trajectory starts from rest, with a
+linear (purely conductive) buoyancy profile plus a small random perturbation. In each regime, five profile
+amplitudes ($\delta b_0\in\{0.2,0.4,0.6,0.8,1.0\}$) and ten noise seeds (40--49) give 50 trajectories, 1,750 in
+all; trajectories of one regime share its physics and differ only in their initial conditions. Each has 200 frames
+on a $512\times128$ grid.
+
 \section{Detailed Training Recipe}
 \label{app:recipe}
-Sources of the reference settings: the paper (learning rates, 12-hour H100 budget) and The Well's training
-configuration at commit \texttt{e63dec8}:
-\begin{itemize}
-    \item \texttt{configs/optimizer/adam.yaml}: AdamW, weight decay $10^{-4}$ (the paper's text says 0.01; we
-    follow the code);
-    \item \texttt{configs/data/rayleigh\_benard.yaml}: batch 64;
-    \item \texttt{configs/trainer/defaults.yaml}: 200 epochs;
-    \item \texttt{configs/lr\_scheduler/cosine\_with\_warmup.yaml} with \texttt{train.py}: 5 warmup epochs
-    from $0.1\cdot$lr, then cosine to $0.1\cdot$lr.
-\end{itemize}
-Our software: The Well \texttt{e63dec8}, neuraloperator 0.3.0, PyTorch 2.8.0 (CUDA 12.8), Python 3.13; our
-repository at \texttt{f42b2e2} (training) and \texttt{4c0d3a8} (AViT resume, evaluation).
+Table~\ref{tab:recipe} sets our recipe beside the one The Well used for its published models. The reference
+settings come from the paper (learning rates, 12-hour H100 budget) and from The Well's training configuration;
+where the two disagree, we follow the configuration. The paragraphs below explain each row.
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -885,9 +865,39 @@ Training data & 10\% of the trajectories (100\% next) & 100\% \\
 \label{tab:recipe}
 \end{table}
 
-\textbf{Released CNextU-Net's schedule.} By our estimate (our A100 throughput, with an H100 at most three times faster), the
-paper's 12-hour runs completed at most about 25 of their 200 scheduled epochs, so their learning rate was still
-above 95\% of its peak when training stopped, whereas ours decays to zero within the budget.
+\textbf{Task and loss.} Each training example is a window of five consecutive frames: the model sees four and
+predicts the fifth. All four fields are normalised with the mean and standard deviation of The Well's full training
+split (the same statistics for every subset), and the loss is the mean squared error over all grid points, with
+equal weight for each field. At 10\% data an epoch is 27,440 windows (140 trajectories $\times$ 196); in four hours
+of active GPU training CNextU-Net passes through it about 28 times, TFNO 61 times and AViT 175 times.
+
+\textbf{Optimizer.} AdamW with $\beta=(0.9, 0.999)$ and weight decay $10^{-4}$, without gradient clipping, as in
+The Well's configuration (the paper's text gives a weight decay of 0.01). Every model uses batch 64 in fp32
+(Section~\ref{sec:m2}).
+
+\textbf{Learning-rate schedule.} The rate rises linearly from almost zero to its peak over the first 500 optimizer
+steps (about 10 minutes of training for CNextU-Net, 5 for TFNO and 2 for AViT), then follows a cosine down to zero.
+The cosine runs over active GPU training time rather than over steps, because the number of steps a model takes in
+four hours is not known in advance; this way the four-hour checkpoint is exactly the end of the schedule. The
+one-hour checkpoint is an intermediate state of the same run, with the rate at about 85\% of its peak. The Well's
+schedule counts epochs instead: the rate rises linearly from $0.1\cdot$lr to lr over 5 epochs, then follows a
+cosine down to $0.1\cdot$lr at epoch 200.
+
+\textbf{Checkpoints and seeds.} We evaluate the checkpoints taken at exactly one and four hours, without choosing
+among checkpoints by validation score; the paper kept its best validation epoch. During training, 64 fixed, evenly
+spaced validation windows are scored every 30 minutes of training time, for monitoring only (the training curves,
+Fig.~\ref{fig:curves}). A seed sets the initial weights and the order in which training windows are drawn; both
+seeds use the same 10\% subset.
+
+\textbf{Learning-rate search.} The Well chose each model's rate from $\{10^{-4}, 5\cdot10^{-4}, 10^{-3},
+5\cdot10^{-3}, 10^{-2}\}$ for its 12-hour runs: $5\cdot10^{-4}$ for CNextU-Net and $10^{-4}$ for TFNO. For our
+shorter budgets we ran an equal-budget search: each model at $10^{-4}$, $5\cdot10^{-4}$ and $10^{-3}$, on the 10\%
+subset with seed 0, for 20 minutes of active GPU training each (nine runs). The runs used the study's recipe with
+two changes forced by the short budget: 100 warmup steps instead of 500 (500 would be 60\% of CNextU-Net's roughly
+850 steps), and 512 validation windows instead of 64, so that the choice does not rest on a few windows. Each model
+takes the rate with the lowest validation VRMSE at 20 minutes (Table~\ref{tab:lr}); the test split was not used.
+$10^{-3}$ won for all three models. A 20-minute search can favour rates that learn fast early over those that are
+best after four hours; this bias is the same for every model.
 
 \begin{table}[!htbp]
 \centering\small
@@ -904,17 +914,84 @@ AViT & 0.646 & 0.332 & \textbf{0.257} \\
 \label{tab:lr}
 \end{table}
 
+\textbf{Released CNextU-Net's schedule.} The paper does not report how many epochs its 12-hour runs completed. On
+our A100, CNextU-Net trains on about 54 samples per second; with an H100 at most three times faster, 12 hours give
+at most about 7 million samples, or about 25 passes over the 274,400 windows of the full training split. The
+released CNextU-Net therefore completed at most about 25 of its 200 scheduled epochs, and its learning rate was
+still about 98\% of its peak when training stopped, whereas ours decays to zero within the budget. The gap between
+it and our 10\%, four-hour CNextU-Net is therefore not an estimate of what ten times more data buys.
+
+\textbf{Software.} PyTorch 2.8.0 with CUDA 12.8 and Python 3.13. The model code is The Well's, with TFNO's layers
+from neuraloperator 0.3.0.
+
 
 \section{Metric Details}
 \label{app:metrics}
 
-\textbf{Physical-field VRMSE and the paper protocol.} Without $\varepsilon$ the two would be identical, since the ratio is invariant to an
-affine rescaling of each field. With $\varepsilon$, normalising multiplies $s_f^2$ by $1/\sigma_f^2$ (16--45), so
-the floor shrinks from $10^{-7}$ to the equivalent of $\varepsilon\sigma_f^2\approx 2$--$6\times10^{-9}$. During the
-first $\sim$50 frames the velocity is nearly zero (exactly zero at $t=0$) and its spatial variance is comparable to
-$10^{-7}$, so the physical-field score is damped there and the normalised one is not. This is the whole difference
-between the released CNextU-Net's 0.669 (paper protocol) and 0.224 (physical fields): on early windows they score
-2.510 and 0.766, while from frame 50 on both give 0.038.
+\textbf{Onset and developed convection.} Every trajectory starts from fluid at rest: the velocity is exactly zero
+at frame 0, and the temperature falls linearly from the hot bottom wall to the cold top wall, plus a little random
+noise. This state is unstable, so the noise grows. At first the fluid barely moves; then plumes form; after a while
+the flow settles into steady, ongoing convection in which plumes keep forming, rising and mixing, much as a pot of
+water heated from below sits still at first and later churns steadily. We call the early phase \emph{onset} and the
+later one \emph{developed convection}. In practice, a one-step window counts as onset if its first input frame is
+before frame 50: the first 12.5 time units, or 50 of the 196 windows of each trajectory. The cut is where the
+released CNextU-Net's error levels off on the validation split: its physical-field VRMSE is 1.65, 1.36, 0.71, 0.23
+and 0.08 for windows starting at frames 0--9, 10--19, 20--29, 30--39 and 40--49, and at most 0.06 from frame 50 on.
+It is not a physical transition checked for every trajectory: convection starts later at low Rayleigh numbers and
+sooner at high ones.
+
+\textbf{Why VRMSE is large during onset.} VRMSE divides a model's error by how much the true field varies across the
+grid. During onset the velocity is almost zero everywhere, so it barely varies, and the score divides by almost
+zero: errors far too small to matter give large scores. Buoyancy and pressure vary strongly across the layer from
+the start, so they are not affected. What keeps these velocity scores from growing without limit is the tiny
+constant $\varepsilon=10^{-7}$, which the formula adds to the denominator so that it never divides by zero.
+
+\textbf{How the two variants differ.} The paper protocol rescales each field before scoring: it subtracts the
+field's training mean and divides by its training standard deviation $\sigma_f$ (0.249, 0.149, 0.208 and 0.180 for
+$b$, $p$, $u$ and $w$), which gives the units the models are trained in. This makes the error and the
+frame's variation larger by the same factor, which cancels out, so on its own the rescaling changes nothing. The
+exception is $\varepsilon$: it is a fixed number in the formula, so it is not rescaled, and compared with the
+rescaled fields it is 16 to 45 times smaller (the factor is $1/\sigma_f^2$). This matters only when the true frame
+barely varies, as the velocity does during onset, when its variation in physical units is about as small as
+$\varepsilon$ itself. In physical fields $\varepsilon$ is then a noticeable part of the denominator and holds the
+score down; in the rescaled fields it is too small to do so, and the same small error gives a much larger score.
+Once convection has developed, the flow varies far more than $\varepsilon$ in both units, and the two give the same
+score. Table~\ref{tab:units} shows this for the released CNextU-Net: the same predictions score 0.224 or 0.669
+depending only on the units.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+One-step windows & Physical-field VRMSE & Paper protocol \\
+\midrule
+Onset (first input frame $<50$; 50 of 196 per trajectory) & 0.766 & 2.510 \\
+Developed convection (first input frame $\geq 50$) & 0.0382 & 0.0383 \\
+All windows & 0.224 & 0.669 (published 0.6699) \\
+\midrule
+Share of the all-window mean that comes from onset & 87\% & 96\% \\
+\bottomrule
+\end{tabular}
+\caption{The released CNextU-Net's one-step test VRMSE scored both ways. The predictions are the same; only the
+units of the fields differ.}
+\label{tab:units}
+\end{table}
+
+\textbf{Rollouts.} The paper's rollouts start from frame 0 of each trajectory, so they lie entirely in onset, and it
+reports the mean normalised VRMSE over steps 6--12 and 13--30. Every model in its rollout table scores ``$>10$''
+(the released CNextU-Net scores 36 and 35 in our pipeline). Our rollouts start from frames 20, 80 and 140, covering
+both onset and developed flow, and we report the error at each step and the failure horizon. The paper's frame-0
+rollouts are reported as well (Table~\ref{tab:rollout}).
+
+\textbf{Why we lead with the physical-field VRMSE.} First, it was chosen before any training: our evaluation plan
+specified VRMSE on the stored fields from the start, and the evaluation settings were frozen when the training runs
+began. How the paper computed its values was only established later, during the pipeline check, and changing the
+headline metric after seeing results would be a choice made after the fact. Second, it scores the fields as the
+simulation produced them; normalisation is a device for training. Third, because $\varepsilon$ holds its onset scores down, the onset windows dominate
+the all-window mean less (87\% against 96\%), although they still dominate it, which is why we also report onset
+and developed convection separately. Neither variant scores onset well, since $\varepsilon$ is only there to avoid
+dividing by zero, not to decide how small an error is too small to matter. Once convection has developed the two agree, and the paper protocol is reported wherever we compare
+with the paper (Tables~\ref{tab:released}, \ref{tab:test} and~\ref{tab:rollout}).
 
 \textbf{Vertical grid.} The files store evenly spaced $y$ coordinates, but the values lie on the 128
 Chebyshev--Gauss nodes of the solver's grid. With these nodes the data satisfy the boundary conditions: the
@@ -940,14 +1017,18 @@ inference).
 
 \section{TFNO Forward Pass and the Released TFNO}
 \label{app:tfno}
-In The Well's code, commit \texttt{2d8d7eaf} (2024-06-03, ``Added gradient checkpointing'') called TFNO's Fourier
-blocks without keeping their output, so the model computed only its lifting and projection layers; commit
-\texttt{e4301602} (2025-11-17, ``actually use the TFNO blocks'') restored the assignment (\texttt{x =}
+In The Well's code, commit
+\href{https://github.com/PolymathicAI/the_well/commit/2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}{\texttt{2d8d7eaf}}
+(2024-06-03, ``Added gradient checkpointing'') called TFNO's Fourier blocks without keeping their output, so the
+model computed only its lifting and projection layers; commit
+\href{https://github.com/PolymathicAI/the_well/commit/e4301602e57f2dddeaa87856dda49bbba47c663b}{\texttt{e4301602}}
+(2025-11-17, ``actually use the TFNO blocks'') restored the assignment (\texttt{x =}
 before the block call)~\cite{wellfix}. The paper's TFNO results and the released TFNO checkpoint (uploaded
 2025-03-28) date from that period. For the pipeline check we scored the released TFNO weights with the forward
 pass they were trained with (Fourier blocks skipped): it reproduces the published value, while with the corrected
-forward pass the same weights score $\approx$10.5. Our own runs use The Well at commit \texttt{e63dec8}, which
-includes the fix. Upstream issue \#49 reports related inconsistencies between released checkpoints and published
+forward pass the same weights score $\approx$10.5. Our own runs use The Well at commit
+\href{https://github.com/PolymathicAI/the_well/commit/e63dec8ded515be864755eaf595d39fea409e335}{\texttt{e63dec8}},
+which includes the fix. Upstream issue \#49 reports related inconsistencies between released checkpoints and published
 numbers~\cite{wellissue}.
 
 \begin{table}[!htbp]
@@ -980,18 +1061,6 @@ poorly on the onset windows. Our TFNO, which uses its Fourier layers, is
 better than the released TFNO everywhere (developed 0.109 against 0.190; paper protocol 0.488 against 0.663)
 despite 10\% of the data and 4 hours.
 
-\section{Further Pipeline-Check Observations}
-\label{app:pipeline}
-
-\begin{itemize}
-    \item \textbf{Rollout error varies substantially with Rayleigh number.} At $\mathrm{Ra}=10^{10}$ the released
-    CNextU-Net's median over steps 13--30 is 1.7; at $10^{6}$ it is 69.
-    \item \textbf{The fixed test evaluation is the clearer reproduction target.} The paper's validation values
-    (its Table 5: 0.4807 for CNextU-Net, 0.8568 for TFNO) use 20 random batches per epoch; exact agreement would
-    additionally require the same sampled batches and evaluation state. On the full validation split, in
-    normalised fields, the released checkpoints score 0.7006 and 0.6754, so these values are not reproduced.
-\end{itemize}
-
 \section{Resource Accounting}
 \label{app:accounting}
 
@@ -1011,9 +1080,14 @@ indices $\mathrm{round}(\mathrm{linspace}(0, 34299, 64))$. They cover all 35 reg
 search used 512 windows chosen the same way (all 35 regimes, all 175 trajectories, 25\% onset); the two samples
 share 8 windows. This monitoring sample does not replace the full test evaluation.
 
-\textbf{Billing.} Paid jobs are billed 32 SU per GPU-hour plus 1 SU per core-hour of allocated time (40 SU per
-hour for one A100 and 8 cores); the free partition is not billed. Runs that started on the free partition and
-resumed on the paid one are billed only for the paid part.
+\textbf{Shared storage.} Besides its limited rate ($\sim$98 training samples per second into one node,
+Fig.~\ref{fig:loader}), the cluster's shared file system stalls for 5--22 minutes at a time, on all nodes at once.
+Both add to the time a run waits for data (Table~\ref{tab:time}).
+
+\textbf{Billing.} The cluster charges for allocated time on its paid partition, in \emph{service units} (SU): 32 SU
+per GPU-hour plus 1 SU per core-hour (40 SU per hour for one A100 and 8 cores); the free partition is not billed.
+Runs that started on the free partition and resumed on the paid one are billed only for the paid part. Time spent
+waiting in the queue before a job starts is neither allocated nor billed.
 
 \textbf{Pilot against actual.} The pilots predicted 4\,h of GPU training to take 6.0 / 8.0 / 9.7\,h of wall time
 (CNextU-Net / TFNO / AViT) at the stall rate observed then; the 10\% runs took 5.2--6.0 / 6.9--7.1 /
@@ -1045,7 +1119,6 @@ of its 5.2--6.0\,h.}
 Hours per run & CNextU-Net & TFNO & AViT \\
 \midrule
 \multicolumn{4}{@{}l}{\textit{10\% runs, measured}} \\
-Queue wait before training started & 0.1--0.9 & 0.5--0.7 & 6.7--8.8 \\
 GPU training (the budget) & 4.0 & 4.0 & 4.0 \\
 Waiting for data & 0.8--1.1 & 2.5--2.8 & 6.1--7.3 \\
 Start-up, and steps replayed after a preemption or crash$^{a}$ & 0.13--0.65 & 0.14--0.15 & 0.68--0.69 \\
@@ -1053,8 +1126,6 @@ Validation (64 windows every 30 minutes) & 0.01--0.02 & 0.02--0.10 & 0.18 \\
 Checkpoint writes & 0.23--0.24 & 0.08--0.15 & 0.03--0.13 \\
 \textbf{Allocated time of training} & \textbf{5.2--6.0} & \textbf{6.9--7.1} & \textbf{11.1--12.2} \\
 Test evaluation job (1-hour and 4-hour checkpoints) & 0.87--0.95 & 0.57 & 0.34--0.38 \\
-Queue wait before the evaluation started & 1.0--14.0 & 1.9--2.4 & 3.0--3.3 \\
-Training attempts (seed 0 / seed 1) & 2 / 2 & 1 / 1 & 2 / 2 \\
 \midrule
 \multicolumn{4}{@{}l}{\textit{100\% runs, projected}} \\
 Waiting for data & 1.0--2.0 & 3.0--4.5 & 9.5--12.5 \\
@@ -1067,7 +1138,8 @@ Test evaluation job & $\sim$0.9 & $\sim$0.6 & $\sim$0.4 \\
 the steps since their last saved checkpoint. Projection for 100\%: the shared file system delivers at most
 $\sim$98 samples/s, below TFNO's (116) and AViT's (330) demand, and the full training split ($\sim$290\,GB) no
 longer fits in a node's page cache; start-up, validation, checkpoint writes and evaluation as measured. Queue
-waits depend on the cluster's load and are not projected.}
+waits before a job starts depend on the cluster's load and are not included (10\% runs: 0.1--8.8\,h before
+training, 1--14\,h before evaluation).}
 \label{tab:time}
 \end{table}
 
@@ -1100,20 +1172,88 @@ model consumes them on the GPU (horizontal lines).}
 \label{fig:loader}
 \end{figure}
 
-\section{Additional Figures}
-\label{app:figs}\label{app:snapshots}
+\section{Additional Analysis}
+\label{sec:extra}
 
-Test error by window (Fig.~\ref{fig:testwindow}) and flow snapshots at $\mathrm{Ra}=10^{10}$ (Fig.~\ref{fig:snapshots10}).
+Two analyses go beyond the abstract's metrics: how the error depends on the Rayleigh number, and whether the models
+reproduce the heat that convection carries across the layer.
+
+\textbf{Error by Rayleigh number} (Fig.~\ref{fig:rayleigh}a, b). Each Rayleigh number groups seven Prandtl numbers
+(35 test trajectories). The one-step error in developed convection grows four- to tenfold from $\mathrm{Ra}=10^6$ to
+$10^{10}$ (CNextU-Net 0.016 to 0.111, TFNO 0.042 to 0.191, AViT 0.016 to 0.154), as convection becomes more turbulent, with finer plumes and
+thinner boundary layers; persistence's error grows too (0.098 to 0.351), because the flow changes more between
+frames. The ranking is the same at every Rayleigh number, except that AViT ties CNextU-Net at $10^6$. The released
+CNextU-Net, trained on all the data, matches ours at $10^6$ and $10^7$ (0.018 and 0.017, against 0.016 and 0.020)
+and is better only at higher Rayleigh numbers (0.085 against 0.111 at $10^{10}$): the 10\% model falls short where
+the flow is most complex, with the caveat that the two runs also differ in schedule and hardware. After 30 steps from
+developed flow, CNextU-Net and TFNO stay below persistence at every Rayleigh number, while AViT is worse than
+persistence up to $10^8$ (0.81 against 0.66 at $10^6$) and better only at $10^9$ and $10^{10}$. Over all three
+start frames, the fraction of CNextU-Net's rollouts that stay below VRMSE 1 instead rises with Rayleigh number (0.67
+at $10^6$, 0.98 at $10^{10}$). This is consistent with convection starting later at low Rayleigh number, so that
+more rollouts from frame 20 begin in the near-quiescent onset, where relative errors are large; the same effect
+underlies the released model's Rayleigh-number dependence (Section~\ref{sec:m1}).
 
 \begin{figure}[!htbp]
 \centering
-\figureorpending{fig_test_by_window.pdf}{scale=0.9}
-\caption{One-step test VRMSE (physical fields) by window, mean over the 175 test trajectories: our 10\% models at
-4 hours (seed mean; band: range over seeds), the released CNextU-Net trained on all the data, and persistence.
-Shaded: onset windows (first input frame $<50$; see Fig.~\ref{fig:released}).}
-\label{fig:testwindow}
+\figureorpending{fig_by_rayleigh.pdf}{width=\linewidth}
+\caption{Error by Rayleigh number, four-hour models (seed mean; each point averages seven Prandtl numbers, 35 test
+trajectories). (a) One-step VRMSE in developed convection. (b) VRMSE after 30 steps from frames 80 and 140. (c)
+Median relative error of the Nusselt number averaged over those 30-step rollouts. Dashed: released CNextU-Net
+(100\% data); dotted: persistence.}
+\label{fig:rayleigh}
 \end{figure}
 
+\textbf{Heat transport} (Table~\ref{tab:nusselt}, Fig.~\ref{fig:rayleigh}c). The Nusselt number is the heat carried
+across the layer relative to conduction alone. Volume-averaged, and in the units of the data (diffusivity
+$\kappa=(\mathrm{Ra}\,\mathrm{Pr})^{-1/2}$, unit height and temperature difference), it is
+$\mathrm{Nu}=1+\sqrt{\mathrm{Ra}\,\mathrm{Pr}}\,\langle w\,b\rangle$, computed for every predicted and true frame of
+each rollout. Two properties shape the comparison. The factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$, $3\times10^4$ to $3\times10^5$ at
+$\mathrm{Ra}=10^{10}$, amplifies small errors in the correlation between vertical velocity and buoyancy. And the
+instantaneous value fluctuates strongly: across test trajectories the true Nusselt number one step after frame 80
+ranges from $-249$ to 1,363, so relative errors near zero crossings are unbounded and means are dominated by outliers. We
+therefore report medians, and the error of the Nusselt number averaged over each 30-step rollout from frames 80 and
+140; its sign shows whether a model predicts too much or too little heat transport.
+
+\begin{table}[!htbp]
+\centering\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& One step & \multicolumn{2}{c}{Averaged over 30 steps} \\
+\cmidrule(l){3-4}
+Model (10\% data, checkpoint) & median $|$error$|$ & median $|$error$|$ & median signed error \\
+\midrule
+CNextU-Net, 4 h & \textbf{0.020} & 0.485 & $-0.015$ \\
+TFNO, 4 h & 0.072 & \textbf{0.196} & $+0.064$ \\
+AViT, 4 h & 0.037 & 0.275 & $-0.167$ \\
+\midrule
+CNextU-Net, 1 h & 0.265 & 5.479 & $+5.451$ \\
+TFNO, 1 h & 0.285 & 0.906 & $+0.205$ \\
+AViT, 1 h & \textbf{0.081} & \textbf{0.353} & $+0.138$ \\
+\midrule
+Persistence & 0.076 & 0.267 & $+0.023$ \\
+\bottomrule
+\end{tabular}
+\caption{Relative error of the volume-averaged Nusselt number on the 350 rollouts from frames 80 and 140 (175
+trajectories $\times$ 2), median over rollouts, mean over the two seeds. One step: the instantaneous value after
+the first step. Signed: negative means too little heat transport. Bold: best of our models at each budget.}
+\label{tab:nusselt}
+\end{table}
+
+After one step the four-hour CNextU-Net reproduces the instantaneous Nusselt number to within 2\% (median), better
+than AViT (3.7\%), TFNO (7.2\%) and persistence (7.6\%), and it is the best or tied at every Rayleigh number. Over a 30-step
+rollout the picture changes. TFNO comes closest to the true heat transport (0.20, against 0.27 for persistence).
+AViT systematically predicts too little (median $-17$\%, down to $-43$\% at $\mathrm{Ra}=10^{10}$). CNextU-Net is
+unbiased on average ($-1.5$\%) but has the largest spread (0.49), which grows with Rayleigh number to 1.0 at
+$10^{10}$. Its excess small-scale energy (Fig.~\ref{fig:spectra}) could create spurious correlations between $w$ and
+$b$ that the factor $\sqrt{\mathrm{Ra}\,\mathrm{Pr}}$ amplifies; this is consistent with the data but not
+established. After one hour CNextU-Net predicts about six times the true heat transport. Heat transport is
+therefore largely a negative result: a low one-step VRMSE does not guarantee the right heat flux over a rollout, and
+the MSE objective does not constrain it.
+
+\section{Additional Figures}
+\label{app:figs}\label{app:snapshots}
+
+Flow snapshots at $\mathrm{Ra}=10^{10}$ (Fig.~\ref{fig:snapshots10}).
 
 \begin{figure}[!htbp]
 \centering
@@ -1194,13 +1334,17 @@ Physical Review Research 2, 023068, 2020.\\
 \url{https://arxiv.org/abs/1905.10388}
 
 \bibitem{wellfix}
-The Well source code, commits \texttt{2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c} (2024-06-03) and
-\texttt{e4301602e57f2dddeaa87856dda49bbba47c663b} (2025-11-17).\\
+The Well source code, commits
+\href{https://github.com/PolymathicAI/the_well/commit/2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}{\texttt{2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}}
+(2024-06-03) and
+\href{https://github.com/PolymathicAI/the_well/commit/e4301602e57f2dddeaa87856dda49bbba47c663b}{\texttt{e4301602e57f2dddeaa87856dda49bbba47c663b}}
+(2025-11-17).\\
 \url{https://github.com/PolymathicAI/the_well/commit/2d8d7eaf9eb46b96f215abf39c94b6be4bf9ea5c}\\
 \url{https://github.com/PolymathicAI/the_well/commit/e4301602e57f2dddeaa87856dda49bbba47c663b}
 
 \bibitem{wellrb}
-The Well, \texttt{rayleigh\_benard} dataset card, commit \texttt{e63dec8}.\\
+The Well, \texttt{rayleigh\_benard} dataset card, commit
+\href{https://github.com/PolymathicAI/the_well/commit/e63dec8ded515be864755eaf595d39fea409e335}{\texttt{e63dec8}}.\\
 \url{https://github.com/PolymathicAI/the_well/blob/e63dec8/datasets/rayleigh_benard/README.md}
 
 \bibitem{wellissue}

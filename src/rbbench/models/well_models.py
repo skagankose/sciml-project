@@ -33,12 +33,12 @@ class WellModelAdapter(nn.Module):
         return self.net(rearrange(x, "b t x y f -> b x y (t f)"))
 
 
-def build_cnext_unet(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.Module:
+def build_cnext_unet(args: dict, resolution, n_steps_input: int, n_fields: int, n_out: int | None = None) -> nn.Module:
     from the_well.benchmark.models import UNetConvNext
 
     net = UNetConvNext(
         dim_in=n_steps_input * n_fields,
-        dim_out=n_fields,
+        dim_out=n_out or n_fields,
         n_spatial_dims=2,
         spatial_resolution=tuple(resolution),
         **args,
@@ -46,12 +46,12 @@ def build_cnext_unet(args: dict, resolution, n_steps_input: int, n_fields: int) 
     return WellModelAdapter(net, "channels_first", n_steps_input, n_fields)
 
 
-def build_tfno(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.Module:
+def build_tfno(args: dict, resolution, n_steps_input: int, n_fields: int, n_out: int | None = None) -> nn.Module:
     from the_well.benchmark.models import TFNO
 
     net = TFNO(
         dim_in=n_steps_input * n_fields,
-        dim_out=n_fields,
+        dim_out=n_out or n_fields,
         n_spatial_dims=2,
         spatial_resolution=tuple(resolution),
         **args,
@@ -59,7 +59,7 @@ def build_tfno(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.
     return WellModelAdapter(net, "channels_first", n_steps_input, n_fields)
 
 
-def build_avit(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.Module:
+def build_avit(args: dict, resolution, n_steps_input: int, n_fields: int, n_out: int | None = None) -> nn.Module:
     from the_well.benchmark.models import AViT
 
     if any(r % 16 for r in resolution):
@@ -68,7 +68,7 @@ def build_avit(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.
         raise ValueError("AViT hidden_dim/4 must be divisible by 12 (GroupNorm groups)")
     net = AViT(
         dim_in=n_steps_input * n_fields,
-        dim_out=n_fields,
+        dim_out=n_out or n_fields,
         n_spatial_dims=2,
         spatial_resolution=tuple(resolution),
         **args,

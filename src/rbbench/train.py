@@ -49,7 +49,7 @@ from rbbench.manifests import (
     sha256_file,
 )
 from rbbench.metrics.well_metric import MeanAccumulator, vrmse
-from rbbench.models.factory import count_parameters, model_from_config
+from rbbench.models.factory import count_parameters, model_from_config, training_loss
 
 CHECKPOINT_FORMAT = 1
 METRIC_COLUMNS = (
@@ -255,6 +255,20 @@ def verify_checkpoint(path: Path, model: torch.nn.Module) -> dict:
     }
 
 
+def beta_nll_loss(mean: torch.Tensor, log_var: torch.Tensor, target: torch.Tensor, beta: float = 1.0) -> torch.Tensor:
+    """Gaussian negative log-likelihood per pixel and field, each weighted by its detached variance ** beta.
+
+    beta-NLL (Seitzer et al., ICLR 2022; Lecture 17): plain NLL (beta = 0) lets a large predicted variance stop the
+    mean from learning; with beta = 1 the mean's gradient is the MSE's up to a constant factor. The constant
+    log(2 pi) / 2 is dropped.
+    """
+    var = log_var.exp()
+    nll = 0.5 * ((target - mean) ** 2 / var + log_var)
+    if beta:
+        nll = nll * var.detach() ** beta
+    return nll.mean()
+
+
 def train_run(
     cfg: dict,
     run_dir: str | os.PathLike,
@@ -302,6 +316,8 @@ def train_run(
     budgets = sorted(((float(v), k) for k, v in tcfg["budgets_seconds"].items()))
     final_seconds = budgets[-1][0]
     precision = tcfg["precision"]
+    loss_kind = training_loss(cfg)  # mse (every core run) or beta_nll (the UQ ensemble, D30)
+    beta = float(tcfg.get("beta_nll_beta", 1.0))
     if device.type == "cuda":
         torch.backends.cudnn.benchmark = not tcfg.get("deterministic", False)
 
@@ -426,8 +442,14 @@ def train_run(
                 for group in optimizer.param_groups:
                     group["lr"] = lr
                 with autocast_context(device, precision):
-                    pred = model(x)
-                loss = F.mse_loss(pred.float(), y)
+                    if loss_kind == "beta_nll":
+                        mean, log_var = model.forward_dist(x)
+                    else:
+                        pred = model(x)
+                if loss_kind == "beta_nll":
+                    loss = beta_nll_loss(mean.float(), log_var.float(), y, beta)
+                else:
+                    loss = F.mse_loss(pred.float(), y)
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 if tcfg.get("grad_clip_norm"):

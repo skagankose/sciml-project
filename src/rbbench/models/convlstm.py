@@ -84,5 +84,7 @@ class ConvLSTMForecaster(nn.Module):
         return rearrange(out, "b (p1 p2 f) h w -> b (h p1) (w p2) f", p1=p, p2=p)
 
 
-def build_convlstm(args: dict, resolution, n_steps_input: int, n_fields: int) -> nn.Module:
+def build_convlstm(args: dict, resolution, n_steps_input: int, n_fields: int, n_out: int | None = None) -> nn.Module:
+    if n_out not in (None, n_fields):
+        raise ValueError("ConvLSTM has no variance output (D30 uses CNextU-Net)")
     return ConvLSTMForecaster(n_fields, n_steps_input, tuple(resolution), **args)

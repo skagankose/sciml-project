@@ -1,0 +1,294 @@
+{
+  "description": "Ensembles for uncertainty quantification (D30) and noise robustness (D17); rbbench eval-uq --index i runs entry i",
+  "ensembles": [
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 0
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 1
+        }
+      ],
+      "name": "cnext_unet_f010_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 2
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 3
+        }
+      ],
+      "name": "cnext_unet_f100_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 4
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 5
+        }
+      ],
+      "name": "tfno_f010_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 6
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 7
+        }
+      ],
+      "name": "tfno_f100_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 8
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 9
+        }
+      ],
+      "name": "avit_f010_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 10
+        },
+        {
+          "manifest": "tasks/train.jsonl",
+          "row": 11
+        }
+      ],
+      "name": "avit_f100_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": null,
+      "members": [
+        {
+          "baseline": "persistence"
+        }
+      ],
+      "name": "persistence",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "1h",
+      "members": [
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 0
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 1
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 2
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 3
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 4
+        }
+      ],
+      "name": "cnext_unet_f010_1h_betanll",
+      "splits": {
+        "test": [
+          0.0
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "1h",
+      "members": [
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 5
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 6
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 7
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 8
+        },
+        {
+          "manifest": "tasks/uq.jsonl",
+          "row": 9
+        }
+      ],
+      "name": "cnext_unet_f100_1h_betanll",
+      "splits": {
+        "test": [
+          0.0
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "1h",
+      "members": [
+        {
+          "manifest": "tasks/train_1h.jsonl",
+          "row": 0
+        },
+        {
+          "manifest": "tasks/train_1h.jsonl",
+          "row": 1
+        }
+      ],
+      "name": "cnext_unet_f010_1h_mse",
+      "splits": {
+        "test": [
+          0.0
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "1h",
+      "members": [
+        {
+          "manifest": "tasks/train_1h_f100.jsonl",
+          "row": 0
+        },
+        {
+          "manifest": "tasks/train_1h_f100.jsonl",
+          "row": 1
+        }
+      ],
+      "name": "cnext_unet_f100_1h_mse",
+      "splits": {
+        "test": [
+          0.0
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    }
+  ]
+}

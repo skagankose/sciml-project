@@ -336,3 +336,29 @@ directory) and the data-wait share in `train_metrics.csv` (the open D23 check fo
 and push 2 (never while jobs are queued), WP3:
 `sbatch -p gpu -A eecs195221_class_gpu --array=2,3,6,7,10,11 --export=ALL,CORRELATION=1 cluster/slurm/eval_a100.sbatch`
 (WP3; correlation is on where it costs nothing, D29).
+
+## 11. Final submission, push 2: uncertainty quantification and noise robustness (D30, D17; WP8, WP9)
+
+Push only after the 100% training array (section 10) has left the queue. Then, on the paid partition:
+
+```bash
+# WP3: the 100% evaluation, correlation on (D29)
+sbatch -p gpu -A eecs195221_class_gpu --array=2,3,6,7,10,11 --export=ALL,CORRELATION=1 cluster/slurm/eval_a100.sbatch
+# UQ-A training: five beta-NLL CNextU-Nets per fraction (tasks/uq.jsonl, 1 h each) and the two MSE 1 h runs at 100%
+# (tasks/train_1h_f100.jsonl; the 10% ones exist). The 100% rows copy the data to local disk first.
+sbatch -p gpu -A eecs195221_class_gpu --array=0-4 --time=04:00:00 \
+    --export=ALL,MANIFEST=tasks/uq.jsonl cluster/slurm/train_a100.sbatch
+sbatch -p gpu -A eecs195221_class_gpu --array=5-9 --time=05:00:00 --tmp=400G \
+    --export=ALL,MANIFEST=tasks/uq.jsonl,STAGE_DATA=1 cluster/slurm/train_a100.sbatch
+sbatch -p gpu -A eecs195221_class_gpu --array=0,1 --time=05:00:00 --tmp=400G \
+    --export=ALL,MANIFEST=tasks/train_1h_f100.jsonl,STAGE_DATA=1 cluster/slurm/train_a100.sbatch
+# WP8 + WP9 (UQ-B): seed pairs at 4 h and persistence, validation (calibration) and test (noise 0-0.20)
+sbatch -p gpu -A eecs195221_class_gpu --array=0-6 cluster/slurm/uq_eval_a100.sbatch
+# WP9 (UQ-A), after the UQ runs: the beta-NLL ensembles and their MSE baselines
+sbatch -p gpu -A eecs195221_class_gpu --array=7-10 cluster/slurm/uq_eval_a100.sbatch
+```
+
+Outputs: `outputs/uq/<ensemble>/{valid,test}/` (`summary.parquet`, `members.parquet`, `cells.npz`, `yprofile.npz`,
+`UQ_COMPLETE.json`); pulled by `cluster/pull.sh` with the other outputs. The 100% pairs (indices 1, 3, 5) need the
+100% runs to have finished; a task whose runs are not complete stops with "has not finished training" and can be
+resubmitted later.

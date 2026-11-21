@@ -180,6 +180,11 @@ robustness and uncertainty. Costs come from a final `sacct`.
 
 ### WP9. Uncertainty quantification (new; Lecture 17)
 
+**Status (2026-11-21):** code written and tested on the Mac (`rbbench.uq`, `eval-uq`, the variance output and
+β-NLL, `tasks/uq.jsonl`, `tasks/train_1h_f100.jsonl`, `tasks/uq_ensembles.json`), committed, not pushed. It goes
+to HPC3 with push 2 (`cluster/README.md` section 11). The analysis (coverage, conformal, figures) is written on
+the Mac while the jobs run.
+
 **Question for the study:** how far can each family's forecast be trusted, and how does its uncertainty change
 with more data (10% to 100%) and along a rollout? Two parts, following the lecture's "UQ in your project"
 recipe.

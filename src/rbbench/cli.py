@@ -659,6 +659,62 @@ def cmd_select_lr(args):
     return 0 if all(c["lr"] is not None for c in chosen.values()) else 1
 
 
+def load_uq_members(spec: dict, output_root: Path, device) -> tuple[list, dict | None, dict]:
+    """The members of one ensemble of tasks/uq_ensembles.json (D30), loaded from their checkpoints."""
+    from rbbench.manifests import sha256_file
+    from rbbench.sweep import get_task
+    from rbbench.uq import model_member, persistence_member
+
+    members, cfg, meta = [], None, {"ensemble": spec["name"], "label": spec["label"], "checkpoints": []}
+    for m in spec["members"]:
+        if "baseline" in m:
+            if m["baseline"] != "persistence":
+                raise ValueError(f"unknown baseline {m['baseline']!r}")
+            members.append(persistence_member())
+            meta["checkpoints"].append({"baseline": "persistence"})
+            continue
+        row = get_task(REPO_ROOT / m["manifest"], m["row"])
+        run_dir = output_root / "runs" / row["run_id"]
+        if not (run_dir / "COMPLETE.json").exists():
+            raise RuntimeError(f"{run_dir} has not finished training")
+        mcfg, model, ckpt = load_run_model(run_dir, spec["label"], device)
+        cfg = cfg or mcfg
+        members.append(model_member(f"s{row['seed']}", model))
+        meta["checkpoints"].append({"run_id": row["run_id"], "step": ckpt["step"],
+                                    "sha256": sha256_file(run_dir / f"checkpoint_{spec['label']}.pt")})
+    return members, cfg, meta
+
+
+def cmd_eval_uq(args):
+    """One ensemble of tasks/uq_ensembles.json through the uncertainty evaluation (rbbench.uq; D30, WP8/WP9)."""
+    from rbbench.config import load_config
+    from rbbench.uq import evaluate_uq
+
+    spec = read_json(Path(args.ensembles))["ensembles"][args.index]
+    device = _device(args.device)
+    out_root = _output_root(args)
+    members, cfg, meta = load_uq_members(spec, out_root, device)
+    cfg = cfg or load_config("cnext_unet", "main")  # persistence reads only the shared task/eval/physics sections
+    cohort = read_json(Path(args.cohort))
+    for split in args.splits or list(spec["splits"]):
+        out = out_root / "uq" / spec["name"] / split
+        if (out / "UQ_COMPLETE.json").exists() and not args.force:
+            print(f"{spec['name']} {split}: already complete")
+            continue
+        res = evaluate_uq(members, cfg, _dataset_dir(args), split, cohort, spec["splits"][split], out, device,
+                          meta=meta, max_trajectories=args.max_trajectories)
+        print(f"{spec['name']} {split}: {res['n_trajectories']} trajectories, {res['wall_seconds']} s -> {out}")
+    return 0
+
+
+def cmd_make_uq_ensembles(args):
+    from rbbench.uq import default_ensembles
+
+    atomic_write_json(Path(args.out), default_ensembles())
+    print(f"{len(default_ensembles()['ensembles'])} ensembles -> {args.out}")
+    return 0
+
+
 def cmd_stage_data(args):
     """Copy splits to node-local disk for one job (rbbench.stage; docs/final_plan.md WP1)."""
     from rbbench.stage import StagingError, stage_dataset
@@ -856,6 +912,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--loaders", nargs="+", default=["upstream", "persistent"], choices=["upstream", "persistent"])
     sp.add_argument("--out")
     sp.set_defaults(func=cmd_bench_data)
+
+    sp = sub.add_parser("eval-uq", help="one ensemble through the uncertainty evaluation (D30, WP8/WP9)")
+    common(sp, out=True, device=True, exp=False)
+    sp.add_argument("--ensembles", default=str(REPO_ROOT / "tasks" / "uq_ensembles.json"))
+    sp.add_argument("--index", type=int, required=True, help="entry of the ensembles file")
+    sp.add_argument("--splits", nargs="+", choices=["valid", "test"], help="default: the entry's splits")
+    sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
+    sp.add_argument("--max-trajectories", type=int)
+    sp.add_argument("--force", action="store_true", help="re-run splits that are already complete")
+    sp.set_defaults(func=cmd_eval_uq)
+
+    sp = sub.add_parser("make-uq-ensembles", help="write the ensembles of WP8/WP9 (tasks/uq_ensembles.json)")
+    sp.add_argument("--out", default=str(REPO_ROOT / "tasks" / "uq_ensembles.json"))
+    sp.set_defaults(func=cmd_make_uq_ensembles)
 
     sp = sub.add_parser("stage-data", help="copy splits to node-local disk for one job (others are symlinked)")
     common(sp, exp=False)

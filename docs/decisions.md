@@ -567,6 +567,24 @@ pending approval).** Full design in `docs/final_plan.md` WP9.
 * *Measures:* coverage of the 50% and 90% intervals, spread-skill ratio, CRPS against the MSE point forecast,
   PIT and rank histograms, and the predicted std against the error (along y, along the rollout, binned).
   Shifts: a longer rollout, noisy inputs (D17) and Ra = 1e10 held out of the calibration.
+* *Implementation (2026-11-21):*
+  * Training. `train.loss: beta_nll` (`configs/experiments/uq.yaml`) makes `model_from_config` wrap the model in
+    `GaussianOutput`: 2F output channels, the mean and a log-variance clamped to [-16, 6] in normalised units.
+    `forward` returns the mean, so rollouts, validation and the standard evaluation are unchanged;
+    `forward_dist` returns both. The loss is `train.beta_nll_loss`.
+  * Manifests. `tasks/uq.jsonl` has 10 rows (seeds 0-4 at 10% and 100%, 1 h). `tasks/train_1h_f100.jsonl` has
+    the 2 MSE 1 h runs at 100%.
+  * Evaluation. `rbbench eval-uq` (`rbbench.uq`, `cluster/slurm/uq_eval_a100.sbatch`) evaluates one ensemble
+    of `tasks/uq_ensembles.json` per array task. Rollouts feed back each member's own mean. One-step uses every
+    4th window. Per window and step it records exact per-field means of: error, epistemic and aleatoric
+    variance, mixture CRPS (closed form), Gaussian 50% / 90% coverage, and each member's physical VRMSE
+    (WP8's noise results).
+  * Stored samples. Each member's error and predicted std at 128 fixed random grid points per window (32 under
+    noise), the same points for every ensemble. Conformal calibration and coverage, PIT and rank histograms,
+    binned spread against error, and any grouping are computed from them on the Mac. Error and variance
+    profiles along y are stored too.
+  * Validation (the calibration split) uses every trajectory with the cohort's starts 20, 80 and 140. Test uses
+    the frozen cohort.
 * *Constraints:* the variance head and loss live only in a new experiment config, so the core runs' hashes are
-  unchanged. The hashed `eval` section is untouched (D15). Nothing is tuned on test: β, the ensemble size and
+  unchanged (`tasks/train.jsonl` regenerates byte for byte). The hashed `eval` section is untouched (D15). Nothing is tuned on test: β, the ensemble size and
   the interval levels are fixed in advance, and calibration uses validation only.

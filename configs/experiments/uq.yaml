@@ -1,0 +1,19 @@
+# Uncertainty quantification, part A (D30; docs/final_plan.md WP9; course Lecture 17): a deep ensemble of
+# CNextU-Nets with a variance output. Each member predicts a mean and a log-variance per field and pixel
+# (models/factory.py GaussianOutput) and is trained with the beta-NLL, beta = 1 (Seitzer et al. 2022), the
+# lecture's recipe. Five seeds (0-4) at 10% and at 100% data: tasks/uq.jsonl, made with
+#   python -m rbbench make-sweep --experiment uq --models cnext_unet --fractions 0.1 1.0 --seeds 0 1 2 3 4 \
+#       --out tasks/uq.jsonl
+# A dedicated 1 h budget (the cosine ends at 1 h), like the dedicated MSE 1 h runs that serve as the point
+# baseline (tasks/train_1h.jsonl at 10%, tasks/train_1h_f100.jsonl at 100%). Everything else is the core recipe
+# (main.yaml: AdamW, peak learning rate 1e-3, batch 64, fp32, 500 warmup steps, compute clock).
+train:
+  loss: beta_nll
+  beta_nll_beta: 1.0
+  budgets_seconds:
+    1h: 3600
+
+model_overrides:
+  cnext_unet:
+    optim:
+      lr: 1.0e-03

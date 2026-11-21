@@ -619,3 +619,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * The submitted check-in PDF is committed as `reports/project_check_in.pdf`, replacing `midproject.pdf`.
   * Tests: 172 pass and smoke passes. The core manifest regenerates identically (run ids and hashes). The
     commands to submit are in `cluster/README.md` section 10.
+* 2026-11-21 (night): the owner submitted push 1's jobs: the six 100% runs (paid, `STAGE_DATA=1`), onset frames and
+  the Dedalus setup (free). No logs yet; they are still queued. WP9 code written for push 2 (D30):
+  * the variance output (`GaussianOutput`) and `train.beta_nll_loss` behind `train.loss: beta_nll`
+    (`configs/experiments/uq.yaml`);
+  * manifests `tasks/uq.jsonl` (10 rows) and `tasks/train_1h_f100.jsonl` (2 rows);
+  * `rbbench eval-uq` / `rbbench.uq`, with exact per-window statistics, sampled cells for conformal and PIT, and
+    per-member VRMSE for noise robustness;
+  * `tasks/uq_ensembles.json` (11 ensembles) and `cluster/slurm/uq_eval_a100.sbatch`.
+  Tests: 182 pass, including CRPS against numerical integration and a β-NLL training run; smoke passes;
+  `tasks/train.jsonl` regenerates byte for byte. Committed, not pushed: push 2 waits until the 100% training array
+  has left the queue (`cluster/README.md` section 11).

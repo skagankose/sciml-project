@@ -171,6 +171,11 @@ Done before the 10% runs, and the 10% runs confirmed the predictions.
   whether our own reads contributed.
 * A copy of the 10% subset on each node's local disk (140 trajectories × 200 frames × 512 × 128 × 4 fields in
   float32, ~29 GB) would remove this dependency. It is not implemented yet.
+* Local disk on the GPU nodes (`sinfo -N -p gpu -o "%N %G %d %m"`, owner, 2026-11-21): the four A100 nodes
+  (hpc3-gpu-l54-03 to -06, 2 A100s each) have 1.83 TB of local disk and 256 GB of memory; the A30 nodes 1.83 TB,
+  the V100 nodes 228 GB. The full training split (~294 GB) fits twice per A100 node, so the 100% runs copy it to
+  the job's `$TMPDIR` first (`STAGE_DATA=1`, `rbbench stage-data`; docs/final_plan.md WP1). The copy's time and
+  rate are logged per job (`rbbench_stage.json`) and go here when the runs start.
 
 ### Learning-rate search (2026-11-08 to 11-09)
 
@@ -246,6 +251,27 @@ A run that starts once spends ~0.15 h in start-up; SU = 40 × allocated hours.
 * `/pub` delivers at most ~98 samples/s into one node (D23 benchmark). TFNO needs 117/s and AViT 333/s, so
   both wait for data even without stalls. AViT spent 55–60% of its wall time waiting (6.1 / 7.3 h of
   11.1 / 12.2 h); its GPU was busy 33–36% of the time.
+* Why AViT needs a seventh of the memory (2026-11-13): parameters are not the cause (~19M each; weights, gradients
+  and AdamW's two moments ≈ 0.3 GB). Activations stored for the backward pass dominate, and they scale with the grid
+  a layer works on. AViT's patch embedding turns 512 × 128 into 32 × 8 tokens (patch 16), so its 8 blocks see
+  256 × 432 numbers per sample. CNextU-Net's outer stages (42 channels, expanded 4× in each ConvNeXt block, plus
+  skips) and all 4 of TFNO's Fourier layers (128 channels, plus FFT buffers; lifting to 256) work on all 65,536
+  points. A rough count of stored activations, ~30M numbers per sample for AViT against ~200M (TFNO) and ~250M
+  (CNextU-Net), gives ~8 / ~50 / ~65 GB at batch 64 in fp32, close to the measured 8.8 / 48.6 / 60.9 GB
+  allocated. The same patching explains AViT's speed per step and its patch-sized artifacts in the snapshots.
+
+### Pointwise error and the double penalty (2026-11-13; D27)
+
+* VRMSE rewards smooth predictions (a displaced sharp plume is penalised twice). TFNO is the smoothest model:
+  median predicted / true kinetic energy between k_x = 25 and 100 after 30 steps is 0.16 at 1 h and 0.11 at 4 h
+  (median over regimes, mean over seeds; CNextU-Net 1.35 / 1.34, AViT 29 / 16). So TFNO's rollout lead at 1 h
+  (60% of rollouts below VRMSE 1, against 34%) is partly a reward for smoothness. The mid-project report names this only in the Revised Plan
+  (owner, 2026-11-13: report it with the correlation results in the final report).
+* Thresholds: 1 = the target's mean; ~1.41 = a realistic field with no correlation (displaced plumes);
+  2 and 5 = breakdown. Persistence at step 30 from frames 80 / 140 (0.86 / 0.54) implies r ~ 0.63 / 0.85.
+* Correlation and high-correlation time added to the evaluation code as an opt-in (`--correlation`, D27; owner:
+  not a default run, to be decided for the final report); not run on HPC3. The report's question on it is
+  commented out by the owner.
 
 ### Training curves (`outputs/findings/training_curves_train_f010.{pdf,png}`)
 
@@ -283,7 +309,7 @@ paper protocol windows 6–12 / 13–30 (normalised):
 Spectra (4 h, median over regimes of predicted/true by band, steps 1 / 10 / 30):
 * CNextU-Net: large 1.00 / 0.98 / 1.02, middle 0.96 / 1.05 / 1.15, small 21 / 26 / 29.
 * TFNO: large 1.00 / 0.97 / 0.89, middle 0.40 / 0.24 / 0.12, small 1.0 / 2.8 / 1.2. It is too smooth,
-  consistent with 16 retained modes (k_x ≲ 25).
+  consistent with its Fourier cutoff. Correction (2026-11-13): the kept modes are n = -8..7 in x (|k_x| <= 12.6), not 16 per direction (k_x ≲ 25); see "Why TFNO trails the other two".
 * AViT: large 1.00 / 0.82 / 0.84, middle 1.06 / 3.5 / 5.4, small 24 / 390 / 731. Energy accumulates over the
   rollout. Local peaks at the patch-grid wavenumbers were checked and are not clear, so no cause is claimed.
 * Per wavenumber (median over the 35 regimes and both seeds of predicted/true, steps 1, 10, 30; quoted in the
@@ -402,6 +428,72 @@ partition; seed 0, 4 h, from frame 80):
 * AViT shows rectangular artifacts at the size of its 16×16-pixel patches by step 12, consistent with its
   middle- and small-scale energy gain.
 * At Ra = 1e10 all three miss the finest structures; CNextU-Net keeps the large-scale plume pattern.
+
+### Released CNextU-Net through the study evaluation (2026-11-13; `eval-baseline --released cnext_unet`)
+
+`outputs/baselines/released/cnext_unet/evaluations/`, code 41ec708 (no correlation columns; D27 code not yet
+pushed). Complete: 525 rollouts, 34,300 one-step windows, cohort sha256 matches `tasks/eval_cohort.json`, physics
+audit passed, eval config identical to persistence's; checkpoint `polymathic-ai/UNetConvNext-rayleigh_benard` at
+c5fa0f7a, sha256 4d02a86e…. One evaluation pass: 1,057 s wall (0.29 GPU-h).
+
+* Consistency: one-step all-window VRMSE 0.2238, equal to the pipeline check's; frame-0 rollouts 36.1 / 34.7.
+* Study rollouts (physical-field VRMSE, Table 4 of the report): after 30 steps from frames 20 / 80 / 140:
+  1.65 / 0.63 / 0.51; fraction of the 525 rollouts staying below VRMSE 1 / 2 / 5 through step 30:
+  0.77 / 0.82 / 0.90 (independently recomputed from `rollout_na.parquet`: identical).
+* Per field after 30 steps from frames 80 and 140: b 0.505, p 0.366, u 0.713, w 0.697 (mean 0.57).
+* Finding: the released model (100% data, 12 h on an H100) is better one step ahead in developed convection
+  than our 10% / 4 h CNextU-Net (0.038 vs 0.050) but less stable over rollouts: after 30 steps from frames 80 /
+  140 it is at 0.63 / 0.51 against ours 0.53 / 0.40, and 77% of its rollouts stay below VRMSE 1 against 89%. From
+  developed flow it stays below persistence (0.86 / 0.54), narrowly from frame 140. The two runs differ in data,
+  schedule (the released one was not annealed: learning rate ~98% of peak when it stopped, Appendix B) and
+  hardware, so the cause is not identified.
+
+### Why TFNO trails the other two (analysis, 2026-11-13; owner question)
+
+Test one-step VRMSE (physical, 10%): TFNO 0.209 at 4 h vs 0.136 CNextU-Net and 0.134 AViT; developed 0.109 vs
+0.050 / 0.075. Gain from 1 h to 4 h in developed convection: TFNO 9%, CNextU-Net 38%, AViT 11%.
+
+* **TFNO hits a ceiling early.** The dedicated 1 h TFNO runs reach short-validation 0.327 / 0.304, the same as the
+  4 h runs (0.310 / 0.325), and the 20-minute search run at 1e-3 reached 0.302 (different 512-window sample).
+  TFNO also took more optimizer steps than CNextU-Net (61 vs 28 epochs in 4 h). So more training time does not help.
+  The limit is the model, not the budget.
+* **Its Fourier layers see only coarse scales.** The published Well configuration (`modes1 = modes2 = 16`) keeps,
+  per Fourier layer, k_x in [-8, 7] of 512 points and k_y in [0, 8] of 128 (`SpectralConv.n_modes` = [16, 9],
+  checked on the pinned neuraloperator 0.3.0; input laid out (B, C, x = 512, y = 128)). The shortest wave
+  the layers mix is 64 px in x and 16 rows in y. Finer scales pass only through the pointwise (1 x 1) skip
+  path and the pointwise nonlinearity, which cannot move a structure sideways.
+* **But the one-step change lives at fine scales.** Data: the two saved snapshots (test, Pr = 1, frame 80,
+  Ra = 1e8 and 1e10, 4 h seed-0 models, `outputs/visuals/*.npz`). The split uses exactly the kept modes (k_x index
+  -8..7, k_y 0..8) and one-sided rfft energy. Share of the true one-step change (next frame minus last input) above
+  that cutoff:
+  * buoyancy 88% / 95%, w 87% / 87%, u 50% / 65%, pressure 37% / 51%;
+  * the state itself is mostly coarse: 5–18% for p, u and w, and 26% / 45% for b.
+* **TFNO's error is at those scales.** Error energy at step 1 relative to persistence's total, below | above the
+  cutoff:
+  * Buoyancy at Ra = 1e8: persistence 0.119 | 0.881, CNextU-Net 0.002 | 0.034, AViT 0.008 | 0.078, TFNO
+    0.032 | 0.384.
+  * Buoyancy at Ra = 1e10: persistence 0.055 | 0.945, CNextU-Net 0.002 | 0.243, AViT 0.008 | 0.293, TFNO
+    0.016 | 0.472.
+  * Of persistence's fine-scale buoyancy error, TFNO removes 56% / 50%, AViT 91% / 69% and CNextU-Net 96% / 74%.
+    For w: TFNO 71% / 62%, CNextU-Net 99% / 92%.
+  * TFNO's coarse-scale error is also 10–25x CNextU-Net's, so the cutoff is not the whole story.
+  * (A first pass with |k_x| <= 8 and no one-sided weighting gave nearly the same numbers.)
+* **Walls are not the main one-step problem.** TFNO's spectral path treats y as periodic (no domain padding), so the
+  hot bottom and cold top wrap onto each other. At step 1, its buoyancy error near the walls (8 rows) relative to
+  the interior is in line with the other models. The warm bottom layer seen in its snapshots grows during
+  rollouts, so the walls may matter there.
+* **Not the paper-era bug.** Our TFNO runs its Fourier layers (pinned commit after the fix). In developed
+  convection it scores 0.109 normalised vs persistence 0.226 and the released, bugged TFNO 0.190.
+* Consistent with the smoothing already reported: TFNO's spectral-energy ratio at k_x 25–100 falls from 0.16 at
+  1 h to 0.11 at 4 h. Mean-squared-error training favours blurring what the model cannot place.
+* Caveats: the scale split uses 2 snapshots (one start, step 1), so it is illustrative. The other candidate causes
+  are not separated: the learning rate (1e-3 was the top of the grid and TFNO was still improving) and the
+  parameter budget (mostly spent on 16 x 9 modes per layer).
+* Possible checks, none run (they need owner approval; any training is an extension):
+  1. The scale split over the whole test cohort (evaluation only).
+  2. A 1 h TFNO at 10% with more modes (e.g. 64 x 64) and/or y domain padding. One hour is enough, since TFNO
+     saturates by then; about 1.1–1.4 h held, roughly 50–60 SU paid, by the dedicated 1 h runs. More modes add
+     parameters, so it breaks parameter matching (D3) unless hidden width or Tucker rank is reduced.
 
 ### Dedicated 1 h runs at 10% data (array 59487190, 2026-11-11/12; D6)
 

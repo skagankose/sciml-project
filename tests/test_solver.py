@@ -1,5 +1,8 @@
 """Numerical-solver baseline: grids and resampling (NumPy) and scoring parity with `evaluate`."""
 
+import json
+from pathlib import Path
+
 import h5py
 import numpy as np
 import pandas as pd
@@ -17,6 +20,10 @@ from rbbench.solver_grid import (
     FIELDS as SOLVER_FIELDS,
 )
 from rbbench.solver_grid import (
+    BOUNDED_PER_REGIME,
+    BOUNDED_REGIMES,
+    BOUNDED_STARTS,
+    RESOLUTIONS,
     chebyshev_coefficients,
     gauss_nodes,
     resample,
@@ -90,6 +97,31 @@ def test_solver_cohort_and_names():
     assert rollout_name("data/test/rb_Rayleigh_1e6_Prandtl_1.hdf5#3", 80) == "rb_Rayleigh_1e6_Prandtl_1__3__s080"
 
 
+def test_solver_cohort_filters():
+    cohort = {"starts": [20, 80, 140], "trajectories": [
+        {"id": f"data/test/rb_Rayleigh_{ra:g}_Prandtl_{pr:g}.hdf5#{i}", "rayleigh": ra, "prandtl": pr,
+         "starts": [20, 80, 140]}
+        for ra in (1e6, 1e8) for pr in (1.0, 10.0) for i in range(3)]}
+    picked = solver_cohort(cohort, 2, regimes=[(1e8, 1.0)], starts=[80, 140])
+    assert [e["id"][-1] for e in picked] == ["0", "1"]
+    assert all(e["rayleigh"] == 1e8 and e["prandtl"] == 1.0 and e["starts"] == [80, 140] for e in picked)
+    assert cohort["trajectories"][0]["starts"] == [20, 80, 140]  # the cohort itself is not modified
+    with pytest.raises(ValueError, match="not in the cohort"):
+        solver_cohort(cohort, regimes=[(1e10, 1.0)])
+    with pytest.raises(ValueError, match="starts"):
+        solver_cohort(cohort, starts=[100])
+
+
+def test_bounded_design_on_the_frozen_cohort():
+    """D29: Ra 1e6 / 1e8 / 1e10 at Pr 1, all 5 test trajectories, starts 80 and 140 -> 15 tasks, 30 rollouts."""
+    cohort = json.loads((Path(__file__).resolve().parents[1] / "tasks" / "eval_cohort.json").read_text())
+    picked = solver_cohort(cohort, BOUNDED_PER_REGIME, regimes=BOUNDED_REGIMES, starts=BOUNDED_STARTS)
+    assert len(picked) == 15 and sum(len(e["starts"]) for e in picked) == 30
+    assert {(e["rayleigh"], e["prandtl"]) for e in picked} == set(BOUNDED_REGIMES)
+    assert set(RESOLUTIONS) == {"512x128", "384x96", "256x64", "192x48", "128x32", "64x16"}
+    assert all(nx % 2 == 0 and nx == 4 * ny for nx, ny in RESOLUTIONS.values())
+
+
 def _write_rollout(path, traj_id, start, pred, status="ok"):
     with h5py.File(path, "w") as h:
         h.create_dataset("pred", data=pred.astype(np.float32))
@@ -152,6 +184,25 @@ def test_solver_scoring_equals_the_models_scoring(dataset_dir, persistence_as_so
     assert summary["n_rollouts"] == sum(len(e["starts"]) for e in cohort["trajectories"])
     assert summary["status_counts"] == {"ok": summary["n_rollouts"]}
 
+
+
+def test_solver_correlation_equals_the_models_correlation(dataset_dir, persistence_as_solver):
+    """With the opt-in correlation (D27), the solver scoring gives the correlation `evaluate` gives."""
+    from rbbench.solver_eval import score_all
+
+    cfg, cohort, audit, root = persistence_as_solver
+    evaluate({"na": Persistence()}, cfg, dataset_dir, cohort, root / "ref_corr", torch.device("cpu"),
+             audit_path=audit, with_correlation=True)
+    summary = score_all(root / "solver", cfg, dataset_dir, cohort, root / "out_corr", audit,
+                        with_correlation=True)["64x32"]
+    keys = ["traj_id", "start", "step"]
+    mine = pd.read_parquet(root / "out_corr" / "baselines" / "solver_64x32" / "evaluations" / "rollout_na.parquet")
+    mine = mine.sort_values(keys).reset_index(drop=True)
+    ref = pd.read_parquet(root / "ref_corr" / "rollout_na.parquet")
+    ref = ref[ref.sigma == 0].sort_values(keys).reset_index(drop=True)
+    for c in [f"corr_{f}" for f in FIELDS] + ["corr_mean"]:
+        assert np.allclose(mine[c], ref[c], rtol=1e-4, atol=1e-6, equal_nan=True), c
+    assert "high_correlation_time" in summary
 
 def test_diverged_rollouts_count_as_failures(dataset_dir, persistence_as_solver):
     from rbbench.solver_eval import score_all

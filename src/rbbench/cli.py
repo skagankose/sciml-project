@@ -88,7 +88,8 @@ def load_run_model(run_dir: Path, label: str, device):
 
 
 def run_eval_task(row: dict, output_root: Path, dataset_dir: Path, device, labels: list[str] | None,
-                  cohort_path: Path, audit_path: Path | None, max_trajectories: int | None = None) -> dict:
+                  cohort_path: Path, audit_path: Path | None, max_trajectories: int | None = None,
+                  with_correlation: bool = False) -> dict:
     """Evaluate the milestone checkpoints `labels` of one run (default: all of its milestones)."""
     from rbbench.evaluate import evaluate, model_predictor
     from rbbench.manifests import sha256_file
@@ -104,21 +105,24 @@ def run_eval_task(row: dict, output_root: Path, dataset_dir: Path, device, label
         meta["checkpoints"][label] = {"sha256": sha256_file(run_dir / f"checkpoint_{label}.pt"),
                                       "step": ckpt["step"], "train_seconds": ckpt["train_seconds"]}
     return evaluate(predictors, cfg, dataset_dir, read_json(cohort_path), run_dir / "evaluations", device,
-                    audit_path=audit_path, meta=meta, max_trajectories=max_trajectories)
+                    audit_path=audit_path, meta=meta, max_trajectories=max_trajectories,
+                    with_correlation=with_correlation)
 
 
 def run_baseline(cfg: dict, output_root: Path, dataset_dir: Path, device, cohort_path: Path,
-                 audit_path: Path | None, max_trajectories: int | None = None) -> dict:
+                 audit_path: Path | None, max_trajectories: int | None = None, with_correlation: bool = False) -> dict:
     from rbbench.evaluate import evaluate
     from rbbench.rollout import Persistence
 
     out = output_root / "baselines" / "persistence" / "evaluations"
     return evaluate({"na": Persistence()}, cfg, dataset_dir, read_json(cohort_path), out, device,
-                    audit_path=audit_path, meta={"baseline": "persistence"}, max_trajectories=max_trajectories)
+                    audit_path=audit_path, meta={"baseline": "persistence"}, max_trajectories=max_trajectories,
+                    with_correlation=with_correlation)
 
 
 def run_released_baseline(name: str, cfg: dict, output_root: Path, dataset_dir: Path, device, cohort_path: Path,
-                          audit_path: Path | None, max_trajectories: int | None = None) -> dict:
+                          audit_path: Path | None, max_trajectories: int | None = None,
+                          with_correlation: bool = False) -> dict:
     """The Well's released checkpoint `name` through the study evaluation: the same cohort, rollouts, failure
     horizons, spectra and physics as our runs and persistence (the pipeline check, `eval-released`, scores only one
     step and the paper's rollout from frame 0). Loaded as in `eval-released`, so the released TFNO runs with the
@@ -134,7 +138,7 @@ def run_released_baseline(name: str, cfg: dict, output_root: Path, dataset_dir: 
     out = output_root / "baselines" / "released" / name / "evaluations"
     return evaluate({"na": model_predictor(model.to(device), device, "fp32")}, cfg, dataset_dir,
                     read_json(cohort_path), out, device, audit_path=audit_path, meta=meta,
-                    max_trajectories=max_trajectories)
+                    max_trajectories=max_trajectories, with_correlation=with_correlation)
 
 
 # --- commands -----------------------------------------------------------------------------
@@ -260,7 +264,8 @@ def cmd_eval_task(args):
         print(f"{row['run_id']}: evaluation already complete")
         return 0
     res = run_eval_task(row, _output_root(args), _dataset_dir(args), _device(args.device), labels or None,
-                        Path(args.cohort), Path(args.audit) if args.audit else None, args.max_trajectories)
+                        Path(args.cohort), Path(args.audit) if args.audit else None, args.max_trajectories,
+                        with_correlation=args.correlation)
     for lab, s in res.items():
         print(lab, json.dumps(s["by_sigma"]["0"].get("one_step"), indent=None))
 
@@ -272,7 +277,10 @@ def cmd_eval_baseline(args):
     cfg = load_config(args.released or "cnext_unet", args.experiment, args.size, args.override)
     shared = (cfg, _output_root(args), _dataset_dir(args), _device(args.device), Path(args.cohort),
               Path(args.audit) if args.audit else None, args.max_trajectories)
-    res = run_released_baseline(args.released, *shared) if args.released else run_baseline(*shared)
+    if args.released:
+        res = run_released_baseline(args.released, *shared, with_correlation=args.correlation)
+    else:
+        res = run_baseline(*shared, with_correlation=args.correlation)
     print(json.dumps(res["na"]["by_sigma"]["0"].get("one_step")))
 
 
@@ -285,7 +293,7 @@ def cmd_eval_solver(args):
     out_root = _output_root(args)
     solver_root = Path(args.solver_root) if args.solver_root else out_root / "solver"
     res = score_all(solver_root, cfg, _dataset_dir(args), read_json(Path(args.cohort)), out_root,
-                    Path(args.audit) if args.audit else None)
+                    Path(args.audit) if args.audit else None, with_correlation=args.correlation)
     print(json.dumps(res, indent=2))
 
 
@@ -651,6 +659,34 @@ def cmd_select_lr(args):
     return 0 if all(c["lr"] is not None for c in chosen.values()) else 1
 
 
+def cmd_stage_data(args):
+    """Copy splits to node-local disk for one job (rbbench.stage; docs/final_plan.md WP1)."""
+    from rbbench.stage import StagingError, stage_dataset
+
+    try:
+        report = stage_dataset(_data_root(args), Path(args.dest), args.splits, workers=args.workers)
+    except (StagingError, OSError) as err:
+        print(f"staging failed: {err}", file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def cmd_onset_frames(args):
+    """Onset frame of every trajectory from its true kinetic energy (rbbench.onset; D28, WP4)."""
+    from rbbench.config import load_config
+    from rbbench.onset import onset_table, summarize, write_onset
+
+    cfg = load_config("cnext_unet", args.experiment)
+    out_dir = Path(args.out_dir) if args.out_dir else _output_root(args) / "onset"
+    for split in args.splits:
+        rows, series = onset_table(_dataset_dir(args), split, cfg["physics"])
+        table, ke_csv = write_onset(out_dir, split, rows, series)
+        print(f"{split}: {len(rows)} trajectories -> {table}, {ke_csv}")
+        print(json.dumps(summarize(rows), indent=1))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rbbench", description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
@@ -750,6 +786,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)
     sp.add_argument("--skip-if-complete", action="store_true")
+    sp.add_argument("--correlation", action="store_true",
+                    help="also compute the rollout correlation and high-correlation time (opt-in, D27)")
     sp.set_defaults(func=cmd_eval_task)
 
     sp = sub.add_parser("eval-baseline",
@@ -763,6 +801,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
     sp.add_argument("--max-trajectories", type=int)
+    sp.add_argument("--correlation", action="store_true",
+                    help="also compute the rollout correlation and high-correlation time (opt-in, D27)")
     sp.set_defaults(func=cmd_eval_baseline)
 
     sp = sub.add_parser("eval-solver", help="score the Dedalus solver rollouts with the models' metrics")
@@ -770,6 +810,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--solver-root", help="default <output root>/solver")
     sp.add_argument("--cohort", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
     sp.add_argument("--audit", default=str(REPO_ROOT / "outputs" / "audit" / "dataset_audit.json"))
+    sp.add_argument("--correlation", action="store_true",
+                    help="also compute the rollout correlation and high-correlation time (opt-in, D27)")
     sp.set_defaults(func=cmd_eval_solver)
 
     sp = sub.add_parser("eval-released",
@@ -814,6 +856,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--loaders", nargs="+", default=["upstream", "persistent"], choices=["upstream", "persistent"])
     sp.add_argument("--out")
     sp.set_defaults(func=cmd_bench_data)
+
+    sp = sub.add_parser("stage-data", help="copy splits to node-local disk for one job (others are symlinked)")
+    common(sp, exp=False)
+    sp.add_argument("--dest", required=True, help="new data root on local disk, e.g. $TMPDIR/rbbench-data")
+    sp.add_argument("--splits", nargs="+", default=["train"], choices=["train", "valid", "test"])
+    sp.add_argument("--workers", type=int, default=4, help="files copied in parallel")
+    sp.set_defaults(func=cmd_stage_data)
+
+    sp = sub.add_parser("onset-frames", help="onset frame per trajectory from the true kinetic energy (D28)")
+    common(sp, out=True)
+    sp.add_argument("--splits", nargs="+", default=["valid", "test"], choices=["train", "valid", "test"])
+    sp.add_argument("--out-dir", help="default <output root>/onset")
+    sp.set_defaults(func=cmd_onset_frames)
 
     sp = sub.add_parser("profile", help="throughput/memory/latency per model (A100 feasibility)")
     common(sp, device=True)

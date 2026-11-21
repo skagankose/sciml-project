@@ -92,6 +92,7 @@ def released_by_window(outputs: Path, out: Path, models=("cnext_unet", "tfno"),
         ax.plot(g.index, g.values, color=PERSIST["color"], ls=":", lw=1.3)
     ax.set_yscale("log")
     ax.set_xlim(-2, 197)
+    ax.set_xticks([0, 25, 50, 75, 100, 125, 150, 175, 195])  # 195 = the last window's start (frames 0-199)
     ax.set_xlabel("Input-window start frame")
     ax.set_ylabel("One-step VRMSE\n(paper protocol)")
     handles = [Line2D([], [], color=STYLE[m]["color"], label=f"released {STYLE[m]['label']}") for m in tables]

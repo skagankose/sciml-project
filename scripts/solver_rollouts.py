@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 """Numerical-solver baseline: Dedalus rollouts from the frozen cohort's start frames (runs in the `rb-dedalus` env).
 
-For one (Ra, Pr) regime per task, the first cohort trajectory of that regime, and each cohort start s, the solver is
-restarted from frame s + 3 (the last frame the models see) at the chosen resolution and integrated over the same 30
-output intervals the models predict. Each rollout is written to
+For one cohort trajectory per task and each of its start frames s, the solver is restarted from frame s + 3 (the
+last frame the models see) at the chosen resolution and integrated over the same 30 output intervals the models
+predict. The default `--design bounded` (D29) takes the 5 test trajectories of Ra = 1e6, 1e8 and 1e10 at Pr = 1 and
+starts 80 and 140: 15 tasks of 2 rollouts per resolution. `--design all` is the original first trajectory of each of
+the 35 regimes with every cohort start (D25). Each rollout is written to
     <out>/<resolution>/<file>__<index>__s<start>.h5
 with the predicted frames at the solver's resolution (float32; buoyancy, pressure, velocity_x, velocity_y), the
 wall time of building the solver and of time stepping, iterations and CFL steps. A finished file is skipped, so a
@@ -11,7 +13,7 @@ preempted task resumes. `rbbench eval-solver` (in `well-rb`) scores the files wi
 
     python scripts/solver_rollouts.py --selftest
     python scripts/solver_rollouts.py --task-index 0 --resolution 256x64
-    python scripts/solver_rollouts.py --list              # the regimes, in task order
+    python scripts/solver_rollouts.py --list              # the trajectories, in task order
 """
 from __future__ import annotations
 
@@ -32,6 +34,9 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from rbbench.solver_grid import (  # the repo's src/; this env does not install the package
+    BOUNDED_PER_REGIME,
+    BOUNDED_REGIMES,
+    BOUNDED_STARTS,
     NATIVE,
     RESOLUTIONS,
     rollout_frames,
@@ -167,7 +172,10 @@ def main() -> int:
     ap.add_argument("--out", default=os.path.join(os.environ.get("OUTPUT_ROOT", str(REPO / "outputs")), "solver"))
     ap.add_argument("--resolution", default="512x128", choices=sorted(RESOLUTIONS))
     ap.add_argument("--task-index", type=int, help="regime index in the solver cohort (default: SLURM_ARRAY_TASK_ID)")
-    ap.add_argument("--per-regime", type=int, default=1, help="trajectories per (Ra, Pr) regime")
+    ap.add_argument("--design", choices=["bounded", "all"], default="bounded",
+                    help="bounded (D29): Ra 1e6/1e8/1e10 at Pr 1, 5 trajectories each, starts 80 and 140; "
+                         "all (D25): every regime and start, --per-regime trajectories each")
+    ap.add_argument("--per-regime", type=int, default=1, help="trajectories per (Ra, Pr) regime (design all)")
     ap.add_argument("--max-seconds", type=float, default=6 * 3600, help="wall-time cap per rollout")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--selftest", action="store_true")
@@ -177,7 +185,10 @@ def main() -> int:
         return selftest()
 
     cohort = json.loads(Path(args.cohort).read_text())
-    entries = solver_cohort(cohort, args.per_regime)
+    if args.design == "bounded":
+        entries = solver_cohort(cohort, BOUNDED_PER_REGIME, regimes=BOUNDED_REGIMES, starts=BOUNDED_STARTS)
+    else:
+        entries = solver_cohort(cohort, args.per_regime)
     if args.list:
         for i, e in enumerate(entries):
             print(i, e["id"], e["rayleigh"], e["prandtl"], e["starts"])

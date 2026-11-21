@@ -22,10 +22,16 @@ import torch
 
 from rbbench import METRIC_VERSION
 from rbbench.data import FIELDS, full_trajectory_dataset, list_trajectories, load_trajectory
-from rbbench.evaluate import _physical, physics_status, read_grid
+from rbbench.evaluate import (
+    _physical,
+    high_correlation_time,
+    physics_status,
+    read_grid,
+    rollout_metric_columns,
+)
 from rbbench.manifests import atomic_write_json, now_utc
 from rbbench.metrics import physics
-from rbbench.metrics.well_metric import vrmse
+from rbbench.metrics.well_metric import correlation, vrmse
 from rbbench.solver_grid import FIELDS as SOLVER_FIELDS
 from rbbench.solver_grid import resample
 
@@ -45,17 +51,21 @@ def read_rollout(path: Path, native: tuple[int, int]) -> tuple[np.ndarray, dict]
 
 def score_frames(pred_phys: np.ndarray, true_phys: torch.Tensor, base: dict, t0: int, status: str,
                  ops, kappa: float, delta_b: float, spectra_steps: list[int], lx: float,
-                 spec_acc: dict) -> tuple[list[dict], list[dict]]:
-    """Rollout and physics rows for one rollout, built as `evaluate` builds them (sigma = 0)."""
+                 spec_acc: dict, with_correlation: bool = False) -> tuple[list[dict], list[dict]]:
+    """Rollout and physics rows for one rollout, built as `evaluate` builds them (sigma = 0); the correlation
+    columns only with `with_correlation` (opt-in, D27)."""
     horizon = true_phys.shape[0]
     done = np.isfinite(pred_phys).all(axis=(1, 2, 3))
     fill = np.inf if status == "diverged" else np.nan
     safe = np.where(done[:, None, None, None], pred_phys, 0.0)
     v = vrmse(torch.from_numpy(safe).float(), true_phys).numpy()                  # [H, F]
     v[~done] = fill
+    c = None
+    if with_correlation:
+        c = correlation(torch.from_numpy(safe).float(), true_phys).numpy()        # [H, F]
+        c[~done] = np.nan                                                         # no state: no correlation
     rows = [{**base, "start": t0, "sigma": 0.0, "step": k + 1,
-             **{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, v[k])}, "vrmse_mean": float(v[k].mean())}
-            for k in range(horizon)]
+             **rollout_metric_columns(v[k], None if c is None else c[k])} for k in range(horizon)]
     phys_rows = []
     if ops is None:
         return rows, phys_rows
@@ -97,7 +107,7 @@ def spectra_rows(spec_acc: dict, n_x: int, lx: float) -> list[dict]:
 
 
 def score_resolution(rollout_dir: Path, cfg: dict, dataset_dir: Path, cohort: dict, out_dir: Path,
-                     audit_path: Path | None = None) -> dict:
+                     audit_path: Path | None = None, with_correlation: bool = False) -> dict:
     """Score every rollout file of one solver resolution; returns the summary written to summary_na.json."""
     if SOLVER_FIELDS != tuple(FIELDS):
         raise RuntimeError("solver field order differs from the models'")
@@ -137,7 +147,7 @@ def score_resolution(rollout_dir: Path, cfg: dict, dataset_dir: Path, cohort: di
             pred, attrs = read_rollout(path, native)
             true_phys = traj_phys[t0 + n_in:t0 + n_in + horizon]
             r, p = score_frames(pred, true_phys, base, t0, str(attrs["status"]), ops, kappa, delta_b,
-                                spectra_steps, pcfg["Lx"], spec_acc)
+                                spectra_steps, pcfg["Lx"], spec_acc, with_correlation)
             rows += r
             phys_rows += p
             runs.append({**base, "start": t0, **{k: attrs.get(k) for k in RUN_ATTRS},
@@ -160,6 +170,7 @@ def score_resolution(rollout_dir: Path, cfg: dict, dataset_dir: Path, cohort: di
         "status_counts": run_df.status.value_counts().to_dict(), "all_steps_finite": int(ok.sum()),
         "rollout_vrmse_mean_at": {str(k): float(roll[roll.step == k].vrmse_mean.mean())
                                   for k in ecfg["report_steps"] if k <= horizon},
+        **({"high_correlation_time": hct} if (hct := high_correlation_time(roll)) is not None else {}),
         "seconds_per_rollout": {"median": float(run_df.seconds_per_rollout.median()),
                                 "mean": float(run_df.seconds_per_rollout.mean()),
                                 "max": float(run_df.seconds_per_rollout.max())},
@@ -172,10 +183,10 @@ def score_resolution(rollout_dir: Path, cfg: dict, dataset_dir: Path, cohort: di
 
 
 def score_all(solver_root: Path, cfg: dict, dataset_dir: Path, cohort: dict, output_root: Path,
-              audit_path: Path | None = None) -> dict:
+              audit_path: Path | None = None, with_correlation: bool = False) -> dict:
     out = {}
     for res_dir in sorted(p for p in Path(solver_root).iterdir() if p.is_dir()):
         out[res_dir.name] = score_resolution(res_dir, cfg, dataset_dir, cohort,
                                              output_root / "baselines" / f"solver_{res_dir.name}" / "evaluations",
-                                             audit_path)
+                                             audit_path, with_correlation)
     return out

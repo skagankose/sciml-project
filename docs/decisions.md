@@ -496,3 +496,77 @@ frame 50 on the released checkpoint is ~25% better. `rbbench.aggregate.ONSET_FRA
 carry `one_step_vrmse_mean_{onset,developed}` and `one_step_normalised_vrmse_mean_{onset,developed}`. Frame 50 is
 where the released checkpoints' error by window levels off (`released_one_step_by_frame_valid`, D20), chosen
 before any of our runs was evaluated on test.
+
+**D27 — Correlation and high-correlation time in the rollout evaluation (owner, 2026-11-13).** VRMSE is pointwise:
+a sharp plume in the wrong place is penalised twice (where it is missing and where it appears), so a blurred
+prediction can score better than a sharp, slightly displaced one (the double penalty; Gilleland et al. 2009), and in
+a chaotic flow pointwise error eventually measures the chaos rather than the model (course Lecture 10).
+* *Opt-in (owner, 2026-11-13).* Not part of the default evaluation; the owner decides later whether to report
+  it. `--correlation` on `eval-task`, `eval-baseline` and `eval-solver` (`CORRELATION=1` for
+  `eval_a100.sbatch`); without it the outputs are exactly as before.
+* *What it adds.* Every rollout step also gets the spatial correlation between prediction and truth per field
+  (`corr_<field>`, Pearson's r over the grid points, weighted equally as in VRMSE) and its field mean
+  (`corr_mean`); `rbbench.metrics.well_metric.correlation`. Summaries gain `rollout_corr_mean_at` and
+  `high_correlation_time`: the first step at which the correlation averaged over rollouts falls below 0.8, 0.9
+  or 0.95 (`evaluate.CORRELATION_THRESHOLDS`), for the field mean and buoyancy, over all rollouts and by start
+  frame. The solver scoring (D25) gets the same columns.
+* *Not in the hashed `eval` section.* The thresholds live in code, so the frozen `eval` config and the run hashes
+  are unchanged (D15). Existing metrics are unchanged, so `METRIC_VERSION` stays "1"; evaluations made before
+  2026-11-13 simply lack the new columns.
+* *Re-evaluation.* To add it to finished evaluations: `FORCE=1 CORRELATION=1` for `eval_a100.sbatch` (about
+  4 GPU-hours for the six 10% runs and persistence), only on the owner's go-ahead.
+* *Reading the failure thresholds.* A field held at the target's mean scores VRMSE 1; a field with the target's
+  variance but no correlation scores about sqrt(2) (VRMSE^2 = 2(1 - r) for equal variances), which is where a
+  realistic flow with displaced plumes lands; thresholds 2 and 5 mark a breakdown. Persistence's 30-step VRMSE
+  from developed flow (0.86 / 0.54 from frames 80 / 140) corresponds to r of roughly 0.6–0.85, so over 30 steps
+  the flow has not fully decorrelated.
+
+**D28 — Feedback on the mid-project report (professors, received 2026-11-21).** Answers to the report's five
+questions (Section 6). The work they create is planned in `docs/final_plan.md`. Its design details (WP4, WP6)
+are proposals until the owner confirms them (section 6 there).
+* *Solver baseline (amends D25):* yes, but bounded. Run Dedalus on coarser grids for two or three regimes only,
+  to find the grid at which it matches CNextU-Net's accuracy, and compare the cost. This replaces D25's
+  35-regime cohort.
+* *Physics (D18):* the Nusselt number is the right quantity for Rayleigh–Bénard. Report the time-averaged Nu
+  over the rollout against the true value, per Rayleigh number. No further physical diagnostics are added.
+* *Full-length TFNO:* not run (50–90 GPU-hours for a reference outside the core question). The bug stays a
+  note (D20), and the released CNextU-Net is the full-data reference.
+* *Onset (amends D26):* a cut per trajectory, from the data, replaces frame 50 as the main split, e.g. until the
+  kinetic energy reaches a fixed fraction of its developed-state mean. The fixed cut at frame 50 is reported as
+  a check. The definition is fixed on validation before it is applied to test.
+* *Metric:* physical-field VRMSE is the main metric. The paper protocol is reported only where we compare with
+  the paper, and the mid-project report's Table 9 is the justification.
+
+**D29 — The owner's answers on the final-submission plan (2026-11-21).**
+* The 100% runs (rows 2, 3, 6, 7, 10, 11) run on the paid `gpu` partition with the class account, as the 10%
+  runs did. The owner submits.
+* The 24 h paper replication (`tasks/replication.jsonl`) is dropped.
+* Onset (D28): the per-trajectory definition in `docs/final_plan.md` WP4 is checked on validation first.
+* Solver (D25, D28): the bounded design in WP6 is adopted: Ra 1e6, 1e8 and 1e10 at Pr 1; 5 test trajectories;
+  starts 80 and 140; six grids from 512 × 128 to 64 × 16. A regime's matching grid is the coarsest whose VRMSE is
+  at or below CNextU-Net's at steps 1, 10 and 30.
+* Correlation (D27) is computed wherever it adds no cost: the 100% evaluation (`CORRELATION=1`) and the noise
+  pass. It changes no existing number, `aggregate` does not read it, and it will probably not be reported.
+* Noise robustness (D17) is included, at evaluation time only, in one pass with WP9's seed pairs.
+* Report format is decided later. Until then every result is saved (tables, figures, `docs/report_notes.md`).
+* Uncertainty quantification is added to the study (D30).
+* Node-local copy of the training split (the GPU node's `$TMPDIR` during the job, never the Mac): yes. `sinfo`
+  (owner, 2026-11-21) shows 1.83 TB of local disk on each A100 node (hpc3-gpu-l54-03 to -06, 2 A100s each), so
+  two jobs' copies (~294 GB each) fit. `STAGE_DATA=1` in `train_a100.sbatch` (`rbbench stage-data`); this closes
+  D23's open item for the 100% runs.
+
+**D30 — Uncertainty quantification (owner, 2026-11-21; following course Lecture 17; proposed design, GPU cost
+pending approval).** Full design in `docs/final_plan.md` WP9.
+* *UQ-A, deep ensemble:* CNextU-Net with a variance output (mean and log σ² per field), trained with β-NLL
+  (β = 1). 5 seeds, a dedicated 1 h budget, at 10% and 100% data, plus two MSE 1 h runs at 100% as the point
+  baseline (the 10% ones exist). The total variance splits into aleatoric (the mean predicted variance) and
+  epistemic (the spread of the means). The key question is whether the epistemic part shrinks from 10% to 100%.
+* *UQ-B, all three families, no new training:* the two seeds of each configuration as a 2-member ensemble, and
+  split conformal intervals. These are calibrated on the validation split (exchangeable with test: random
+  whole-trajectory draws, 5 per regime) and checked on test, per field and per rollout step.
+* *Measures:* coverage of the 50% and 90% intervals, spread-skill ratio, CRPS against the MSE point forecast,
+  PIT and rank histograms, and the predicted std against the error (along y, along the rollout, binned).
+  Shifts: a longer rollout, noisy inputs (D17) and Ra = 1e10 held out of the calibration.
+* *Constraints:* the variance head and loss live only in a new experiment config, so the core runs' hashes are
+  unchanged. The hashed `eval` section is untouched (D15). Nothing is tuned on test: β, the ensemble size and
+  the interval levels are fixed in advance, and calibration uses validation only.

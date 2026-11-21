@@ -39,6 +39,25 @@ def vrmse_reference(pred: np.ndarray, true: np.ndarray, eps: float = VRMSE_EPS) 
     return np.sqrt(mse / (var + eps))
 
 
+def correlation(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Per-field correlation over the two spatial axes: [..., X, Y, F] -> [..., F].
+
+    Each field minus its spatial mean, then the normalised inner product (Pearson's r over the grid points, weighted
+    equally as in VRMSE): 1 for a perfect match up to an affine change, near 0 for an unrelated field. NaN where
+    either field is constant. Pointwise errors such as VRMSE penalise a correct structure in the wrong place twice;
+    the correlation and the step at which it falls below a threshold (high-correlation time) are the usual
+    complement for chaotic flows (Kochkov et al. 2021; Lippe et al. 2023)."""
+    if pred.shape != true.shape:
+        raise ValueError(f"shape mismatch {tuple(pred.shape)} vs {tuple(true.shape)}")
+    p = pred.double()
+    t = true.double()
+    p = p - p.mean(dim=(-3, -2), keepdim=True)
+    t = t - t.mean(dim=(-3, -2), keepdim=True)
+    den = torch.sqrt((p * p).sum(dim=(-3, -2)) * (t * t).sum(dim=(-3, -2)))
+    r = (p * t).sum(dim=(-3, -2)) / den
+    return torch.where(den > 0, r, torch.full_like(r, float("nan")))
+
+
 @dataclass
 class MeanAccumulator:
     """Running mean weighted by sample count, so a short last batch is weighted correctly."""

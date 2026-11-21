@@ -39,12 +39,54 @@ from rbbench.data import (
 from rbbench.device import autocast_context, synchronize
 from rbbench.manifests import atomic_write_json, now_utc, read_json, sha256_json
 from rbbench.metrics import physics
-from rbbench.metrics.well_metric import vrmse
+from rbbench.metrics.well_metric import correlation, vrmse
 from rbbench.noise import perturb_window, sigma_key, wall_rows
 from rbbench.paper import PAPER_ROLLOUT_STEPS, paper_rollout_windows
 from rbbench.rollout import rollout
 
 Predictor = Callable[[torch.Tensor], torch.Tensor]
+
+# High-correlation time: the first rollout step at which the correlation between prediction and truth, averaged over
+# rollouts, falls below each threshold (Kochkov et al. 2021; Lippe et al. 2023). Opt-in (`with_correlation`, CLI
+# `--correlation`; owner, 2026-11-13: not part of the default evaluation). Fixed here rather than in the hashed `eval`
+# config section, which is frozen (D15); D27.
+CORRELATION_THRESHOLDS = (0.8, 0.9, 0.95)
+
+
+def rollout_metric_columns(v: np.ndarray, c: np.ndarray | None = None) -> dict:
+    """One rollout step's columns: per-field VRMSE `v` ([F]) and its field mean, plus the per-field correlation `c`
+    and its field mean when the correlation is computed (opt-in)."""
+    cols = {**{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, v)}, "vrmse_mean": float(v.mean())}
+    if c is not None:
+        cols.update({f"corr_{f}": float(a) for f, a in zip(FIELDS, c)})
+        cols["corr_mean"] = float(np.nanmean(c)) if np.isfinite(c).any() else float("nan")
+    return cols
+
+
+def high_correlation_steps(curve: pd.Series, thresholds=CORRELATION_THRESHOLDS) -> dict[str, int | None]:
+    """First step (index of `curve`, a mean correlation by step) below each threshold; None if it never falls below
+    within the horizon."""
+    out = {}
+    for thr in thresholds:
+        below = curve[curve < thr]
+        out[f"{thr:g}"] = int(below.index.min()) if len(below) else None
+    return out
+
+
+def high_correlation_time(roll: pd.DataFrame) -> dict | None:
+    """High-correlation time of the field mean and of buoyancy, over all rollouts and by start frame. None for
+    evaluations made before the correlation was added."""
+    if "corr_mean" not in roll:
+        return None
+    out = {"definition": "first rollout step at which the correlation between prediction and truth, averaged over "
+                         "rollouts, falls below the threshold; null if it stays above through the horizon",
+           "thresholds": list(CORRELATION_THRESHOLDS)}
+    for col, name in (("corr_mean", "field_mean"), ("corr_buoyancy", "buoyancy")):
+        by = {"all": high_correlation_steps(roll.groupby("step")[col].mean())}
+        for t0, g in roll.groupby("start"):
+            by[str(int(t0))] = high_correlation_steps(g.groupby("step")[col].mean())
+        out[name] = by
+    return out
 
 
 # --- cohort -------------------------------------------------------------------------------
@@ -207,8 +249,10 @@ def evaluate(
     audit_path: Path | None = None,
     meta: dict | None = None,
     max_trajectories: int | None = None,
+    with_correlation: bool = False,
 ) -> dict[str, dict]:
-    """Evaluate each labelled predictor on the same data and write per-label outputs."""
+    """Evaluate each labelled predictor on the same data and write per-label outputs. `with_correlation` adds the
+    rollout correlation and high-correlation time (opt-in, D27)."""
     t_pass = time.time()
     check_cohort(cohort)
     ecfg, pcfg = cfg["eval"], cfg["physics"]
@@ -278,13 +322,14 @@ def evaluate(
             for lab, predict in predictors.items():
                 preds = rollout(predict, ctx.to(device), horizon).cpu()  # [S, H, X, Y, F]
                 pred_phys = phys(preds)
-                v = vrmse(pred_phys, true_phys.unsqueeze(0).expand_as(pred_phys)).numpy()  # [S, H, F]
+                truth = true_phys.unsqueeze(0).expand_as(pred_phys)
+                v = vrmse(pred_phys, truth).numpy()  # [S, H, F]
+                c = correlation(pred_phys, truth).numpy() if with_correlation else None  # [S, H, F]
                 for si, s in enumerate(sigmas):
                     for k in range(horizon):
                         rows[lab]["rollout"].append(
                             {**base, "start": t0, "sigma": s, "step": k + 1,
-                             **{f"vrmse_{f}": float(a) for f, a in zip(FIELDS, v[si, k])},
-                             "vrmse_mean": float(v[si, k].mean())}
+                             **rollout_metric_columns(v[si, k], None if c is None else c[si, k])}
                         )
                 if not do_physics:
                     continue
@@ -447,6 +492,12 @@ def summarize(lab, tables, ecfg, sigmas, horizon, latency, cohort, cfg, physics_
             },
             "failure": failures, "meta": meta,
         }
+        hct = high_correlation_time(r)
+        if hct is not None:
+            corr = r.groupby("step")["corr_mean"].mean()
+            entry["rollout_corr_mean_at"] = {str(k): float(corr.loc[k]) for k in ecfg["report_steps"]
+                                             if k in corr.index}
+            entry["high_correlation_time"] = hct
         if s == 0:
             entry["one_step"] = {
                 "vrmse_mean": float(one["vrmse_mean"].mean()),

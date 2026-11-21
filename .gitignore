@@ -20,3 +20,10 @@ __pycache__/
 build/
 dist/
 .DS_Store
+
+# LaTeX by-products (keep the HPC3 tree clean: train-task refuses a dirty tree)
+reports/*.log
+reports/*.aux
+reports/*.out
+reports/*.toc
+reports/*.synctex.gz

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from rbbench.metrics.well_metric import MeanAccumulator, vrmse, vrmse_reference
+from rbbench.metrics.well_metric import MeanAccumulator, correlation, vrmse, vrmse_reference
 
 
 def test_matches_independent_reference():
@@ -40,3 +40,29 @@ def test_sample_weighted_accumulation_no_last_batch_bias():
     assert acc.mean("m") == pytest.approx(4.5)
     batch_mean = np.mean([c.mean().item() for c in values.split(4)])
     assert batch_mean != pytest.approx(4.5)  # the bias the accumulator avoids
+
+
+def test_correlation_matches_numpy_and_known_values():
+    g = torch.Generator().manual_seed(0)
+    true = torch.randn(2, 3, 16, 8, 4, generator=g)
+    pred = true + 0.5 * torch.randn(2, 3, 16, 8, 4, generator=g)
+    r = correlation(pred, true).numpy()
+    assert r.shape == (2, 3, 4)
+    ref = np.corrcoef(pred[1, 2, ..., 3].numpy().ravel(), true[1, 2, ..., 3].numpy().ravel())[0, 1]
+    assert r[1, 2, 3] == pytest.approx(ref, rel=1e-6)
+    np.testing.assert_allclose(correlation(true, true).numpy(), 1.0, rtol=1e-12)
+    np.testing.assert_allclose(correlation(3.0 * true + 2.0, true).numpy(), 1.0, rtol=1e-12)  # affine: still 1
+    np.testing.assert_allclose(correlation(-true, true).numpy(), -1.0, rtol=1e-12)
+    assert np.isnan(correlation(torch.zeros_like(true), true).numpy()).all()  # a constant field has no correlation
+
+
+def test_vrmse_and_correlation_of_a_displaced_structure():
+    """The double penalty: a sharp structure in the wrong place scores VRMSE ~ sqrt(2) (correlation ~ 0), worse than
+    predicting the mean (VRMSE 1), which is why the failure thresholds are read as 1 = the mean, ~1.41 = displaced."""
+    x = torch.arange(64.0)
+    blob = lambda c: torch.exp(-((x[:, None] - c) ** 2 + (x[None, :] - 32) ** 2) / 8.0)
+    true = blob(16.0)[None, :, :, None]
+    displaced = blob(48.0)[None, :, :, None]
+    assert vrmse(displaced, true).item() == pytest.approx(np.sqrt(2), rel=0.02)
+    assert abs(correlation(displaced, true).item()) < 0.05
+    assert vrmse(torch.full_like(true, true.mean().item()), true).item() == pytest.approx(1.0, rel=0.02)

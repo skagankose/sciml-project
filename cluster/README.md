@@ -255,6 +255,18 @@ sbatch --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch
 sbatch -p gpu -A eecs195221_class_gpu --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch  # paid
 ```
 
+Correlation and high-correlation time (D27) are opt-in, not part of the default evaluation (owner, 2026-11-13):
+`CORRELATION=1` (CLI `--correlation`) adds `corr_<field>` and `corr_mean` to the rollout tables and
+`rollout_corr_mean_at` and `high_correlation_time` to the summaries. To add them to finished evaluations,
+re-evaluate with `FORCE=1 CORRELATION=1` (it overwrites the earlier outputs, including the pass's wall time that
+`tables/gpu_hours.csv` reads; `sacct` keeps the billed record). For the six 10% runs and persistence, about
+4 GPU-hours in all, only if the owner decides to report them:
+
+```bash
+sbatch --array=0,1,4,5,8,9%2 --export=ALL,FORCE=1,CORRELATION=1 cluster/slurm/eval_a100.sbatch
+sbatch --array=0 --export=ALL,BASELINE=1,CORRELATION=1 cluster/slurm/eval_a100.sbatch   # persistence re-evaluates
+```
+
 `eval-task` evaluates every milestone of a run (1 h and 4 h) in one pass, including the paper's protocol
 (normalised one-step VRMSE and the rollout from frame 0; D15, D20). The core evaluation is clean only
 (`eval.noise_sigmas: [0.0]`). `tables/gpu_hours.csv` sums the measured training attempts and evaluation passes
@@ -263,15 +275,16 @@ per run and in total (decisions D22); compare its TOTAL row with `sacct` for the
 Keep the checkpoints on HPC3 until the figures are final. Copy anything irreplaceable to CRSP or the Mac,
 because `/pub` is not backed up.
 
-## 7. Numerical-solver baseline (Dedalus; CPU, free partition, no SUs; D25)
+## 7. Numerical-solver baseline (Dedalus; CPU, free partition, no SUs; D25, bounded by D29)
 
 ```bash
 # once: the rb-dedalus env, ending with the solver self-test ("passed": true)
 sbatch cluster/slurm/setup_dedalus_cpu.sbatch
-# rollouts: 35 regimes x starts 20/80/140, one core per task; resubmit to resume after preemption
-sbatch --array=0-34 cluster/slurm/solver_cpu.sbatch                          # 512x128, the data's resolution
-sbatch --array=0-34 --export=ALL,RES=256x64 cluster/slurm/solver_cpu.sbatch
-sbatch --array=0-34 --export=ALL,RES=128x32 cluster/slurm/solver_cpu.sbatch
+# rollouts, bounded design (D29): Ra 1e6/1e8/1e10 at Pr 1, 5 trajectories each (tasks 0-14), starts 80 and 140,
+# six grids; one core per task; resubmit to resume after preemption
+for RES in 512x128 384x96 256x64 192x48 128x32 64x16; do
+    sbatch --array=0-14 --export=ALL,RES=$RES cluster/slurm/solver_cpu.sbatch
+done
 # score with the models' metrics (well-rb env); rerun after more rollouts finish
 sbatch cluster/slurm/solver_score_cpu.sbatch
 ```
@@ -299,3 +312,27 @@ sbatch -p gpu -A eecs195221_class_gpu --array=0-5 --time=05:00:00 --export=ALL,M
 # after they finish:
 sbatch -p gpu -A eecs195221_class_gpu --array=0-5 --time=02:00:00 --export=ALL,MANIFEST=tasks/train_1h.jsonl cluster/slurm/eval_a100.sbatch
 ```
+
+## 10. Final submission, push 1 (docs/final_plan.md; owner, 2026-11-21)
+
+Nothing else may be pushed while these arrays are queued; push 2 (the uncertainty code, WP9) waits until the
+100% training array has left the queue.
+
+```bash
+mkdir -p logs
+# WP2: the six 100% runs on the paid partition. STAGE_DATA=1 copies the training split (~294 GB) to the node's
+# local disk first (A100 nodes: 1.83 TB) and deletes it at the end; if the copy fails, training reads /pub.
+# A crash (e.g. a /pub error) restarts the run inside the allocation (cluster/run_with_restarts.sh).
+sbatch -p gpu -A eecs195221_class_gpu --array=2,3,6,7,10,11 --time=20:00:00 --tmp=400G \
+    --export=ALL,STAGE_DATA=1 cluster/slurm/train_a100.sbatch
+# WP4: onset frame per validation and test trajectory (free CPU, ~18 GB read per split)
+sbatch cluster/slurm/onset_cpu.sbatch
+# WP6: Dedalus env and self-test, then the bounded rollouts (section 7)
+sbatch cluster/slurm/setup_dedalus_cpu.sbatch
+```
+
+Check the first log of each 100% task: the staging line (GB copied, GB/s; `rbbench_stage.json` in the staged
+directory) and the data-wait share in `train_metrics.csv` (the open D23 check for 100%). After the training
+and push 2 (never while jobs are queued), WP3:
+`sbatch -p gpu -A eecs195221_class_gpu --array=2,3,6,7,10,11 --export=ALL,CORRELATION=1 cluster/slurm/eval_a100.sbatch`
+(WP3; correlation is on where it costs nothing, D29).

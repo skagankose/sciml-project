@@ -18,7 +18,13 @@ from scipy import fft as sfft
 
 FIELDS = ("buoyancy", "pressure", "velocity_x", "velocity_y")  # == rbbench.data.FIELDS (tests/test_solver.py)
 NATIVE = (512, 128)
-RESOLUTIONS = {"512x128": (512, 128), "256x64": (256, 64), "128x32": (128, 32)}
+# The data's grid and five coarsenings, so that the grid at which the solver matches a model falls between two
+# neighbours (bounded design, D29: Ra 1e6 / 1e8 / 1e10 at Pr 1, 5 test trajectories, starts 80 and 140).
+RESOLUTIONS = {"512x128": (512, 128), "384x96": (384, 96), "256x64": (256, 64), "192x48": (192, 48),
+               "128x32": (128, 32), "64x16": (64, 16)}
+BOUNDED_REGIMES = ((1e6, 1.0), (1e8, 1.0), (1e10, 1.0))
+BOUNDED_STARTS = (80, 140)
+BOUNDED_PER_REGIME = 5
 LX, LY = 4.0, 1.0
 
 
@@ -104,15 +110,35 @@ def rollout_frames(start: int, n_in: int, horizon: int) -> tuple[int, list[int]]
     return init, list(range(start + n_in, start + n_in + horizon))
 
 
-def solver_cohort(cohort: dict, per_regime: int = 1) -> list[dict]:
-    """The first `per_regime` trajectories of each (Ra, Pr) regime in the frozen cohort, in cohort order."""
+def solver_cohort(cohort: dict, per_regime: int = 1, regimes=None, starts=None) -> list[dict]:
+    """The first `per_regime` trajectories of each (Ra, Pr) regime in the frozen cohort, in cohort order.
+
+    `regimes` keeps only those (Ra, Pr) pairs, and `starts` only those start frames (each must be one of the
+    cohort's starts). Without them every regime and start is kept (the original 35-regime design, D25).
+    """
+    def same(a: float, b: float) -> bool:
+        return abs(a - b) <= 1e-9 * max(abs(a), abs(b))
+
+    if starts is not None:
+        missing = sorted(set(starts) - set(cohort["starts"]))
+        if missing:
+            raise ValueError(f"starts {missing} are not in the cohort's {cohort['starts']}")
     seen: dict[tuple, int] = {}
     out = []
     for entry in cohort["trajectories"]:
         key = (entry["rayleigh"], entry["prandtl"])
+        if regimes is not None and not any(same(key[0], ra) and same(key[1], pr) for ra, pr in regimes):
+            continue
         if seen.get(key, 0) < per_regime:
             seen[key] = seen.get(key, 0) + 1
+            if starts is not None:
+                entry = {**entry, "starts": [s for s in entry["starts"] if s in set(starts)]}
             out.append(entry)
+    if regimes is not None:
+        found = {(e["rayleigh"], e["prandtl"]) for e in out}
+        absent = [r for r in regimes if not any(same(r[0], f[0]) and same(r[1], f[1]) for f in found)]
+        if absent:
+            raise ValueError(f"regimes {absent} are not in the cohort")
     return out
 
 

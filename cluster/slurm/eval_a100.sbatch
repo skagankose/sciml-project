@@ -21,12 +21,24 @@ AUDIT=${AUDIT:-outputs/audit/dataset_audit.json}
 
 echo "host $(hostname)  job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}  commit $(git rev-parse HEAD)"
 python -m rbbench check-gpu --require A100 > /dev/null
+# CORRELATION=1 also computes the rollout correlation and high-correlation time (opt-in, D27; off by default).
+EXTRA=()
+if [ -n "${CORRELATION:-}" ]; then
+    EXTRA=(--correlation)
+fi
 if [ -n "${RELEASED:-}" ]; then
     exec python -m rbbench eval-baseline --released "$RELEASED" --device cuda --cohort tasks/eval_cohort.json \
-        --audit "$AUDIT"
+        --audit "$AUDIT" ${EXTRA[@]+"${EXTRA[@]}"}
 fi
 if [ -n "${BASELINE:-}" ]; then
-    exec python -m rbbench eval-baseline --device cuda --cohort tasks/eval_cohort.json --audit "$AUDIT"
+    exec python -m rbbench eval-baseline --device cuda --cohort tasks/eval_cohort.json --audit "$AUDIT" \
+        ${EXTRA[@]+"${EXTRA[@]}"}
+fi
+# FORCE=1 re-evaluates finished evaluations (e.g. with CORRELATION=1 to add the correlation); it overwrites them.
+SKIP=(--skip-if-complete)
+if [ -n "${FORCE:-}" ]; then
+    SKIP=()
 fi
 exec python -m rbbench eval-task --manifest "$MANIFEST" --task-index "$SLURM_ARRAY_TASK_ID" \
-    --device cuda --cohort "${COHORT:-tasks/eval_cohort.json}" --audit "$AUDIT" --skip-if-complete
+    --device cuda --cohort "${COHORT:-tasks/eval_cohort.json}" --audit "$AUDIT" ${SKIP[@]+"${SKIP[@]}"} \
+    ${EXTRA[@]+"${EXTRA[@]}"}

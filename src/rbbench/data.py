@@ -11,6 +11,8 @@ HDF5 parsing and z-score normalization are upstream's; this module only selects 
 from __future__ import annotations
 
 import os
+import sys
+import time
 from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -120,6 +122,17 @@ def list_trajectories(dataset_dir: Path, split: str) -> list[TrajectoryRef]:
 
 H5_CHUNK_CACHE_BYTES = 64 * 1024 * 1024
 
+# Storage-error retries in PersistentWellDataset (runtime settings: they never change a sample or a run's hash).
+# Default 8 retries at 10, 20, 40, 80, 160, 300, 300, 300 s: about 20 min, the longest /pub stall seen.
+READ_RETRIES_ENV = "RBBENCH_READ_RETRIES"
+READ_RETRY_SECONDS_ENV = "RBBENCH_READ_RETRY_SECONDS"
+READ_RETRY_MAX_SECONDS = 300.0
+
+
+def read_retry_policy() -> tuple[int, float]:
+    """(retries after the first attempt, first back-off in seconds), from the environment."""
+    return int(os.environ.get(READ_RETRIES_ENV, 8)), float(os.environ.get(READ_RETRY_SECONDS_ENV, 10.0))
+
 
 def loader_settings(cfg: dict) -> dict:
     """DataLoader keyword arguments from `cfg["runtime"]`; RBBENCH_NUM_WORKERS overrides the worker count."""
@@ -165,7 +178,36 @@ def _persistent_well_dataset_class():
             state.pop("_h5_pid", None)
             return state
 
-        def _load_one_sample(self, index):  # upstream body; only the file opening differs
+        def _drop_handles(self):
+            for handle in getattr(self, "_h5_handles", {}).values():
+                try:
+                    handle.close()
+                except Exception:  # a handle broken by the storage error may not close cleanly
+                    pass
+            self._h5_handles = {}
+
+        def _load_one_sample(self, index):
+            """Read one sample; on a storage error (OSError) reopen the files and retry with back-off.
+
+            `/pub` stalls for 5-22 min and once failed reads outright (`Errno 70`), which killed whole runs
+            (D23, D24). Waiting does not count against the budget (the clock counts GPU training time), and the
+            retried read returns the same sample: the window index fixes it, and with min_dt_stride ==
+            max_dt_stride (always here) no random number is drawn. After the last retry the error propagates.
+            """
+            retries, base = read_retry_policy()
+            for attempt in range(retries + 1):
+                try:
+                    return self._load_one_sample_once(index)
+                except OSError as err:
+                    if attempt == retries:
+                        raise
+                    self._drop_handles()
+                    wait = min(base * 2 ** attempt, READ_RETRY_MAX_SECONDS)
+                    print(f"[rbbench] read error on sample {index} ({err}); retry {attempt + 1}/{retries} "
+                          f"in {wait:.0f} s", file=sys.stderr, flush=True)
+                    time.sleep(wait)
+
+        def _load_one_sample_once(self, index):  # upstream body; only the file opening differs
             if self.restriction_set is not None:
                 index = self.restriction_set[index]
             file_idx = int(np.searchsorted(self.file_index_offsets, index, side="right") - 1)

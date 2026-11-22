@@ -768,3 +768,43 @@ its evaluation is pulled.
 * 2026-11-12 (owner): the mid-project report names the solver as a planned baseline (Setup, "Method and
   baselines"; Revised Plan) with the emphasis on the coarse grids, since at 512 x 128 it only measures the data's
   reproducibility limit. Still run after the 100% runs.
+
+## 9. Onset per trajectory (D28, D29; final_plan WP4)
+
+* Data: `rbbench onset-frames` (job 59905411, free CPU, commit e69e7e9). KE(t) of every validation and test
+  trajectory is in `outputs/onset/ke_{valid,test}.csv`, and the crossing frames in `onset_{valid,test}.json`.
+  No trajectory lacks a crossing.
+* Proposed definition, fraction 0.5 of the developed mean (frames 150–199). t_on ranges 47–95, median 67, on both
+  splits. The medians by Ra are flat (63–72).
+* Check on validation, with the released CNextU-Net's per-window one-step errors (physical, from the pipeline
+  check; no test data and no model of ours):
+  * The released model's error is already at the developed level about 20 frames before t_on(0.5). Median VRMSE
+    is 0.055 at 20 frames before, 0.033 at 10 before, 0.030 at t_on, 0.021 from 40 frames after.
+  * Median VRMSE by the target frame's KE relative to the developed mean:
+    * below 1e-4: 1.34;
+    * 1e-4 to 1e-3: 0.22;
+    * 1e-3 to 0.01: 0.10;
+    * 0.01–0.03: 0.054;
+    * 0.03–0.1: 0.039;
+    * 0.1–0.2: 0.036;
+    * 0.3 and above: 0.016–0.028.
+  * The inflation is velocity only (u: 2.50 below 1e-4). Buoyancy is 0.007–0.009 in the nearly still phase,
+    lower than in developed flow.
+  * So the inflated phase is the nearly still fluid, KE below ~1–3% of the developed mean. 50% falls in the growth
+    of convection, where the flow already has structure.
+  * A small fraction also shows the expected physics: onset ends later at low Rayleigh numbers. Median t_on by
+    fraction:
+    * 0.03: 46 (Ra 1e6: 56, 1e10: 42);
+    * 0.05: 49 (57 / 44);
+    * 0.1: 52 (59 / 49);
+    * 0.2: 57 (62 / 55).
+  * At 0.5 the medians are flat (63–72).
+* Splitting the released model's validation windows (onset mean / developed mean / onset share of windows / onset
+  share of the all-window sum):
+  * fixed 50: 0.807 / 0.038 / 25.5% / 87.8%;
+  * t_on(0.25): 0.700 / 0.038 / 29.7% / 88.6%;
+  * t_on(0.5): 0.620 / 0.037 / 33.8% / 89.6%;
+  * t_on(0.75): 0.500 / 0.035 / 42.8% / 91.4%.
+* Decision pending (owner): keep 0.5 as proposed, or a smaller fraction (recommended 0.1) that matches the nearly
+  still phase. Either way frame 50 stays as the check. Onset frames for any fraction come from the stored KE
+  series on the Mac, with no new job.

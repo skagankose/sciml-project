@@ -541,7 +541,9 @@ are proposals until the owner confirms them (section 6 there).
 * The 100% runs (rows 2, 3, 6, 7, 10, 11) run on the paid `gpu` partition with the class account, as the 10%
   runs did. The owner submits.
 * The 24 h paper replication (`tasks/replication.jsonl`) is dropped.
-* Onset (D28): the per-trajectory definition in `docs/final_plan.md` WP4 is checked on validation first.
+* Onset (D28): the per-trajectory definition in `docs/final_plan.md` WP4 is checked on validation first. Check
+  done 2026-11-21 (`docs/report_notes.md` section 9). The error inflation ends at KE ~1–3% of the developed mean,
+  well before 50%. Fraction pending the owner: 0.5 as proposed, or 0.1 (recommended).
 * Solver (D25, D28): the bounded design in WP6 is adopted: Ra 1e6, 1e8 and 1e10 at Pr 1; 5 test trajectories;
   starts 80 and 140; six grids from 512 × 128 to 64 × 16. A regime's matching grid is the coarsest whose VRMSE is
   at or below CNextU-Net's at steps 1, 10 and 30.

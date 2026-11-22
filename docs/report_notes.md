@@ -186,6 +186,10 @@ Done before the 10% runs, and the 10% runs confirmed the predictions.
     `train-task` refused to start; the wrapper retried twice and gave up. About 15 min each (copy plus three
     starts), ~50 SU in all, no training lost. Fix: the snapshot is committed. Lesson: no setup job that writes
     into the repository while training tasks can still start.
+* Resubmission (array 59907862, rows 3, 6, 7, 10, 11, commit 9e56e06): row 3 (CNextU-Net 100% s1) started on
+  hpc3-gpu-l54-03 at 18:10 PST. Its copy took 7.8 min (0.63 GB/s). At 19:20 it had trained 3,000 steps in 3,566 s of GPU
+  time (1.19 s per step, as at 10%) and waited for data 4.3 s; wall 3,745 s. Rows 6, 7, 10 and 11 had not started
+  (no log) at 19:20.
 
 ### Learning-rate search (2026-11-08 to 11-09)
 
@@ -682,6 +686,8 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-09 | free-gpu preemptions | 10% tasks 0, 1 and 4 cancelled (not requeued) | resubmit the indices; state was saved |
 | 11-09 | free-gpu A100s planned for higher-priority jobs (`ReqNodeNotAvail`) | jobs waited for hours | moved to the paid `gpu` partition |
 | 11-09 | pipeline check hit its 2 h limit; Python buffered stdout | test split not scored, log empty | 4 h limit, `PYTHONUNBUFFERED=1` |
+| 11-21 | Dedalus setup job wrote `env/hpc3-dedalus-conda.yml` into the tree while 100% tasks were starting | 5 tasks refused a dirty tree (~50 SU) | snapshot committed; no repo-writing setup job while training can start |
+| 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; resubmit the indices |
 
 ## 6. Figures for the report
 
@@ -768,6 +774,26 @@ its evaluation is pulled.
 * 2026-11-12 (owner): the mid-project report names the solver as a planned baseline (Setup, "Method and
   baselines"; Revised Plan) with the emphasis on the coarse grids, since at 512 x 128 it only measures the data's
   reproducibility limit. Still run after the 100% runs.
+* Bounded design (D28, D29): Ra 1e6 / 1e8 / 1e10 at Pr 1, 5 test trajectories each (tasks 5-9 / 10-14 / 0-4), starts
+  80 and 140, six grids; 30 rollouts per grid. Env and self-test passed (job 59905412).
+* First runs (arrays 59907918-23, free partition, one core each, commit 9e56e06, 2026-11-21 17:59-18:52 PST).
+  Stepping time per 30-frame rollout, median over the rollouts that finished (build time 1-11 s on top):
+
+  | Grid | Ra 1e6 | Ra 1e8 | Ra 1e10 | Finished / diverged / MPI failure (of 30) |
+  |---|---|---|---|---|
+  | 512 x 128 | 290 s | 492 s | 1,267 s | 30 / 0 / 0 |
+  | 384 x 96 | 149 s | 270 s | 528 s | 30 / 0 / 0 |
+  | 256 x 64 | 60 s | 111 s | 175 s | 30 / 0 / 0 |
+  | 192 x 48 | - | 61 s | 63 s | 6 / 0 / 24 (tasks 1-12) |
+  | 128 x 32 | 13.5 s | 19.7 s | 26.8 s | 30 / 0 / 0 |
+  | 64 x 16 | 3.9 s | 4.6 s | 6.5 s | 21 / 3 / 6 (tasks 7-9) |
+
+  * At 64 x 16 three of ten Ra = 1e10 rollouts diverged (task 0 both starts, task 1 from frame 80) after 28-29
+    of 30 outputs: the CFL time step collapsed to ~1e-17 and the fields overflowed. The missing frames are scored
+    as VRMSE inf (`solver_eval.score_frames`). The coarsest grid cannot hold Ra = 1e10.
+  * Cost grows steeply with Ra at fine grids (512 x 128: 4.4x from Ra 1e6 to 1e10, through the CFL step).
+  * The MPI failures are a node problem, not the solver: see the incident table (section 5). Resubmitted with
+    `UCX_TLS=self,sm,tcp`. Accuracy (scoring, grid matching with CNextU-Net) waits for the full set.
 
 ## 9. Onset per trajectory (D28, D29; final_plan WP4)
 

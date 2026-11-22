@@ -643,3 +643,12 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     are the run ids).
   * Onset on validation (fraction 0.5): frames 47–95, median 67, in every trajectory. The Ra dependence is weak
     (medians 63–72).
+* 2026-11-21 (night): status check from the Mac (logs and run folders through `hpc3-xfer`, 19:20 PST).
+  * 100% array 59907862: row 3 (CNextU-Net s1) trains on hpc3-gpu-l54-03 from the local copy (7.8 min). At 1 h:
+    3,000 steps, 4.3 s of data waits. Rows 6, 7, 10 and 11 have not started. The UQ evaluation, the UQ training
+    and the row-2 evaluation have no logs or outputs yet.
+  * Solver (arrays 59907918-23, free): 75 of 90 tasks finished. All 30 rollouts finished at 512 x 128, 384 x 96,
+    256 x 64 and 128 x 32. At 64 x 16, 3 Ra = 1e10 rollouts diverged; that is a result, not a failure. 15 tasks
+    (192 x 48 tasks 1-12, 64 x 16 tasks 7-9) failed in `MPI_Init` on free nodes with a qedr RoCE card.
+    `solver_cpu.sbatch` now sets `UCX_TLS=self,sm,tcp` (committed, not pushed). Resubmit with the variable set
+    at submission. Cost per grid is in `docs/report_notes.md` section 8.

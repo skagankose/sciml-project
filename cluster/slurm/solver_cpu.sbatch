@@ -18,5 +18,8 @@ set -eo pipefail
 cd "$SLURM_SUBMIT_DIR"
 ENV_NAME=rb-dedalus source cluster/env.sh
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_MAX_THREADS=1
+# One MPI rank on one node: keep UCX (under conda-forge MPICH) off the network cards. On the free nodes with a qedr
+# RoCE card (hpc3-14-*, hpc3-15-*) MPI_Init otherwise fails in uct_iface_open(rc_verbs/qedr0) (2026-11-21).
+export UCX_TLS=${UCX_TLS:-self,sm,tcp}
 echo "host $(hostname)  job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}  commit $(git rev-parse HEAD)  res ${RES:-512x128}  design ${DESIGN:-bounded}"
 python scripts/solver_rollouts.py --resolution "${RES:-512x128}" --design "${DESIGN:-bounded}"

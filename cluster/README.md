@@ -289,6 +289,11 @@ done
 sbatch cluster/slurm/solver_score_cpu.sbatch
 ```
 
+A task whose log ends in `MPI_Init_thread ... ucx function returned with failed status` landed on a node with a
+qedr RoCE card (hpc3-14-*, hpc3-15-*, 2026-11-21). `solver_cpu.sbatch` now sets `UCX_TLS=self,sm,tcp`. On a tree
+older than that fix, set it at submission: `UCX_TLS=self,sm,tcp sbatch --array=<failed> --export=ALL,RES=... ...`
+(`--export=ALL` passes it on; it cannot go inside `--export=`, whose commas separate variables).
+
 On the Mac: `cluster/pull.sh` brings the scored tables (`outputs/baselines/solver_<res>/`); the raw rollouts
 (`outputs/solver/`, ~2.5 GB at 512 x 128 and nearly copies of the test data) stay on HPC3. Then
 `scripts/findings.py` draws `solver_vs_models_rollout_4h_test` and `solver_cost_accuracy_4h_test`.

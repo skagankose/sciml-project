@@ -691,4 +691,12 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     a dry run finds nothing to change. It carries the onset 0.1 work, the class-only Slurm defaults and the packed
     solver script. To submit: row 10, the persistence UQ evaluation, solver grids 3 and 5, and the evaluations
     of rows 3, 6, 7 and 11. No push until they have started.
+* 2026-11-22 (10:40 PST): the owner submitted push 620fd64's jobs.
+  * Row 10 (59920838) is pending, expected to start 17:49 PST.
+  * The persistence UQ evaluation (59920839) and the evaluations of rows 3, 6, 7 and 11 (59920842) are pending,
+    expected ~06:00 PST on 11-23.
+  * The solver rerun (59920840, grids 192 x 48 and 64 x 16, class partition) finished in 4 min. All 90 bounded
+    rollouts are done: 87 finished, 3 diverged at 64 x 16. Timings vary up to ~1.4x with the CPU and the number of
+    rollouts side by side (`docs/report_notes.md` section 8).
+  * Next: `solver_score_cpu.sbatch`. No push while row 10 is queued.
 

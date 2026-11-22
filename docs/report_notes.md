@@ -788,9 +788,11 @@ its evaluation is pulled.
   | 512 x 128 | 290 s | 492 s | 1,267 s | 30 / 0 / 0 |
   | 384 x 96 | 149 s | 270 s | 528 s | 30 / 0 / 0 |
   | 256 x 64 | 60 s | 111 s | 175 s | 30 / 0 / 0 |
-  | 192 x 48 | - | 61 s | 63 s | 6 / 0 / 24 (tasks 1-12) |
+  | 192 x 48 | 35.6 s* | 56.8 s* (61 s) | 89.7 s* (63 s) | 30 / 0 / 0 (24 in the rerun) |
   | 128 x 32 | 13.5 s | 19.7 s | 26.8 s | 30 / 0 / 0 |
-  | 64 x 16 | 3.9 s | 4.6 s | 6.5 s | 21 / 3 / 6 (tasks 7-9) |
+  | 64 x 16 | 3.9 s (2.7 s*) | 4.6 s | 6.5 s | 27 / 3 / 0 (6 in the rerun) |
+
+  \* class-partition rerun (2026-11-22, below); in brackets, the first runs' value where both exist.
 
   * At 64 x 16 three of ten Ra = 1e10 rollouts diverged (task 0 both starts, task 1 from frame 80) after 28-29
     of 30 outputs: the CFL time step collapsed to ~1e-17 and the fields overflowed. The missing frames are scored
@@ -799,6 +801,18 @@ its evaluation is pulled.
   * The MPI failures are a node problem, not the solver: see the incident table (section 5). They rerun on the
     class partition (D31) with `UCX_TLS=self,sm,tcp`. Accuracy (scoring, grid matching with CNextU-Net) waits for
     the full set. The timings above come from mixed free-partition CPUs; each rollout file records its CPU model.
+* Rerun of the 15 MPI failures (job 59920840, class `gpu` partition, `solver_cpu.sbatch` packed 8 side by side,
+  commit 620fd64, 2026-11-22 10:27-10:31 PST): all 30 rollouts finished. Finished rollouts, the 3 divergences
+  included, were skipped. **All 90 rollouts of the bounded design are done: 87 finished, 3 diverged (64 x 16,
+  Ra = 1e10).**
+  * 192 x 48 ran on hpc3-gpu-18-02 (Xeon Gold 6148, 2.4 GHz) in 3.8 min; 64 x 16 on hpc3-gpu-l54-09 (Xeon Gold
+    6326, 2.9 GHz) in 0.2 min. About 5 SU for the two jobs (a GPU held idle in each).
+  * The timings depend on the CPU and on how many rollouts share a node. Ra = 1e10 at 192 x 48 took 78-102 s
+    eight side by side on the Gold 6148, against 63 s alone on a free node. Ra = 1e6 at 64 x 16 took 2.7 s on
+    the Gold 6326, against 3.9 s. Up to ~1.4x either way, so report solver cost per grid with that spread. Each
+    rollout records its CPU and `concurrent_rollouts`. The owner declined a uniform timing rerun (2026-11-21).
+  * Next: score with `sbatch cluster/slurm/solver_score_cpu.sbatch` (writes `outputs/baselines/solver_<res>/`),
+    then match grids against CNextU-Net (WP6).
 
 ## 9. Onset per trajectory (D28, D29; final_plan WP4)
 

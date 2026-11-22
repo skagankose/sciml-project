@@ -2,6 +2,7 @@
 
 import csv
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -10,7 +11,19 @@ from rbbench.config import load_config
 from rbbench.data import list_trajectories
 from rbbench.evaluate import read_grid
 from rbbench.metrics import physics
-from rbbench.onset import developed_start, is_onset_window, kinetic_energy_series, onset_frame
+import pytest
+
+from rbbench.onset import (
+    FRACTIONS,
+    PRIMARY_FRACTION,
+    developed_start,
+    is_onset_window,
+    kinetic_energy_series,
+    load_onset_frames,
+    onset_frame,
+)
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def test_developed_window_is_the_last_quarter():
@@ -50,11 +63,45 @@ def test_onset_frames_command(dataset_dir, tmp_path, capsys):
         refs = list_trajectories(dataset_dir, split)
         # the same ids as the evaluation's per-window parquet (traj_id), so the cut can be joined on them
         assert [r["traj_id"] for r in table["trajectories"]] == [r.id for r in refs]
-        assert table["definition"]["primary_fraction"] == 0.5
+        assert table["definition"]["primary_fraction"] == PRIMARY_FRACTION == 0.1
         with (out / f"ke_{split}.csv").open() as fh:
             rows = list(csv.DictReader(fh))
         for row in table["trajectories"]:
             ke = np.array([float(r["ke"]) for r in rows if r["traj_id"] == row["traj_id"]])
             assert ke.size == row["n_frames"]
             assert row["onset_frame"]["0.5"] == onset_frame(ke, 0.5)
+            assert row["onset_frame"]["0.1"] == onset_frame(ke, 0.1)
     assert "by_rayleigh" in capsys.readouterr().out
+    # recomputed from the stored KE series alone (no data): the same rows, and only the tables are written
+    again = tmp_path / "again"
+    assert main(["onset-frames", "--from-ke", str(out), "--splits", "valid", "test", "--out-dir", str(again)]) == 0
+    for split in ("valid", "test"):
+        rows_again = json.loads((again / f"onset_{split}.json").read_text())["trajectories"]
+        rows = json.loads((out / f"onset_{split}.json").read_text())["trajectories"]
+        assert [r["onset_frame"] for r in rows_again] == [r["onset_frame"] for r in rows]
+        for a, b in zip(rows_again, rows):  # the CSV keeps 9 significant digits
+            assert a["ke_developed"] == pytest.approx(b["ke_developed"], rel=1e-8)
+        assert not (again / f"ke_{split}.csv").exists()
+
+
+def test_frozen_onset_tables_cover_the_cohort():
+    """tasks/onset_<split>.json (D29: fraction 0.1, fixed on validation) cover every trajectory the evaluation uses."""
+    cohort = json.loads((REPO / "tasks" / "eval_cohort.json").read_text())
+    for split, n in (("valid", 175), ("test", 175)):
+        table = json.loads((REPO / "tasks" / f"onset_{split}.json").read_text())
+        assert table["definition"]["primary_fraction"] == 0.1 and table["n_trajectories"] == n
+        assert all(set(r["onset_frame"]) == {str(f) for f in FRACTIONS} for r in table["trajectories"])
+        frames = load_onset_frames(REPO / "tasks" / f"onset_{split}.json")
+        assert None not in frames.values()
+    test = load_onset_frames(REPO / "tasks" / "onset_test.json")
+    assert {e["id"] for e in cohort["trajectories"]} <= set(test)
+    # every rollout start of the cohort falls clearly on one side: 20 in onset, 80 and 140 in developed flow
+    assert all(20 < test[e["id"]] <= 80 for e in cohort["trajectories"])
+
+
+def test_load_onset_frames_needs_the_fraction(tmp_path):
+    path = tmp_path / "onset_test.json"
+    path.write_text(json.dumps({"trajectories": [{"traj_id": "a", "onset_frame": {"0.5": 60}}]}))
+    assert load_onset_frames(path, 0.5) == {"a": 60}
+    with pytest.raises(KeyError):
+        load_onset_frames(path, 0.1)

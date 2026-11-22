@@ -502,8 +502,12 @@ def cmd_profile(args):
 def cmd_aggregate(args):
     from rbbench.aggregate import aggregate
 
+    from rbbench.aggregate import ONSET_TABLE
+
+    onset = None if args.onset_table == "none" else Path(args.onset_table or ONSET_TABLE)
     out = aggregate(Path(args.tasks), _output_root(args), Path(args.tables), Path(args.figures), args.labels,
-                    baseline_dir=_output_root(args) / "baselines" / "persistence" / "evaluations")
+                    baseline_dir=_output_root(args) / "baselines" / "persistence" / "evaluations",
+                    onset_table=onset)
     print(json.dumps({k: v for k, v in out.items() if k != "figures"}, indent=2))
     print(f"{len(out['figures'])} figure files")
 
@@ -729,16 +733,24 @@ def cmd_stage_data(args):
 
 
 def cmd_onset_frames(args):
-    """Onset frame of every trajectory from its true kinetic energy (rbbench.onset; D28, WP4)."""
+    """Onset frame of every trajectory from its true kinetic energy (rbbench.onset; D28, WP4).
+
+    With --from-ke DIR the tables are recomputed from DIR/onset_<split>.json and DIR/ke_<split>.csv (the HPC3
+    job's output) with the current fractions, without reading the data; only the tables are written then.
+    """
     from rbbench.config import load_config
-    from rbbench.onset import onset_table, summarize, write_onset
+    from rbbench.onset import onset_table, recompute_table, summarize, write_onset
 
     cfg = load_config("cnext_unet", args.experiment)
     out_dir = Path(args.out_dir) if args.out_dir else _output_root(args) / "onset"
     for split in args.splits:
-        rows, series = onset_table(_dataset_dir(args), split, cfg["physics"])
+        if args.from_ke:
+            src = Path(args.from_ke)
+            rows, series = recompute_table(src / f"onset_{split}.json", src / f"ke_{split}.csv"), None
+        else:
+            rows, series = onset_table(_dataset_dir(args), split, cfg["physics"])
         table, ke_csv = write_onset(out_dir, split, rows, series)
-        print(f"{split}: {len(rows)} trajectories -> {table}, {ke_csv}")
+        print(f"{split}: {len(rows)} trajectories -> {table}" + (f", {ke_csv}" if ke_csv else ""))
         print(json.dumps(summarize(rows), indent=1))
     return 0
 
@@ -938,6 +950,7 @@ def build_parser() -> argparse.ArgumentParser:
     common(sp, out=True)
     sp.add_argument("--splits", nargs="+", default=["valid", "test"], choices=["train", "valid", "test"])
     sp.add_argument("--out-dir", help="default <output root>/onset")
+    sp.add_argument("--from-ke", help="recompute from this folder's onset_<split>.json and ke_<split>.csv")
     sp.set_defaults(func=cmd_onset_frames)
 
     sp = sub.add_parser("profile", help="throughput/memory/latency per model (A100 feasibility)")
@@ -959,6 +972,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--tables", default=str(REPO_ROOT / "tables"))
     sp.add_argument("--figures", default=str(REPO_ROOT / "figures"))
     sp.add_argument("--labels", nargs="+", help="milestones to aggregate (default: all in each task's config)")
+    sp.add_argument("--onset-table", help="per-trajectory onset frames of the test split (default "
+                    "tasks/onset_test.json; 'none' for the frame-50 split only)")
     sp.set_defaults(func=cmd_aggregate)
 
     sp = sub.add_parser("verify-download", help="check a downloaded split against the registry")

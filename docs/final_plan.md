@@ -106,19 +106,22 @@ Definition, fixed on validation before it touches any test result:
 * KE(t): domain mean of ½(u² + w²) of the true fields, with Chebyshev weights in y
   (`physics.mean_kinetic_energy`).
 * Developed-state mean: the mean of KE over frames 150–199 of the same trajectory.
-* Onset frame t_on: the first frame with KE(t) ≥ 0.5 × the developed-state mean.
+* Onset frame t_on: the first frame with KE(t) ≥ 0.1 × the developed-state mean (owner, 2026-11-21; proposed
+  0.5, changed after the validation check, `docs/report_notes.md` section 9).
 * A one-step window counts as onset if its first input frame is before t_on (the same convention as the
   frame-50 cut). A rollout starts in developed flow if its start frame is at or after t_on.
 
 Steps:
 1. A new command, `rbbench onset-frames`, writes one small table per split: trajectory, Ra, Pr, the
-   developed-state mean, and the crossing frames for fractions 0.25, 0.5 and 0.75. It reads velocity only
+   developed-state mean, and the crossing frames for fractions 0.1, 0.25, 0.5 and 0.75. It reads velocity only
    (~18 GB per split). It ran on `free` (job 59905411) before the owner's partition rule (D31).
 2. Validation first. Check that every trajectory crosses, look at t_on by Ra, and compare with where the
    released checkpoints' error by window levels off (D20). Then fix the definition and compute the test table.
-   It comes from test truth only (no model output) and is committed like `eval_cohort.json`.
+   It comes from test truth only (no model output) and is committed like `eval_cohort.json`. Done 2026-11-21:
+   `tasks/onset_{valid,test}.json`, recomputed on the Mac from the job's KE series (`onset-frames --from-ke`).
 3. `aggregate` splits by the per-trajectory onset by default and keeps frame 50 as the check. This runs on the
-   Mac from the existing `one_step_*.parquet` (columns `traj_id`, `start`).
+   Mac from the existing `one_step_*.parquet` (columns `traj_id`, `start`). Done 2026-11-21: metrics
+   `one_step_*_{onset,developed}` (per trajectory) and `..._frame50` (check), plus each split's window share.
 4. Results:
    * t_on by Rayleigh number;
    * the error by window aligned at each trajectory's onset;

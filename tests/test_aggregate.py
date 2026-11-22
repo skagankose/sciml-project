@@ -67,16 +67,32 @@ def test_paper_protocol_table_sets_references_beside_our_runs():
 
 
 def test_one_step_is_split_into_onset_and_developed_windows():
-    """D26: one-step VRMSE is also reported for onset (first input frame < 50) and developed convection."""
+    """D26, D29: one-step VRMSE is reported for onset and developed convection, per trajectory and at frame 50."""
     import pandas as pd
+    import pytest
 
     from rbbench.aggregate import ONSET_FRAMES, one_step_phase_records
 
-    one = pd.DataFrame({"start": [0, 10, ONSET_FRAMES - 1, ONSET_FRAMES, 120],
-                        "vrmse_mean": [3.0, 2.0, 1.0, 0.2, 0.1],
-                        "normalised_vrmse_mean": [9.0, 6.0, 3.0, 0.2, 0.1]})
+    one = pd.DataFrame({"traj_id": ["a"] * 5 + ["b"] * 3,
+                        "start": [0, 10, ONSET_FRAMES - 1, ONSET_FRAMES, 120, 40, 60, 120],
+                        "vrmse_mean": [3.0, 2.0, 1.0, 0.2, 0.1, 4.0, 0.5, 0.3],
+                        "normalised_vrmse_mean": [9.0, 6.0, 3.0, 0.2, 0.1, 8.0, 0.5, 0.3]})
+    # the fixed cut alone (no onset table): only the frame-50 metrics
     recs = {r["metric"]: r["value"] for r in one_step_phase_records(one, {"model": "m"})}
-    assert recs["one_step_vrmse_mean_onset"] == 2.0
-    assert abs(recs["one_step_vrmse_mean_developed"] - 0.15) < 1e-12
-    assert recs["one_step_normalised_vrmse_mean_onset"] == 6.0
+    assert "one_step_vrmse_mean_onset" not in recs
+    assert recs["one_step_vrmse_mean_onset_frame50"] == pytest.approx((3 + 2 + 1 + 4) / 4)
+    assert recs["one_step_vrmse_mean_developed_frame50"] == pytest.approx((0.2 + 0.1 + 0.5 + 0.3) / 4)
+    assert recs["one_step_normalised_vrmse_mean_onset_frame50"] == pytest.approx((9 + 6 + 3 + 8) / 4)
+    assert recs["one_step_window_share_onset_frame50"] == 0.5
+    # per trajectory: a ends onset at frame 10 (window 10 is developed), b at 70 (window 60 is onset)
+    recs = {r["metric"]: r["value"] for r in one_step_phase_records(one, {}, {"a": 10, "b": 70})}
+    assert recs["one_step_vrmse_mean_onset"] == pytest.approx((3 + 4 + 0.5) / 3)
+    assert recs["one_step_vrmse_mean_developed"] == pytest.approx((2 + 1 + 0.2 + 0.1 + 0.3) / 5)
+    assert recs["one_step_window_share_onset"] == 3 / 8
+    assert recs["one_step_vrmse_mean_onset_frame50"] == pytest.approx((3 + 2 + 1 + 4) / 4)  # the check stays
+    # a trajectory that never develops is all onset; a missing one is an error
+    recs = {r["metric"]: r["value"] for r in one_step_phase_records(one, {}, {"a": 10, "b": None})}
+    assert recs["one_step_window_share_onset"] == 4 / 8
+    with pytest.raises(KeyError):
+        one_step_phase_records(one, {}, {"a": 10})
     assert all(r["step"] == 1 and r["sigma"] == 0.0 for r in one_step_phase_records(one, {}))

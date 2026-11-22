@@ -660,3 +660,15 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   instead of one core per array task. Each rollout records `concurrent_rollouts`. `visualize_cpu.sbatch` runs
   its models on the GPU. The 15 failed solver tasks wait for this script (next push): `sbatch --array=3,5
   cluster/slurm/solver_cpu.sbatch`. The free-partition results so far are kept (D31). Committed, not pushed.
+* 2026-11-21 (night): onset fraction 0.1 (owner; D29, WP4).
+  * `rbbench.onset` has `PRIMARY_FRACTION = 0.1` and fractions 0.1 / 0.25 / 0.5 / 0.75.
+    `onset-frames --from-ke` recomputes the tables from the stored KE series without reading data. The frozen
+    `tasks/onset_{valid,test}.json` are committed.
+  * `aggregate` splits one-step windows at each trajectory's t_on (`--onset-table`, default
+    `tasks/onset_test.json`) and keeps the frame-50 split as `..._frame50`.
+  * Test t_on(0.1) is 41–78, so rollout starts 20 / 80 / 140 fall cleanly in onset / developed / developed.
+  * 10% results: onset means drop 4–5%, developed means move at most 3%, and no ranking changes
+    (`docs/report_notes.md` section 9).
+  * Queue at 19:30 (owner's `squeue`): 100% rows 6, 7, 10, 11 pending (Resources); UQ training 59907938-40, the
+    row-2 evaluation 59907942 and the persistence UQ evaluation 59907864 pending (Priority); row 3 running.
+    No push until every training task has started.

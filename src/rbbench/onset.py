@@ -7,12 +7,15 @@ mean. Definition (fixed on the validation split before it is applied to any test
 * KE(t): domain mean of (u^2 + w^2) / 2 of the stored (physical) fields, the x mean on the uniform periodic grid
   and the y mean with Chebyshev-Gauss quadrature (`physics.mean_kinetic_energy`, D18);
 * developed-state mean: the mean of KE over the last quarter of the trajectory (frames 150-199 of 200);
-* onset frame t_on(f): the first frame with KE >= f x the developed-state mean, for f in FRACTIONS; the primary
-  fraction is 0.5, and None means the fluid never moves (no crossing then);
+* onset frame t_on(f): the first frame with KE >= f x the developed-state mean, for f in FRACTIONS; None means
+  the fluid never moves (no crossing then). The primary fraction is 0.1 (owner, 2026-11-21). It was chosen on
+  validation, where the released CNextU-Net's error stops being inflated at KE ~1-3% of the developed mean, while
+  0.5 ends onset ~20 frames after that (docs/report_notes.md section 9). The fixed frame-50 cut is the check;
 * a one-step window is onset if its first input frame is before t_on (the convention of the frame-50 cut), and a
   rollout starts in developed flow if its start frame is at or after t_on.
 
-Only the true fields are read, never a model output, so the table carries no test result.
+Only the true fields are read, never a model output, so the table carries no test result. The frozen tables
+are committed as tasks/onset_<split>.json; `aggregate` joins tasks/onset_test.json on `traj_id`.
 """
 
 from __future__ import annotations
@@ -27,8 +30,8 @@ import numpy as np
 from rbbench.data import list_trajectories
 from rbbench.metrics import physics
 
-FRACTIONS = (0.25, 0.5, 0.75)
-PRIMARY_FRACTION = 0.5
+FRACTIONS = (0.1, 0.25, 0.5, 0.75)
+PRIMARY_FRACTION = 0.1  # owner, 2026-11-21 (D29), fixed on validation
 DEVELOPED_SHARE = 0.25  # the last quarter of the frames
 FIXED_CUT = 50          # the mid-project report's cut (D26), kept as the check
 
@@ -75,16 +78,50 @@ def onset_table(dataset_dir: Path, split: str, cfg_physics: dict, log=print) -> 
         with h5py.File(Path(dataset_dir) / ref.relpath, "r") as h:
             vel = np.asarray(h["t1_fields/velocity"][ref.index])  # [T, X, Y, 2]
         ke = kinetic_energy_series(vel, ops)
-        start = developed_start(ke.size)
-        rows.append({
-            "traj_id": ref.id, "rayleigh": ref.rayleigh, "prandtl": ref.prandtl, "n_frames": int(ke.size),
-            "ke_developed": float(ke[start:].mean()), "ke_max": float(ke.max()), "frame_ke_max": int(ke.argmax()),
-            "onset_frame": {str(f): onset_frame(ke, f, start) for f in FRACTIONS},
-        })
+        rows.append(trajectory_row(ref.id, ref.rayleigh, ref.prandtl, ke))
         series[ref.id] = ke
         if log and (n + 1) % 25 == 0:
             log(f"  {split}: {n + 1}/{len(refs)} trajectories")
     return rows, series
+
+
+def trajectory_row(traj_id: str, rayleigh: float, prandtl: float, ke: np.ndarray) -> dict:
+    ke = np.asarray(ke, np.float64)
+    start = developed_start(ke.size)
+    return {"traj_id": traj_id, "rayleigh": rayleigh, "prandtl": prandtl, "n_frames": int(ke.size),
+            "ke_developed": float(ke[start:].mean()), "ke_max": float(ke.max()), "frame_ke_max": int(ke.argmax()),
+            "onset_frame": {str(f): onset_frame(ke, f, start) for f in FRACTIONS}}
+
+
+def read_ke_csv(path: Path) -> dict[str, np.ndarray]:
+    """KE(t) per trajectory from write_onset's ke_<split>.csv, in file order."""
+    series: dict[str, list[float]] = {}
+    with Path(path).open() as fh:
+        for row in csv.DictReader(fh):
+            series.setdefault(row["traj_id"], []).append(float(row["ke"]))
+    return {k: np.asarray(v, np.float64) for k, v in series.items()}
+
+
+def recompute_table(table_path: Path, ke_csv: Path) -> list[dict]:
+    """The rows of an onset table again, from its stored KE series, with the current FRACTIONS.
+
+    The KE series are what the HPC3 job computed from the data, so a new fraction needs no data access. The CSV
+    keeps 9 significant digits, so the KE values agree with the original table to ~1e-9 (relative).
+    """
+    old = json.loads(Path(table_path).read_text())["trajectories"]
+    series = read_ke_csv(ke_csv)
+    if [r["traj_id"] for r in old] != list(series):
+        raise ValueError(f"{table_path} and {ke_csv} list different trajectories")
+    return [trajectory_row(r["traj_id"], r["rayleigh"], r["prandtl"], series[r["traj_id"]]) for r in old]
+
+
+def load_onset_frames(table_path: Path, fraction: float = PRIMARY_FRACTION) -> dict[str, int | None]:
+    """{traj_id: t_on} at `fraction` from an onset table."""
+    table = json.loads(Path(table_path).read_text())
+    key = str(fraction)
+    if key not in table["trajectories"][0]["onset_frame"]:
+        raise KeyError(f"{table_path} has no onset frames for fraction {fraction}; recompute it (onset-frames)")
+    return {r["traj_id"]: r["onset_frame"][key] for r in table["trajectories"]}
 
 
 def definition() -> dict:
@@ -97,12 +134,15 @@ def definition() -> dict:
     }
 
 
-def write_onset(out_dir: Path, split: str, rows: list[dict], series: dict) -> tuple[Path, Path]:
+def write_onset(out_dir: Path, split: str, rows: list[dict], series: dict | None) -> tuple[Path, Path | None]:
+    """onset_<split>.json and, with `series`, ke_<split>.csv."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     table = out_dir / f"onset_{split}.json"
     table.write_text(json.dumps({"split": split, "definition": definition(), "n_trajectories": len(rows),
-                                 "trajectories": rows}, indent=1))
+                                 "trajectories": rows}, indent=1) + "\n")
+    if series is None:
+        return table, None
     ke_csv = out_dir / f"ke_{split}.csv"
     with ke_csv.open("w", newline="") as fh:
         w = csv.writer(fh)

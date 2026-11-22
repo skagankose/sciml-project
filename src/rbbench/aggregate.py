@@ -31,9 +31,13 @@ STYLE = {
 }
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
-# One-step results are also reported for convection onset (first input frame < 50, when the fluid is still nearly
-# at rest and the all-window mean is dominated by it) and developed convection (>= 50) separately (D26).
+# One-step results are also reported for convection onset (the fluid still nearly at rest, which dominates the
+# all-window mean) and developed convection separately (D26). The final split is per trajectory: a window is onset
+# if its first input frame precedes that trajectory's t_on, the first frame whose kinetic energy reaches 0.1 x its
+# developed-state mean (rbbench.onset, D28, D29; the frozen table is tasks/onset_test.json). The mid-project
+# report's fixed cut at frame 50 is kept as the check (metrics `..._frame50`) and marks the figures.
 ONSET_FRAMES = 50
+ONSET_TABLE = Path(__file__).resolve().parents[2] / "tasks" / "onset_test.json"
 
 
 def _load_run(row: dict, output_root: Path, labels: list[str]) -> tuple[list[dict], dict | None, list[str]]:
@@ -89,21 +93,40 @@ def collect(tasks_path: Path, output_root: Path, labels=None):
     return rows, loaded, problems, expected
 
 
-def one_step_phase_records(one: pd.DataFrame, key: dict) -> list[dict]:
-    """Mean one-step VRMSE over onset windows (first input frame < ONSET_FRAMES) and developed ones (D26)."""
+def onset_mask(one: pd.DataFrame, onset_frames: dict[str, int | None]) -> pd.Series:
+    """True for windows whose first input frame precedes their trajectory's t_on (rbbench.onset.is_onset_window)."""
+    missing = sorted(set(one.traj_id) - set(onset_frames))
+    if missing:
+        raise KeyError(f"no onset frame for {len(missing)} trajectories, e.g. {missing[0]}: wrong onset table?")
+    t_on = one.traj_id.map(lambda t: np.inf if onset_frames[t] is None else onset_frames[t]).astype(float)
+    return one.start < t_on
+
+
+def one_step_phase_records(one: pd.DataFrame, key: dict, onset_frames: dict[str, int | None] | None = None
+                           ) -> list[dict]:
+    """Mean one-step VRMSE over onset and developed windows (D26, D29), plus each phase's share of the windows.
+
+    `..._onset` / `..._developed` split each trajectory at its own t_on (`onset_frames`, {traj_id: t_on}); without
+    a table they are left out. `..._onset_frame50` / `..._developed_frame50` split every trajectory at frame 50.
+    """
+    splits = [("_frame50", one.start < ONSET_FRAMES)]
+    if onset_frames is not None:
+        splits.insert(0, ("", onset_mask(one, onset_frames)))
     recs = []
-    onset = one.start < ONSET_FRAMES
-    for col, name in (("vrmse_mean", "one_step_vrmse_mean"),
-                      ("normalised_vrmse_mean", "one_step_normalised_vrmse_mean")):
-        if col not in one:
-            continue
-        for phase, mask in (("onset", onset), ("developed", ~onset)):
-            value = float(one.loc[mask, col].mean()) if mask.any() else np.nan
-            recs.append({**key, "metric": f"{name}_{phase}", "sigma": 0.0, "step": 1, "value": value})
+    for suffix, onset in splits:
+        rec = {**key, "sigma": 0.0, "step": 1}
+        recs.append({**rec, "metric": f"one_step_window_share_onset{suffix}", "value": float(onset.mean())})
+        for col, name in (("vrmse_mean", "one_step_vrmse_mean"),
+                          ("normalised_vrmse_mean", "one_step_normalised_vrmse_mean")):
+            if col not in one:
+                continue
+            for phase, mask in (("onset", onset), ("developed", ~onset)):
+                value = float(one.loc[mask, col].mean()) if mask.any() else np.nan
+                recs.append({**rec, "metric": f"{name}_{phase}{suffix}", "value": value})
     return recs
 
 
-def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
+def per_seed_table(loaded: list[dict], onset_frames: dict[str, int | None] | None = None) -> pd.DataFrame:
     recs = []
     for m in loaded:
         r = m["row"]
@@ -138,7 +161,7 @@ def per_seed_table(loaded: list[dict]) -> pd.DataFrame:
                 recs.append({**key, "metric": "log_spectral_error", "sigma": s, "step": int(step), "value": v})
         one_step = m["run_dir"] / "evaluations" / f"one_step_{m['label']}.parquet"
         if one_step.exists():
-            recs += one_step_phase_records(pd.read_parquet(one_step), key)
+            recs += one_step_phase_records(pd.read_parquet(one_step), key, onset_frames)
     return pd.DataFrame(recs)
 
 
@@ -522,10 +545,15 @@ def make_figures(summary: pd.DataFrame, loaded: list[dict], resources: pd.DataFr
 
 
 def aggregate(tasks_path: Path, output_root: Path, tables_dir: Path, figures_dir: Path,
-              labels=None, baseline_dir: Path | None = None) -> dict:
+              labels=None, baseline_dir: Path | None = None, onset_table: Path | None = None) -> dict:
+    """Tables and figures. `onset_table` (an onset_<split>.json of the evaluated split) gives the per-trajectory
+    onset split of the one-step error; without it only the frame-50 split is written."""
+    from rbbench.onset import PRIMARY_FRACTION, load_onset_frames
+
     rows, loaded, problems, expected = collect(tasks_path, output_root, labels)
     tables_dir.mkdir(parents=True, exist_ok=True)
-    per_seed = per_seed_table(loaded)
+    onset_frames = load_onset_frames(onset_table, PRIMARY_FRACTION) if onset_table else None
+    per_seed = per_seed_table(loaded, onset_frames)
     summary = summary_table(per_seed)
     resources = resource_table(loaded)
     gpu_hours = gpu_hours_table(rows, output_root)

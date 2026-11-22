@@ -832,6 +832,41 @@ its evaluation is pulled.
   * t_on(0.25): 0.700 / 0.038 / 29.7% / 88.6%;
   * t_on(0.5): 0.620 / 0.037 / 33.8% / 89.6%;
   * t_on(0.75): 0.500 / 0.035 / 42.8% / 91.4%.
-* Decision pending (owner): keep 0.5 as proposed, or a smaller fraction (recommended 0.1) that matches the nearly
-  still phase. Either way frame 50 stays as the check. Onset frames for any fraction come from the stored KE
-  series on the Mac, with no new job.
+* **Decision (owner, 2026-11-21): fraction 0.1**, from the validation check above. Frame 50 stays as the check.
+  The tables were recomputed on the Mac from the stored KE series (`rbbench onset-frames --from-ke outputs/onset
+  --out-dir tasks`; the 0.25 / 0.5 / 0.75 frames came out identical to the HPC3 job's). They are committed as
+  `tasks/onset_valid.json` and `tasks/onset_test.json`.
+* t_on(0.1), min / median / max:
+
+  | Ra | valid | test |
+  |---|---|---|
+  | 1e6 | 52 / 59 / 81 | 51 / 60 / 78 |
+  | 1e7 | 47 / 54 / 63 | 46 / 54 / 64 |
+  | 1e8 | 43 / 52 / 64 | 43 / 48 / 63 |
+  | 1e9 | 42 / 47 / 61 | 42 / 49 / 61 |
+  | 1e10 | 41 / 49 / 62 | 41 / 49 / 58 |
+  | all | 41 / 52 / 81 | 41 / 52 / 78 |
+
+  Every trajectory crosses. On test, t_on(0.1) lies in 41–78 for every cohort trajectory, so the rollouts from
+  frame 20 all start in onset and those from 80 and 140 all start in developed flow. The rollout results by start
+  frame are therefore already the per-trajectory split; only the one-step split changes.
+* The 10% runs, one-step test VRMSE (physical fields), mean ± std over the two seeds, per-trajectory split
+  (frame-50 split in brackets). Onset windows are 26.7% of all test windows (25.5% at frame 50):
+
+  | Budget | Model | Onset | Developed |
+  |---|---|---|---|
+  | 1 h | CNextU-Net | 2.511 ± 0.653 (2.618) | 0.0783 ± 0.0022 (0.0806) |
+  | 1 h | TFNO | 1.442 ± 0.292 (1.505) | 0.1203 ± 0.0001 (0.1197) |
+  | 1 h | AViT | 1.244 ± 0.135 (1.299) | 0.0846 ± 0.0001 (0.0845) |
+  | 4 h | CNextU-Net | 0.370 ± 0.024 (0.387) | 0.0505 ± 0.0002 (0.0498) |
+  | 4 h | TFNO | 0.480 ± 0.003 (0.502) | 0.1105 ± 0.0001 (0.1090) |
+  | 4 h | AViT | 0.294 ± 0.003 (0.308) | 0.0761 ± 0.0002 (0.0746) |
+  | - | Persistence | 0.116 (0.121) | 0.229 (0.226) |
+  | - | Released CNextU-Net | 0.733 (0.766) | 0.0382 (0.0382) |
+
+  * Onset means drop 4–5%: the windows between frame 41 and 50 move into developed flow, and the low-Ra windows
+    between 50 and 78 move into onset. Developed means change by at most 3%.
+  * No ranking changes. Developed: CNextU-Net < AViT < TFNO at both budgets. Onset at 4 h: AViT < CNextU-Net <
+    TFNO, all above persistence. The released CNextU-Net still leads in developed flow.
+  * Scratch tables: `rbbench aggregate --tables <dir>`. `outputs/tables/` still holds the mid-project version,
+    where `..._onset` meant frame 50; the next `aggregate` (with the 100% runs) rewrites it.

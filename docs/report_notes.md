@@ -190,6 +190,7 @@ Done before the 10% runs, and the 10% runs confirmed the predictions.
   hpc3-gpu-l54-03 at 18:10 PST. Its copy took 7.8 min (0.63 GB/s). At 19:20 it had trained 3,000 steps in 3,566 s of GPU
   time (1.19 s per step, as at 10%) and waited for data 4.3 s; wall 3,745 s. Rows 6, 7, 10 and 11 had not started
   (no log) at 19:20.
+* Outcome (2026-11-22): rows 3, 6, 7 and 11 completed; row 10 never started. See section 10.
 
 ### Learning-rate search (2026-11-08 to 11-09)
 
@@ -688,6 +689,8 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-09 | pipeline check hit its 2 h limit; Python buffered stdout | test split not scored, log empty | 4 h limit, `PYTHONUNBUFFERED=1` |
 | 11-21 | Dedalus setup job wrote `env/hpc3-dedalus-conda.yml` into the tree while 100% tasks were starting | 5 tasks refused a dirty tree (~50 SU) | snapshot committed; no repo-writing setup job while training can start |
 | 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; rerun on the class partition (D31) |
+| 11-22 | `/pub` `Errno 121 Remote I/O error` while saving TFNO 100% s0's checkpoint | attempt 1 died after 1.1 h | in-job restart (`run_with_restarts.sh`) resumed from step 4,322 and completed; ~25 min wall lost |
+| 11-22 | `/pub` write stalls of 10–22 min on every job at once (01:28, 02:03, 02:54, 04:19 PST) | 100% runs: up to 4,258 s of checkpoint time per run (22% of wall); 10% UQ runs: data waits | node-local data does not protect checkpoint writes; saving locally and copying in the background would (not implemented) |
 
 ## 6. Figures for the report
 
@@ -870,3 +873,102 @@ its evaluation is pulled.
     TFNO, all above persistence. The released CNextU-Net still leads in developed flow.
   * Scratch tables: `rbbench aggregate --tables <dir>`. `outputs/tables/` still holds the mid-project version,
     where `..._onset` meant frame 50; the next `aggregate` (with the 100% runs) rewrites it.
+
+## 10. 100% runs and UQ training (2026-11-21/22; class account, `STAGE_DATA=1` for 100%)
+
+### Status (pulled 2026-11-22 09:57 PST, commit 9e56e06)
+
+Every run that started completed its budget in one allocation (`COMPLETE.json`: `training_completed`,
+`budget_satisfied`; checkpoints at every milestone). Short-validation VRMSE is the 64-window monitor, not the test
+score.
+
+| Run | Job | Attempts | Train s | Data wait s | Checkpoint s | Wall h | Val 1 h / 4 h |
+|---|---|---|---|---|---|---|---|
+| row 2 CNextU-Net 100% s0 | 59905410_2 | 1 | 14,400 | 9 | 54 | 4.37 | 0.511 / 0.168 |
+| row 3 CNextU-Net 100% s1 | 59907862_3 | 1 | 14,400 | 83 | 1,671 | 4.65 | 0.520 / 0.170 |
+| row 6 TFNO 100% s0 | 59907862_6 | 2 (in-job restart) | 14,400 | 468 | 3,278 | 5.81 | 0.565 / 0.281 |
+| row 7 TFNO 100% s1 | 59907862_7 | 1 | 14,400 | 21 | 4,258 | 5.46 | 0.535 / 0.274 |
+| row 10 AViT 100% s0 | 59907862_10 | **not started**: no log, no run folder | | | | | |
+| row 11 AViT 100% s1 | 59907862_11 | 1 | 14,400 | 3,098 | 1,279 | 5.66 | 0.486 / 0.152 |
+| UQ β-NLL 10% s0–s4 (`tasks/uq.jsonl` 0–4) | 59907938_0–4 | 1 each | 3,600 | 1,399–3,582 | 17–673 | 1.60–2.03 | 0.347–0.387 |
+| UQ β-NLL 100% s0–s4 (`tasks/uq.jsonl` 5–9) | 59907939_5–9 | 1 each | 3,600 | 3–4 | 449–1,071 | 1.14–1.54 | 0.341–0.373 |
+| MSE 1 h 100% s0, s1 (`tasks/train_1h_f100.jsonl`) | 59907940_0–1 | 1 each | 3,600 | 3–4 | 374 | 1.11 | 0.317 / 0.325 |
+
+* Steps in 4 h at 100%: CNextU-Net 12,142 / 12,129, TFNO 26,272 / 26,340, AViT 74,907. That is 2.8 / 6.1 / 17.5
+  passes over the 274,400 training windows; the 10% runs made ~28 / ~61 / ~175 passes over theirs.
+* Short validation at 4 h, 100% vs 10%: CNextU-Net 0.168–0.170 vs 0.167–0.178 (no change), TFNO 0.274–0.281 vs
+  0.310–0.325, AViT 0.152 vs 0.161–0.167.
+* The β-NLL ensemble members score 0.34–0.39 on short validation against 0.32–0.33 for the MSE runs on the same
+  1 h schedule (mean prediction; expected cost of fitting the variance). Their calibration is evaluated by
+  `eval-uq`.
+* The local copy took 2.5–7.8 min per job (0.63–1.99 GB/s). With it, CNextU-Net and TFNO waited for data under
+  8 min in 4 h. AViT 100% ran in 5.66 h of wall time, against 11.1–12.2 h at 10% reading `/pub` and the 14–17 h
+  projected for 100% without the copy.
+* Not started at 09:57 PST: row 10 and the persistence UQ evaluation (59907864_6): no log and no output. Both
+  were pending at 19:30 PST on 11-21, and jobs submitted after them have since run, so they may have failed at
+  launch (Slurm writes no log if it cannot open the output file, e.g. during a `/pub` error) or been cancelled.
+  Their state needs `sacct`.
+
+### `/pub` stalls now hit checkpoint writes
+
+The 100% runs read their data from local disk but still write checkpoints and logs to `/pub`. Every running job
+lost 10–22 min at the same moments (PST, 11-22): 01:28–01:29, 02:03, 02:54 and 04:19–04:20.
+
+* The 100% runs lost the time in checkpoint saves: single saves of 1,065–1,308 s. Checkpoint time is 54–4,258 s per
+  4 h run, up to 22% of TFNO s1's wall time.
+* The 10% UQ runs, which read `/pub`, lost it as data waits (523–1,409 s at the same moments).
+* AViT 100% recorded most of its stall time as data waits (2,930 of 3,098 s, at the same moments). Why it is
+  booked there, and not as checkpoint time, is not established.
+* Possible fix, not implemented: save checkpoints to local disk and copy them to `/pub` in the background. Only the
+  remaining runs and evaluations would gain.
+
+### Incident: `/pub` I/O error during a checkpoint save (TFNO 100% s0)
+
+* At 00:10 PST, `os.stat` on the run folder inside `atomic_torch_save` raised `OSError: [Errno 121] Remote I/O
+  error`.
+* `run_with_restarts.sh` restarted the run after 60 s in the same allocation. It resumed from `last_resume.pt` at
+  step 4,322 (2,376 s of training) and completed.
+* Repeated: ~1,530 steps, ~840 s of GPU training. Cost: ~25 min of wall time, ~17 SU. The budget counts only the
+  kept training.
+* This was the first real restart, and it worked as designed.
+
+### First 100% test result: CNextU-Net seed 0 (row 2, evaluation 59907942_2)
+
+The evaluation checks passed: 20.4 min, cohort hash matched, physics audit passed, correlation on.
+
+One-step test VRMSE (physical fields, per-trajectory onset split, t_on(0.1)) and VRMSE after 30 rollout steps by
+start frame:
+
+| Run | Budget | All | Onset | Developed | Step 30 from 20 / 80 / 140 |
+|---|---|---|---|---|---|
+| 10% s0 | 1 h | 0.852 | 2.972 | 0.0798 | 4.80 / 1.45 / 1.41 |
+| 10% s1 | 1 h | 0.603 | 2.049 | 0.0767 | 2.40 / 0.74 / 0.68 |
+| 100% s0 | 1 h | 0.481 | 1.595 | 0.0750 | 2.58 / 0.93 / 0.83 |
+| 10% s0 | 4 h | 0.131 | 0.353 | 0.0506 | 1.72 / 0.53 / 0.40 |
+| 10% s1 | 4 h | 0.140 | 0.387 | 0.0504 | 1.84 / 0.53 / 0.40 |
+| 100% s0 | 4 h | 0.129 | 0.351 | 0.0486 | 1.95 / 0.52 / 0.40 |
+| Released (100%, ~12 h H100) | - | 0.224 | 0.733 | 0.0382 | 1.65 / 0.63 / 0.51 |
+
+* At 4 h, ten times more data barely helps CNextU-Net: developed 0.0486 against 0.0505 (−4%), with the same
+  rollouts from developed flow. In 4 h it makes only 2.8 passes over the full data, so at this budget it is limited
+  by compute, not data.
+* At 1 h, the 100% run is best of the three on every one-step measure. The 10% seeds differ by 1.4×, so this
+  needs seed 1.
+* This is one seed. The comparison waits for row 3 and the TFNO and AViT evaluations.
+
+### Cost (estimated from the run logs; `sacct` pending)
+
+Process wall time plus the local copy, at 40 SU per hour (1 A100 + 8 cores):
+
+| Work | GPU-hours | SU |
+|---|---|---|
+| Core 100%, rows 3, 6, 7, 11 | 21.9 | ~880 |
+| UQ β-NLL, 10% (5 runs) | 9.3 | ~370 |
+| UQ β-NLL, 100% (5 runs) | 6.7 | ~270 |
+| MSE 1 h, 100% (2 runs) | 2.3 | ~95 |
+| Evaluation, row 2 | 0.3 | ~14 |
+| **Total** | **40.6** | **~1,620** |
+
+Row 2 (4.4 h, ~180 SU) was logged on 11-21. The five finished 4 h runs held 26.3 GPU-hours; with row 10 the 100%
+runs come to ~32 h, at the low end of the plan's 32–38 h with the local copy (docs/final_plan.md WP2). UQ training
+came to 18.3 h against the 15–18 h planned.

@@ -672,3 +672,18 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Queue at 19:30 (owner's `squeue`): 100% rows 6, 7, 10, 11 pending (Resources); UQ training 59907938-40, the
     row-2 evaluation 59907942 and the persistence UQ evaluation 59907864 pending (Priority); row 3 running.
     No push until every training task has started.
+* 2026-11-22: cluster check from the Mac (logs and outputs pulled through `hpc3-xfer`, 09:57 PST).
+  * Every job that started completed:
+    * 100% rows 3, 6, 7 and 11 (4 h each). Row 6 hit a `/pub` `Errno 121` while saving a checkpoint; the in-job
+      restart resumed it from step 4,322, losing ~25 min.
+    * The 12 UQ / 1 h training runs (59907938-40).
+    * The row-2 test evaluation (59907942_2: cohort hash matched, physics audit passed).
+  * **Row 10 (AViT 100% s0) and the persistence UQ evaluation (59907864_6) never started**: no log, no output.
+    Their state needs the owner's `sacct`.
+  * `/pub` write stalls of 10–22 min hit every job at once. The 100% runs lost them in checkpoint saves (up to 22%
+    of wall time), since node-local data does not cover writes.
+  * CNextU-Net 100% s0 on test (4 h): developed 0.0486 vs 0.0505 at 10%, with the same rollouts. At 1 h, 0.481 vs
+    0.60-0.85 over all windows.
+  * Cost about 40.6 GPU-h, ~1,620 SU (logs; `sacct` pending).
+  * Details in `docs/report_notes.md` section 10. Not pushed: row 10's state is unknown.
+

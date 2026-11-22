@@ -630,3 +630,16 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   Tests: 182 pass, including CRPS against numerical integration and a β-NLL training run; smoke passes;
   `tasks/train.jsonl` regenerates byte for byte. Committed, not pushed: push 2 waits until the 100% training array
   has left the queue (`cluster/README.md` section 11).
+* 2026-11-21 (evening): push 1's jobs ran.
+  * Onset (59905411) and the Dedalus setup with its self-test (59905412) passed.
+  * 100% training (array 59905410): task 2 (CNextU-Net s0) completed. The copy to local disk took 4.4 min, data
+    waits were 9 s in 4 h of training, and short-validation VRMSE at 4 h was 0.168.
+  * Tasks 3, 6, 7, 10 and 11 refused to start: the tree was dirty. The Dedalus setup had written
+    `env/hpc3-dedalus-conda.yml` into the repository at 16:43, after task 2 started. About 50 SU were lost and
+    no training.
+  * Fix: the snapshot is pulled and committed. Rule: no setup job that writes into the repository while training
+    tasks can still start.
+  * The tasks are resubmitted at the new commit (with push 2's code; the MSE training path is unchanged, and so
+    are the run ids).
+  * Onset on validation (fraction 0.5): frames 47–95, median 67, in every trajectory. The Ra dependence is weak
+    (medians 63–72).

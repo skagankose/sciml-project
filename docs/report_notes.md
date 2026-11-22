@@ -174,8 +174,18 @@ Done before the 10% runs, and the 10% runs confirmed the predictions.
 * Local disk on the GPU nodes (`sinfo -N -p gpu -o "%N %G %d %m"`, owner, 2026-11-21): the four A100 nodes
   (hpc3-gpu-l54-03 to -06, 2 A100s each) have 1.83 TB of local disk and 256 GB of memory; the A30 nodes 1.83 TB,
   the V100 nodes 228 GB. The full training split (~294 GB) fits twice per A100 node, so the 100% runs copy it to
-  the job's `$TMPDIR` first (`STAGE_DATA=1`, `rbbench stage-data`; docs/final_plan.md WP1). The copy's time and
-  rate are logged per job (`rbbench_stage.json`) and go here when the runs start.
+  the job's `$TMPDIR` first (`STAGE_DATA=1`, `rbbench stage-data`; docs/final_plan.md WP1).
+* First 100% runs (array 59905410, paid, commit e69e7e9, 2026-11-21):
+  * The copy (35 files, 293.6 GB, checked against the download record) took 3.4–9.3 min, at 0.53–1.43 GB/s, on
+    hpc3-gpu-l54-03 and -05.
+  * CNextU-Net 100% seed 0 (task 2) completed: 12,142 steps in 4 h of GPU training, waiting for data for 9 s in
+    all (the 10% runs waited 0.8–1.1 h). The training process took 4.37 h of wall time, plus the 4.4 min copy.
+    Short-validation VRMSE: 0.51 at 1 h, 0.168 at 4 h (10%: 1.04 / 0.167 for seed 0).
+  * Incident: the other five tasks (3, 6, 7, 10, 11) started after the Dedalus setup job had written
+    `env/hpc3-dedalus-conda.yml` into the project folder (16:43). That untracked file made the tree dirty, so
+    `train-task` refused to start; the wrapper retried twice and gave up. About 15 min each (copy plus three
+    starts), ~50 SU in all, no training lost. Fix: the snapshot is committed. Lesson: no setup job that writes
+    into the repository while training tasks can still start.
 
 ### Learning-rate search (2026-11-08 to 11-09)
 

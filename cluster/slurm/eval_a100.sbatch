@@ -6,7 +6,8 @@
 # A released checkpoint on the same cohort (rollouts, failure horizons; outputs/baselines/released/<model>/evaluations):
 #   sbatch --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch
 #SBATCH --job-name=rb4-eval
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=6G

@@ -590,3 +590,16 @@ pending approval).** Full design in `docs/final_plan.md` WP9.
 * *Constraints:* the variance head and loss live only in a new experiment config, so the core runs' hashes are
   unchanged (`tasks/train.jsonl` regenerates byte for byte). The hashed `eval` section is untouched (D15). Nothing is tuned on test: β, the ensemble size and
   the interval levels are fixed in advance, and calibration uses validation only.
+
+**D31 — Partition: the class account only (owner, 2026-11-21)**
+* *Decision:* every HPC3 job runs under the class account `eecs195221_class_gpu` on the paid `gpu` partition.
+  Nothing more goes to `free` or `free-gpu`, CPU work included.
+* *Implementation:* every `cluster/slurm/*.sbatch` defaults to `--partition=gpu --account=eecs195221_class_gpu`.
+  CPU-only jobs also request `--gres=gpu:1`, since the partition requires a GPU; it sits idle (32 + cores SU per
+  hour). The solver therefore runs one grid per 8-core job, its 15 rollouts side by side, instead of one core
+  and one GPU per rollout. Flow snapshots run their models on the GPU they hold.
+* *Earlier free-partition work is kept:* onset frames (job 59905411), the Dedalus setup and self-test (59905412),
+  and 75 of the 90 bounded solver tasks (arrays 59907918-23). They cost no SUs, and the results do not depend
+  on the partition. Solver timings come from mixed free-partition CPUs; each rollout file records its CPU
+  model, so the cost comparison states them.
+* *Cost:* the remaining CPU work (15 solver tasks, scoring, snapshots) is ~50–150 SU.

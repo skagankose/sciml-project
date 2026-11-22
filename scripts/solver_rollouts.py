@@ -103,7 +103,9 @@ def run_rollout(entry: dict, start: int, shape: tuple[int, int], dataset_dir: Pa
         "iterations": int(sum(res.iterations_per_output)), "dt_min": res.dt_min, "dt_max": res.dt_max,
         "initial_dt": res.initial_dt, "output_gaps": list(gaps),
         "stored_x_is_uniform_grid": bool(np.abs(x_stored - x_grid(NATIVE[0])).max() < 1e-6),
-        "options": json.dumps(solver.opts), "cores": 1, "cpu": cpu_model(), "hostname": socket.gethostname(),
+        "options": json.dumps(solver.opts), "cores": 1,
+        "concurrent_rollouts": int(os.environ.get("SOLVER_CONCURRENT", 1)), "cpu": cpu_model(),
+        "hostname": socket.gethostname(),
         "slurm_job": f"{os.environ.get('SLURM_ARRAY_JOB_ID', os.environ.get('SLURM_JOB_ID', ''))}_"
                      f"{os.environ.get('SLURM_ARRAY_TASK_ID', '')}",
         "dedalus_version": _dedalus_version(), "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),

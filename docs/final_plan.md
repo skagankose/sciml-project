@@ -100,7 +100,7 @@ died on `/pub` `Errno 70`, and on the paid partition a crash costs a new queue w
   * The choice table (Table 8) updated.
   * Our 100% CNextU-Net against the released one.
 
-### WP4. Onset per trajectory (free CPU job and Mac; no GPU)
+### WP4. Onset per trajectory (CPU job, done on `free` 2026-11-21, and Mac)
 
 Definition, fixed on validation before it touches any test result:
 * KE(t): domain mean of ½(u² + w²) of the true fields, with Chebyshev weights in y
@@ -112,8 +112,8 @@ Definition, fixed on validation before it touches any test result:
 
 Steps:
 1. A new command, `rbbench onset-frames`, writes one small table per split: trajectory, Ra, Pr, the
-   developed-state mean, and the crossing frames for fractions 0.25, 0.5 and 0.75. It runs as a CPU job on
-   `free` and reads velocity only (~18 GB per split).
+   developed-state mean, and the crossing frames for fractions 0.25, 0.5 and 0.75. It reads velocity only
+   (~18 GB per split). It ran on `free` (job 59905411) before the owner's partition rule (D31).
 2. Validation first. Check that every trajectory crosses, look at t_on by Ra, and compare with where the
    released checkpoints' error by window levels off (D20). Then fix the definition and compute the test table.
    It comes from test truth only (no model output) and is committed like `eval_cohort.json`.
@@ -136,7 +136,7 @@ Steps:
 * 30 steps are 7.5 time units, so the true average itself fluctuates; the spread is reported.
 * Rerun after WP3 to add the 100% runs.
 
-### WP6. Bounded numerical-solver baseline (free CPU partition, no SU; design confirmed by the owner)
+### WP6. Bounded numerical-solver baseline (CPU work; first rollouts on `free`, the rest on the class partition, D31)
 
 * **Regimes:** Ra = 1e6, 1e8 and 1e10 at Pr = 1.
 * **Rollouts:** all 5 test trajectories of each regime, starts 80 and 140 (developed flow). That gives 30
@@ -264,7 +264,7 @@ two pushes:
 | Dates | Mac | HPC3 (the owner submits) |
 |---|---|---|
 | 11-21 to 11-23 | WP0; WP1, WP4 (command) and WP6 code; tests and smoke; **push 1** | `sinfo` disk check |
-| 11-23 | | the six 100% runs (paid); `free` CPU: onset frames (validation, then test), Dedalus env, self-test, solver rollouts |
+| 11-23 | | the six 100% runs (paid); onset frames, Dedalus env, self-test and 75 of 90 solver tasks ran on `free` (before D31) |
 | 11-23 to 11-26 | WP9 code and tests (variance head, β-NLL, ensemble and conformal evaluation, scores); WP4 and WP5 on the 10% results | 100% runs; solver rollouts |
 | ~11-26 | **push 2**, once the 100% training array has left the queue | 100% evaluation (WP3); UQ-A training (12 runs of 1 h) |
 | 11-27 to 11-30 | | UQ-A evaluation; noise and seed-pair evaluation (6 jobs, WP8 and WP9); validation calibration pass; solver scoring |
@@ -285,8 +285,9 @@ Thanksgiving (11-26, 11-27) falls on push 2. If the owner is away then, push 2 a
 | Validation pass for conformal calibration (WP9) | paid | ~3–5 | ~120–200 |
 | Deep ensemble: training (WP9, UQ-A) | paid | ~15–18 | ~600–700 |
 | Deep ensemble: evaluation (WP9, UQ-A) | paid | ~4–8 | ~150–350 |
-| Onset frames; solver baseline | free CPU | 0 | 0 |
-| **Still to spend** | | | **~3,700–4,700, or ~2,800–3,600 with the local copy** |
+| Onset frames, Dedalus setup, first 75 solver tasks (done 2026-11-21) | free CPU, before D31 | 0 | 0 |
+| Rest of the solver, its scoring, flow snapshots (CPU work holding one idle GPU, D31) | paid | ~2–3 | ~50–150 |
+| **Still to spend** | | | **~3,750–4,850, or ~2,850–3,750 with the local copy** |
 
 The class account had 31,530 of 33,000 SU on 2026-11-09 and is shared by the class. Check the balance before
 push 1's submissions.
@@ -299,7 +300,8 @@ WP8's and WP9's GPU cost. The 100% runs are approved (paid partition, class acco
 ## 8. Risks
 
 * **`/pub` stalls and errors:** WP1 (retries, resume in the allocation, local copy).
-* **Paid queue waits of up to 12–15 h per job:** submit each batch at once; CPU work goes to `free`.
+* **Paid queue waits of up to 12–15 h per job:** submit each batch at once. Everything runs on the class partition
+  (D31), so CPU jobs queue with the GPU jobs; they are packed into few, short jobs.
 * **The shared class allocation:** check the balance first; the local copy saves ~1,000 SU.
 * **The deadline:** the 100% runs must start by about 11-28. If they cannot finish, the backup plan applies
   (50% of the data, equally for all models). WP9 comes after the core study: if time runs short, UQ-B

@@ -4,6 +4,13 @@ This follows the user's HPC3 guide: develop on the Mac, push code through rsync 
 HPC3, run every reported job on an A100, and pull compact results back. Every step that spends GPU time is
 marked with **[gate]**. Do not run a step past a gate without the owner's approval.
 
+**Partition (owner, 2026-11-21): the class account's paid `gpu` partition only, never `free` or `free-gpu`.**
+Every script in `cluster/slurm/` defaults to `--partition=gpu --account=eecs195221_class_gpu`, so the
+`-p gpu -A eecs195221_class_gpu` on the commands below is redundant but harmless. Billing: 32 SU per GPU-hour
+plus 1 SU per core-hour of wall time. CPU-only jobs (`*_cpu.sbatch`) hold one GPU they do not use (32 + cores
+SU/h), so CPU work is packed: the solver runs the 15 rollouts of one grid side by side in one 8-core job. Mentions
+of `free` / `free-gpu` below record runs made before 2026-11-21.
+
 Layout on HPC3:
 
 ```text
@@ -39,7 +46,7 @@ The transfer host `hpc3-xfer` accepts only `rsync`/`scp`. Run commands such as `
 ```bash
 ssh hpc3
 cd /pub/$USER/projects/well-rb-four-families
-mkdir -p logs && sbatch cluster/slurm/setup_cpu.sbatch   # free CPU node, ~30 min; writes env/hpc3-*
+mkdir -p logs && sbatch cluster/slurm/setup_cpu.sbatch   # GPU node (idle GPU), ~30 min; writes env/hpc3-*
 tail -f $(ls -t logs/rb4-setup-*.out | head -1)          # ends with "done; commit env/hpc3-*"
 sbatch cluster/slurm/check.sbatch                        # A100: tests incl. CUDA tests at 512x128, smoke on CUDA
 ```
@@ -64,7 +71,7 @@ conda env remove -n well-rb -y
 
 ```bash
 sbatch --export=ALL,SPLITS="valid test train" cluster/slurm/download_cpu.sbatch   # preemptible; resubmit to resume
-# or interactively on a free CPU node:  source cluster/env.sh && bash scripts/download_rb.sh valid test train
+# (2026-11-07 it ran on a free CPU node; the script now runs on the class partition, ~34 SU/h)
 ```
 
 A split counts as done only when `$DATA_ROOT/datasets/rayleigh_benard/rbbench_complete_<split>.json` exists.
@@ -136,7 +143,7 @@ partition's maximum.
 Before training, check that data loading keeps up (D23). This is CPU only, about 10–20 minutes:
 
 ```bash
-sbatch -p free -c 16 --mem=64G --time=01:00:00 -J rb4-bench -o logs/%x-%j.out --wrap 'source cluster/env.sh && python -m rbbench bench-data --batch-size 64 --batches 15 --workers 4 8 15 --out outputs/pilots/bench_data.json'
+sbatch -p gpu -A eecs195221_class_gpu --gres=gpu:1 -c 16 --mem=64G --time=01:00:00 -J rb4-bench -o logs/%x-%j.out --wrap 'source cluster/env.sh && python -m rbbench bench-data --batch-size 64 --batches 15 --workers 4 8 15 --out outputs/pilots/bench_data.json'
 ```
 
 When both runs have finished, compare each with the released checkpoint scored identically (step 3b):
@@ -205,7 +212,7 @@ the earlier grid (`docs/abstract_alignment.md` F2), so pass the core grid explic
 # on the Mac, then commit and push:
 python -m rbbench make-sweep --experiment main --models cnext_unet tfno avit \
     --fractions 0.1 1.0 --seeds 0 1 --out tasks/train.jsonl              # 12 rows
-mkdir -p logs && sbatch --array=0-11%1 cluster/slurm/train_a100.sbatch   # free-gpu, A100
+mkdir -p logs && sbatch --array=0-11%1 cluster/slurm/train_a100.sbatch   # class account, A100 (script default)
 ```
 
 Extensions (a third seed, 30% data, ConvLSTM) are separate manifests and need their own approval.
@@ -251,7 +258,6 @@ for the reference row of the rollout table; the pipeline check scores only one s
 One checkpoint, about 0.5 GPU-hours; it writes `outputs/baselines/released/cnext_unet/evaluations/`:
 
 ```bash
-sbatch --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch                              # free-gpu
 sbatch -p gpu -A eecs195221_class_gpu --array=0 --export=ALL,RELEASED=cnext_unet cluster/slurm/eval_a100.sbatch  # paid
 ```
 
@@ -275,33 +281,36 @@ per run and in total (decisions D22); compare its TOTAL row with `sacct` for the
 Keep the checkpoints on HPC3 until the figures are final. Copy anything irreplaceable to CRSP or the Mac,
 because `/pub` is not backed up.
 
-## 7. Numerical-solver baseline (Dedalus; CPU, free partition, no SUs; D25, bounded by D29)
+## 7. Numerical-solver baseline (Dedalus; CPU work on a class GPU node; D25, bounded by D29)
 
 ```bash
 # once: the rb-dedalus env, ending with the solver self-test ("passed": true)
 sbatch cluster/slurm/setup_dedalus_cpu.sbatch
-# rollouts, bounded design (D29): Ra 1e6/1e8/1e10 at Pr 1, 5 trajectories each (tasks 0-14), starts 80 and 140,
-# six grids; one core per task; resubmit to resume after preemption
-for RES in 512x128 384x96 256x64 192x48 128x32 64x16; do
-    sbatch --array=0-14 --export=ALL,RES=$RES cluster/slurm/solver_cpu.sbatch
-done
+# rollouts, bounded design (D29): Ra 1e6/1e8/1e10 at Pr 1, 5 trajectories each (tasks 0-14), starts 80 and 140.
+# One job per grid (array index 0-5 = 512x128 384x96 256x64 192x48 128x32 64x16) runs its 15 tasks side by side on
+# 8 cores; finished rollouts are skipped, so resubmitting resumes. 512x128 takes ~1 h, the others minutes.
+sbatch --array=0-5 cluster/slurm/solver_cpu.sbatch
 # score with the models' metrics (well-rb env); rerun after more rollouts finish
 sbatch cluster/slurm/solver_score_cpu.sbatch
 ```
 
-A task whose log ends in `MPI_Init_thread ... ucx function returned with failed status` landed on a node with a
-qedr RoCE card (hpc3-14-*, hpc3-15-*, 2026-11-21). `solver_cpu.sbatch` now sets `UCX_TLS=self,sm,tcp`. On a tree
-older than that fix, set it at submission: `UCX_TLS=self,sm,tcp sbatch --array=<failed> --export=ALL,RES=... ...`
-(`--export=ALL` passes it on; it cannot go inside `--export=`, whose commas separate variables).
+The job's log lists each task as done or FAILED; each task logs to `logs/rb4-solver-<job>_<grid>_t<task>.out`.
+Each rollout file records its host, CPU model and how many rollouts ran beside it (`concurrent_rollouts`).
+A task log that ends in `MPI_Init_thread ... ucx function returned with failed status` ran on a node with a qedr
+RoCE card (free nodes hpc3-14-*, hpc3-15-*, 2026-11-21). `solver_cpu.sbatch` sets `UCX_TLS=self,sm,tcp`
+against it.
+
+The first rollouts (2026-11-21, arrays 59907918-23) ran on the free partition, one task per array index
+(`--array=0-14 --export=ALL,RES=<grid>`), before the owner's partition rule.
 
 On the Mac: `cluster/pull.sh` brings the scored tables (`outputs/baselines/solver_<res>/`); the raw rollouts
 (`outputs/solver/`, ~2.5 GB at 512 x 128 and nearly copies of the test data) stay on HPC3. Then
 `scripts/findings.py` draws `solver_vs_models_rollout_4h_test` and `solver_cost_accuracy_4h_test`.
 
-## 8. Flow snapshots for the report (CPU, free partition)
+## 8. Flow snapshots for the report (class GPU node)
 
 ```bash
-sbatch cluster/slurm/visualize_cpu.sbatch     # our 10% / 4 h / seed 0 models on two test trajectories
+sbatch cluster/slurm/visualize_cpu.sbatch     # our 10% / 4 h / seed 0 models on two test trajectories, on the GPU
 ```
 
 Writes `outputs/visuals/rollout_*.npz` (a few frames of the true flow and each model's rollout, ~5 MB each).
@@ -330,7 +339,7 @@ mkdir -p logs
 # A crash (e.g. a /pub error) restarts the run inside the allocation (cluster/run_with_restarts.sh).
 sbatch -p gpu -A eecs195221_class_gpu --array=2,3,6,7,10,11 --time=20:00:00 --tmp=400G \
     --export=ALL,STAGE_DATA=1 cluster/slurm/train_a100.sbatch
-# WP4: onset frame per validation and test trajectory (free CPU, ~18 GB read per split)
+# WP4: onset frame per validation and test trajectory (~18 GB read per split; ran on free CPU 2026-11-21)
 sbatch cluster/slurm/onset_cpu.sbatch
 # WP6: Dedalus env and self-test, then the bounded rollouts (section 7)
 sbatch cluster/slurm/setup_dedalus_cpu.sbatch

@@ -6,9 +6,10 @@
 # the owner first. Submit from the repo root:
 #   mkdir -p logs && sbatch cluster/slurm/released_a100.sbatch
 # The log ends with "PIPELINE CHECK PASSED" or "PIPELINE CHECK: MISMATCH"; results are in
-# outputs/baselines/released/released_check.json. Any free GPU would do (--gres=gpu:A30:1).
+# outputs/baselines/released/released_check.json. Class account, paid `gpu` partition only (owner, 2026-11-21).
 #SBATCH --job-name=rb4-released
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=6G

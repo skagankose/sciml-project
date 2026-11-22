@@ -3,7 +3,8 @@
 # fp32 and bf16, for all four models. Appends to outputs/pilots/feasibility.csv.
 #   sbatch cluster/slurm/profile_a100.sbatch
 #SBATCH --job-name=rb4-profile
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=6G

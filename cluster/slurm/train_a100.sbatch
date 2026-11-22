@@ -15,7 +15,8 @@
 #       --export=ALL,STAGE_DATA=1 cluster/slurm/train_a100.sbatch
 # A crash (e.g. a /pub error) restarts the run inside the allocation: cluster/run_with_restarts.sh.
 #SBATCH --job-name=rb4-train
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=6G

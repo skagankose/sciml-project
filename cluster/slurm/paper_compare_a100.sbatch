@@ -5,7 +5,8 @@
 #   sbatch --array=<i>,<j> --export=ALL,MANIFEST=tasks/train.jsonl,LABEL=4h cluster/slurm/paper_compare_a100.sbatch
 # The job exits 1 (FAILED in sacct) when the run is worse than the paper; the log says which check.
 #SBATCH --job-name=rb4-paper
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=6G

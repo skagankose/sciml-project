@@ -687,7 +687,7 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-09 | free-gpu A100s planned for higher-priority jobs (`ReqNodeNotAvail`) | jobs waited for hours | moved to the paid `gpu` partition |
 | 11-09 | pipeline check hit its 2 h limit; Python buffered stdout | test split not scored, log empty | 4 h limit, `PYTHONUNBUFFERED=1` |
 | 11-21 | Dedalus setup job wrote `env/hpc3-dedalus-conda.yml` into the tree while 100% tasks were starting | 5 tasks refused a dirty tree (~50 SU) | snapshot committed; no repo-writing setup job while training can start |
-| 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; resubmit the indices |
+| 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; rerun on the class partition (D31) |
 
 ## 6. Figures for the report
 
@@ -792,8 +792,9 @@ its evaluation is pulled.
     of 30 outputs: the CFL time step collapsed to ~1e-17 and the fields overflowed. The missing frames are scored
     as VRMSE inf (`solver_eval.score_frames`). The coarsest grid cannot hold Ra = 1e10.
   * Cost grows steeply with Ra at fine grids (512 x 128: 4.4x from Ra 1e6 to 1e10, through the CFL step).
-  * The MPI failures are a node problem, not the solver: see the incident table (section 5). Resubmitted with
-    `UCX_TLS=self,sm,tcp`. Accuracy (scoring, grid matching with CNextU-Net) waits for the full set.
+  * The MPI failures are a node problem, not the solver: see the incident table (section 5). They rerun on the
+    class partition (D31) with `UCX_TLS=self,sm,tcp`. Accuracy (scoring, grid matching with CNextU-Net) waits for
+    the full set. The timings above come from mixed free-partition CPUs; each rollout file records its CPU model.
 
 ## 9. Onset per trajectory (D28, D29; final_plan WP4)
 

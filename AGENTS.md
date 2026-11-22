@@ -15,6 +15,8 @@ Rules:
 7. Before every push, run `pytest -q` and `python -m rbbench smoke --device cpu --synthetic --grid 64 32 --steps 3 --all-models`.
 8. Record every finding (results, cost, run time, training curves, incidents) in `docs/report_notes.md` as it
    happens, for the final report; `scripts/findings.py` regenerates its tables and figures (owner, 2026-11-10).
+9. Run every HPC3 job under the class account on the paid `gpu` partition (`-p gpu -A eecs195221_class_gpu`,
+   the scripts' default); never `free` or `free-gpu`, CPU work included (owner, 2026-11-21; D31).
 
 ## Gates
 
@@ -652,3 +654,9 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     (192 x 48 tasks 1-12, 64 x 16 tasks 7-9) failed in `MPI_Init` on free nodes with a qedr RoCE card.
     `solver_cpu.sbatch` now sets `UCX_TLS=self,sm,tcp` (committed, not pushed). Resubmit with the variable set
     at submission. Cost per grid is in `docs/report_notes.md` section 8.
+* 2026-11-21 (night): owner rule: class account only, no free partitions (rule 9, D31). Every Slurm script now
+  defaults to `-p gpu -A eecs195221_class_gpu`; CPU-only scripts also request one GPU, which sits idle.
+  `solver_cpu.sbatch` runs one grid per 8-core job (15 rollouts side by side, `--array=0-5` over the grids)
+  instead of one core per array task. Each rollout records `concurrent_rollouts`. `visualize_cpu.sbatch` runs
+  its models on the GPU. The 15 failed solver tasks wait for this script (next push): `sbatch --array=3,5
+  cluster/slurm/solver_cpu.sbatch`. The free-partition results so far are kept (D31). Committed, not pushed.

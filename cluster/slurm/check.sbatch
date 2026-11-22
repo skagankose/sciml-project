@@ -3,7 +3,8 @@
 # CUDA tests at 512x128 for all four models) and the synthetic smoke pipeline on CUDA.
 #   mkdir -p logs && sbatch cluster/slurm/check.sbatch
 #SBATCH --job-name=rb4-check
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=6G

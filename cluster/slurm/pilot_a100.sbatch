@@ -5,7 +5,8 @@
 #   python -m rbbench make-sweep --experiment pilot --fractions 0.1 --seeds 0 --out tasks/pilot.jsonl
 #   sbatch cluster/slurm/pilot_a100.sbatch
 #SBATCH --job-name=rb4-pilot
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=6G

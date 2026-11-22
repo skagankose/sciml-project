@@ -13,7 +13,8 @@
 #   sbatch -p gpu -A eecs195221_class_gpu --array=7-10 cluster/slurm/uq_eval_a100.sbatch      # after the UQ runs
 # SPLITS="valid" or "test" runs one split only.
 #SBATCH --job-name=rb4-uq
-#SBATCH --partition=free-gpu
+#SBATCH --partition=gpu
+#SBATCH --account=eecs195221_class_gpu
 #SBATCH --gres=gpu:A100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=8G

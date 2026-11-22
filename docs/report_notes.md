@@ -190,7 +190,7 @@ Done before the 10% runs, and the 10% runs confirmed the predictions.
   hpc3-gpu-l54-03 at 18:10 PST. Its copy took 7.8 min (0.63 GB/s). At 19:20 it had trained 3,000 steps in 3,566 s of GPU
   time (1.19 s per step, as at 10%) and waited for data 4.3 s; wall 3,745 s. Rows 6, 7, 10 and 11 had not started
   (no log) at 19:20.
-* Outcome (2026-11-22): rows 3, 6, 7 and 11 completed; row 10 never started. See section 10.
+* Outcome (2026-11-22): rows 3, 6, 7 and 11 completed; row 10 failed at launch in a `/pub` outage. See section 10.
 
 ### Learning-rate search (2026-11-08 to 11-09)
 
@@ -690,6 +690,7 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-21 | Dedalus setup job wrote `env/hpc3-dedalus-conda.yml` into the tree while 100% tasks were starting | 5 tasks refused a dirty tree (~50 SU) | snapshot committed; no repo-writing setup job while training can start |
 | 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; rerun on the class partition (D31) |
 | 11-22 | `/pub` `Errno 121 Remote I/O error` while saving TFNO 100% s0's checkpoint | attempt 1 died after 1.1 h | in-job restart (`run_with_restarts.sh`) resumed from step 4,322 and completed; ~25 min wall lost |
+| 11-22 | `/pub` outage at 00:08 PST: Slurm could not open the jobs' output files | row 10 and the persistence UQ evaluation `FAILED 0:53` in 1 s, no log | a job without a log can have failed at launch: check `sacct` after `/pub` incidents; resubmit |
 | 11-22 | `/pub` write stalls of 10–22 min on every job at once (01:28, 02:03, 02:54, 04:19 PST) | 100% runs: up to 4,258 s of checkpoint time per run (22% of wall); 10% UQ runs: data waits | node-local data does not protect checkpoint writes; saving locally and copying in the background would (not implemented) |
 
 ## 6. Figures for the report
@@ -888,7 +889,7 @@ score.
 | row 3 CNextU-Net 100% s1 | 59907862_3 | 1 | 14,400 | 83 | 1,671 | 4.65 | 0.520 / 0.170 |
 | row 6 TFNO 100% s0 | 59907862_6 | 2 (in-job restart) | 14,400 | 468 | 3,278 | 5.81 | 0.565 / 0.281 |
 | row 7 TFNO 100% s1 | 59907862_7 | 1 | 14,400 | 21 | 4,258 | 5.46 | 0.535 / 0.274 |
-| row 10 AViT 100% s0 | 59907862_10 | **not started**: no log, no run folder | | | | | |
+| row 10 AViT 100% s0 | 59907862_10 | **failed at launch** (`0:53`, `/pub` outage), no log | | | | | |
 | row 11 AViT 100% s1 | 59907862_11 | 1 | 14,400 | 3,098 | 1,279 | 5.66 | 0.486 / 0.152 |
 | UQ β-NLL 10% s0–s4 (`tasks/uq.jsonl` 0–4) | 59907938_0–4 | 1 each | 3,600 | 1,399–3,582 | 17–673 | 1.60–2.03 | 0.347–0.387 |
 | UQ β-NLL 100% s0–s4 (`tasks/uq.jsonl` 5–9) | 59907939_5–9 | 1 each | 3,600 | 3–4 | 449–1,071 | 1.14–1.54 | 0.341–0.373 |
@@ -904,10 +905,10 @@ score.
 * The local copy took 2.5–7.8 min per job (0.63–1.99 GB/s). With it, CNextU-Net and TFNO waited for data under
   8 min in 4 h. AViT 100% ran in 5.66 h of wall time, against 11.1–12.2 h at 10% reading `/pub` and the 14–17 h
   projected for 100% without the copy.
-* Not started at 09:57 PST: row 10 and the persistence UQ evaluation (59907864_6): no log and no output. Both
-  were pending at 19:30 PST on 11-21, and jobs submitted after them have since run, so they may have failed at
-  launch (Slurm writes no log if it cannot open the output file, e.g. during a `/pub` error) or been cancelled.
-  Their state needs `sacct`.
+* Row 10 and the persistence UQ evaluation (59907864_6) failed at launch. `sacct` (owner, 2026-11-22) shows both
+  started at 00:08:36 PST, on hpc3-gpu-l54-05 and -06, and ended within a second with `FAILED 0:53`: Slurm could
+  not open the output file in `logs/` on `/pub`. This was 1.5 min before TFNO s0's `Errno 121`, in the same `/pub`
+  outage. No log, no output, about 1 s billed. Both are to be resubmitted.
 
 ### `/pub` stalls now hit checkpoint writes
 

@@ -678,12 +678,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
       restart resumed it from step 4,322, losing ~25 min.
     * The 12 UQ / 1 h training runs (59907938-40).
     * The row-2 test evaluation (59907942_2: cohort hash matched, physics audit passed).
-  * **Row 10 (AViT 100% s0) and the persistence UQ evaluation (59907864_6) never started**: no log, no output.
-    Their state needs the owner's `sacct`.
+  * **Row 10 (AViT 100% s0) and the persistence UQ evaluation (59907864_6) failed at launch**. `sacct` gives
+    `FAILED 0:53` at 00:08:36 PST, within 1 s: Slurm could not open their output files during the `/pub` outage.
+    There is no log. To be resubmitted. `squeue` is empty.
   * `/pub` write stalls of 10–22 min hit every job at once. The 100% runs lost them in checkpoint saves (up to 22%
     of wall time), since node-local data does not cover writes.
   * CNextU-Net 100% s0 on test (4 h): developed 0.0486 vs 0.0505 at 10%, with the same rollouts. At 1 h, 0.481 vs
     0.60-0.85 over all windows.
   * Cost about 40.6 GPU-h, ~1,620 SU (logs; `sacct` pending).
-  * Details in `docs/report_notes.md` section 10. Not pushed: row 10's state is unknown.
+  * Details in `docs/report_notes.md` section 10. Queue empty, so the held commits are pushed (below).
 

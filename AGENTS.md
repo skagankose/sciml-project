@@ -686,5 +686,9 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * CNextU-Net 100% s0 on test (4 h): developed 0.0486 vs 0.0505 at 10%, with the same rollouts. At 1 h, 0.481 vs
     0.60-0.85 over all windows.
   * Cost about 40.6 GPU-h, ~1,620 SU (logs; `sacct` pending).
-  * Details in `docs/report_notes.md` section 10. Queue empty, so the held commits are pushed (below).
+  * Details in `docs/report_notes.md` section 10.
+  * With the queue empty, 620fd64 was pushed after pytest (184 passed) and smoke. On HPC3 `main` is 620fd64, and
+    a dry run finds nothing to change. It carries the onset 0.1 work, the class-only Slurm defaults and the packed
+    solver script. To submit: row 10, the persistence UQ evaluation, solver grids 3 and 5, and the evaluations
+    of rows 3, 6, 7 and 11. No push until they have started.
 

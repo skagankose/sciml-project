@@ -27,6 +27,8 @@ and figures, each as .pdf and .png:
   (the evaluation and solver figures once per data fraction: suffix _f010 / _f100)
     fraction_comparison.csv                      per run and checkpoint: one-step (all, onset, developed, per field),
                                                  rollout VRMSE at step 30, share below 1, steps ahead of persistence
+    nusselt_rollouts.csv, nusselt_by_rayleigh.csv  rollout-averaged Nu (frames 80, 140), predicted vs true, per Ra
+    nusselt_by_rayleigh_{1h,4h}_test             the same as a figure: Nu, bias and |error| per Ra, 10% and 100%
     eval_one_step_by_frame_test_<f>              one-step VRMSE by window: ours 1 h / 4 h, released, persistence
     eval_rollout_by_start_<label>_test_<f>       rollouts from starts 20 / 80 / 140 against persistence
     eval_paper_rollout_4h_test_<f>               the paper's frame-0 rollouts: ours, released, persistence
@@ -410,6 +412,15 @@ def main() -> int:
     if not comp.empty:
         comp.to_csv(out / "fraction_comparison.csv", index=False)
         written.append(str(out / "fraction_comparison.csv"))
+    # heat transport per Rayleigh number (WP5, D28): rollout-averaged Nu, predicted against true
+    nu_roll = figs.nusselt_rollouts(runs_df, outputs) if not runs_df.empty else pd.DataFrame()
+    if not nu_roll.empty:
+        nu_roll.to_csv(out / "nusselt_rollouts.csv", index=False)
+        nu_sum = figs.nusselt_by_rayleigh(nu_roll)
+        nu_sum.to_csv(out / "nusselt_by_rayleigh.csv", index=False)
+        written += [str(out / "nusselt_rollouts.csv"), str(out / "nusselt_by_rayleigh.csv")]
+        for lab in ("1h", "4h"):
+            written += figs.nusselt_by_rayleigh_figure(nu_sum, lab, out / f"nusselt_by_rayleigh_{lab}_test")
 
     # Slurm accounting: billed SU, GPU-hours and queue waits of every job (sacct, run on HPC3 and pulled)
     sacct_path = outputs / "sacct_skose.txt"

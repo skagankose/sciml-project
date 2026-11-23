@@ -749,4 +749,12 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     (`_f010` / `_f100`), report figures held at 10%, `sacct` purposes per fraction and manifest, and UQ / 1 h
     manifests in the run table. `tests/test_findings_fractions.py`.
   * Report figures with both fractions, and the per-trajectory onset split in `report_figures`, are left for WP7.
+* 2026-11-23: WP5, heat transport per Rayleigh number (D28). The rollout-averaged volume Nu (frames 80 and 140),
+  predicted against true, per Ra. `scripts/findings.py` writes `nusselt_rollouts.csv`, `nusselt_by_rayleigh.csv`
+  and `nusselt_by_rayleigh_{1h,4h}_test`; tests in `tests/test_findings_nusselt.py`.
+  * At 4 h, TFNO is closest (|error| 20–21%). AViT carries too little heat (−17%, −40% at Ra 1e10). CNextU-Net is
+    unbiased to Ra 1e9 but scattered (|error| 49%). Data barely changes any of them.
+  * The released CNextU-Net carries 2× the true heat (+108%): right at steps 1–3, then drifting to +200% by step 30.
+  * Caveat: the true 30-step average is not stationary (bottom wall > volume > top). Details in
+    `docs/report_notes.md` section 12.
 

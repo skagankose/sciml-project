@@ -1203,3 +1203,83 @@ Log spectral error at step 30 (4 h, 10% / 100%): CNextU-Net 1.317 / 1.319, TFNO 
 * Those figures should also move the `report_figures._developed` split from frame 50 to the per-trajectory onset
   (D29); the mid-project figures keep frame 50.
 * The "which model when" table updated with the 100% results.
+
+## 12. Heat transport per Rayleigh number (WP5; D28; 2026-11-23)
+
+**What is compared** (the professors' request, D28):
+* Per rollout from developed flow (frames 80 and 140; 350 rollouts, 70 per Ra: 7 Pr × 5 trajectories × 2
+  starts), the volume Nusselt number Nu = 1 + ⟨w b⟩/κ is averaged over the 30 steps, predicted and true alike.
+* Per Rayleigh number: the median over rollouts of the predicted and true averages, and of the relative error
+  (pred − true) / true, signed and absolute. Then the mean over the two seeds.
+* `scripts/findings.py` writes `outputs/findings/nusselt_rollouts.csv` (per rollout), `nusselt_by_rayleigh.csv`
+  and the figure `nusselt_by_rayleigh_{1h,4h}_test` (Nu, bias and |error| per Ra; 10% open and 100% filled).
+* Tests: `tests/test_findings_nusselt.py`.
+* The all-Ra values at 10% reproduce the mid-project table (`tab:nusselt`) exactly.
+
+Median true rollout-averaged Nu: Ra 1e+06: 7.9, Ra 1e+07: 13.3, Ra 1e+08: 23.2, Ra 1e+09: 44.1, Ra 1e+10: 96.1.
+
+4 h checkpoints, median signed relative error per Ra, and over all Ra (signed / |error|):
+
+| Model | Ra 1e+06 | Ra 1e+07 | Ra 1e+08 | Ra 1e+09 | Ra 1e+10 | All Ra: signed / abs |
+|---|---|---|---|---|---|---|
+| CNextU-Net 10% | -3% | -3% | -9% | -15% | +35% | -1% / 49% |
+| CNextU-Net 100% | -8% | +6% | -5% | +9% | +41% | +2% / 49% |
+| TFNO 10% | -2% | +16% | +19% | -3% | -14% | +6% / 20% |
+| TFNO 100% | -3% | +15% | +17% | +5% | -13% | +8% / 21% |
+| AViT 10% | -11% | -8% | -13% | -18% | -43% | -17% / 27% |
+| AViT 100% | -5% | -17% | -19% | -14% | -38% | -17% / 25% |
+| Persistence | -2% | -3% | +6% | +7% | +6% | +2% / 27% |
+| Released CNextU-Net | +34% | +73% | +121% | +165% | +299% | +108% / 114% |
+
+1 h checkpoints, over all Ra (signed / |error|):
+
+| Model | 10% | 100% |
+|---|---|---|
+| CNextU-Net | +545% / 548% | +133% / 153% |
+| TFNO | +20% / 91% | +29% / 48% |
+| AViT | +14% / 35% | -28% / 44% |
+
+### Reading
+
+* **TFNO comes closest at 4 h** (median |error| 20–21%), with a small bias at every Ra: +15–19% at Ra 1e7–1e8 and
+  −13% at 1e10. Below Ra 1e10 it beats persistence's 17–32%. The mid-project finding holds at 100%.
+* **AViT carries too little heat at every Ra**, increasingly so at high Ra (−38 to −43% at 1e10). More data does
+  not change it (−17% overall at both fractions).
+* **Our CNextU-Net is nearly unbiased up to Ra 1e9 but scattered.** Its median |error| grows from 19–21% at Ra 1e6
+  to ~100% at 1e10, with errors on both sides; at Ra 1e10 it overshoots by 35–41%.
+* **Ten times more data barely moves heat transport at 4 h** for any model (all-Ra |error| 49 → 49%, 20 → 21%,
+  27 → 25%). This is the same pattern as the one-step and rollout errors (section 11).
+* **After 1 hour, CNextU-Net carries far too much heat**: +545% at 10% and +133% at 100%. More data reduces it
+  4×, but it stays the worst. TFNO and AViT are within about ±30% in the median.
+* **The released CNextU-Net carries twice the true heat** over a rollout: +108% overall, from +34% at Ra 1e6 to
+  +299% at 1e10.
+  * It is right at first and then drifts. Median signed error of the instantaneous Nu by step (all Ra): −4%
+    (step 1), −1% (3), +22% (6), +100% (12), +169% (20), +201% (30). At Ra 1e10 it reaches +731% at step 30.
+  * Ours at 100% / 4 h / seed 0 drift less over 30 steps: CNextU-Net −1% → −17%, TFNO −4% → +27%, AViT −1% → −26%.
+  * The released model has the best one-step error in developed flow (0.0382), so **a low one-step error does not
+    guarantee the right heat flux over a rollout**. This fits its less stable rollouts (77% vs our 88% below
+    VRMSE 1).
+  * A possible cause, not tested: Nu weights ⟨w b⟩ by 1/κ = √(Ra Pr), up to 3 × 10⁵, so small-scale w–b
+    correlations that grow over a rollout are amplified most at high Ra.
+* **Persistence's error (17–34%) is the natural variability**: how far one snapshot's Nu lies from the 30-step
+  mean. A model must beat it to add information about heat transport.
+  * TFNO at 4 h does so below Ra 1e10 (9–29% against 17–32%).
+  * AViT roughly matches it up to Ra 1e9 (clearly better only at 1e7: 20–22% against 26%) and falls behind at
+    1e10.
+  * CNextU-Net never beats it (19–21% against 17% even at Ra 1e6).
+* **Heat transport ranks the models differently from VRMSE.** CNextU-Net has the lowest VRMSE; TFNO the closest
+  heat transport; AViT is biased low.
+
+### Caveats
+
+* **The true average is not a converged Nu(Ra).**
+  * Over 30 steps (7.5 time units), the true heat flux through the bottom wall exceeds the volume average, which
+    exceeds the top wall's. Medians at Ra 1e10: 141 / 96 / 61. The gap between wall and volume is 13–37% (larger
+    at high Ra).
+  * So the flow is not statistically stationary over a window. Predicted and true use the same volume definition,
+    so the comparison is fair, but the values are not meant for comparison with Nu–Ra scaling laws.
+  * The median true values grow roughly as Ra^0.27 (7.9 → 96.1 over four decades).
+* **The instantaneous Nu swings widely** (true values down to −339 at Ra 1e10), and one Ra 1e10 rollout has a
+  negative true average (−24). Hence medians, not means; the aggregate table's `nusselt_rel_err` (a mean per
+  step) is dominated by such values and is not used.
+* **Seeds:** two per configuration. The released checkpoint and persistence are single.

@@ -668,6 +668,124 @@ def fraction_comparison(runs: pd.DataFrame, outputs: Path, onset_table: Path) ->
     return pd.DataFrame(rows).sort_values(["budget", "model", "fraction", "seed"], na_position="first")
 
 
+# --- heat transport per Rayleigh number (WP5; D28) --------------------------------------------------------------
+
+NU_STARTS = (80, 140)  # rollouts from developed flow
+
+
+def _nu_rollout_means(phys: pd.DataFrame) -> pd.DataFrame:
+    """Predicted and true volume Nusselt number averaged over each 30-step rollout from developed flow."""
+    phys = phys[phys.sigma == 0] if "sigma" in phys else phys
+    phys = phys[phys.start.isin(NU_STARTS)]
+    g = phys.groupby(["rayleigh", "prandtl", "traj_id", "start"]).agg(
+        nu_true=("nu_true", "mean"), nu_pred=("nu_pred", "mean"), steps=("step", "size")).reset_index()
+    g["rel_err"] = (g.nu_pred - g.nu_true) / g.nu_true
+    return g
+
+
+def nusselt_rollouts(runs: pd.DataFrame, outputs: Path) -> pd.DataFrame:
+    """One row per (run or reference, checkpoint, rollout): the rollout-averaged predicted and true Nu.
+
+    The volume Nusselt number Nu = 1 + <w b>/kappa of every predicted and true frame comes from the evaluation
+    (`physics_<label>.parquet`, rbbench.metrics.physics.nusselt). Averaging over the rollout, as the professors asked
+    (D28), damps the instantaneous value's wide swings.
+    """
+    rows = []
+    evals = evaluated_runs(runs, outputs)
+    for _, e in evals.iterrows():
+        p = e.dir / f"physics_{e.label}.parquet"
+        if p.exists():
+            g = _nu_rollout_means(pd.read_parquet(p))
+            rows.append(g.assign(model=e.model, fraction=e.fraction, seed=e.seed, budget=e.label))
+    for name, d in (("persistence", outputs / "baselines" / "persistence" / "evaluations"),
+                    ("released_cnext_unet", outputs / "baselines" / "released" / "cnext_unet" / "evaluations")):
+        if (d / "physics_na.parquet").exists():
+            g = _nu_rollout_means(pd.read_parquet(d / "physics_na.parquet"))
+            rows.append(g.assign(model=name, fraction=np.nan, seed=0, budget="-"))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def nusselt_by_rayleigh(roll: pd.DataFrame) -> pd.DataFrame:
+    """Per model, fraction, budget and Ra (and over all Ra): medians over rollouts, then the mean over seeds.
+
+    nu_true / nu_pred: median rollout-averaged Nu with the quartiles of the prediction; rel_err_signed /
+    rel_err_abs: median of (pred - true) / true and of its absolute value (negative: too little heat transport).
+    """
+    def stats(g):
+        return pd.Series({"n_rollouts": len(g), "nu_true": g.nu_true.median(), "nu_pred": g.nu_pred.median(),
+                          "nu_pred_q25": g.nu_pred.quantile(0.25), "nu_pred_q75": g.nu_pred.quantile(0.75),
+                          "nu_true_q25": g.nu_true.quantile(0.25), "nu_true_q75": g.nu_true.quantile(0.75),
+                          "rel_err_signed": g.rel_err.median(), "rel_err_abs": g.rel_err.abs().median()})
+    keys = ["model", "fraction", "budget", "seed"]
+    per_ra = roll.groupby(keys + ["rayleigh"], dropna=False).apply(stats, include_groups=False).reset_index()
+    overall = roll.groupby(keys, dropna=False).apply(stats, include_groups=False).reset_index().assign(rayleigh=np.nan)
+    both = pd.concat([per_ra, overall], ignore_index=True)
+    out = (both.groupby(["model", "fraction", "budget", "rayleigh"], dropna=False)
+           .agg(n_seeds=("seed", "size"), **{c: (c, "mean") for c in both.columns
+                                             if c not in keys + ["rayleigh"]}).reset_index())
+    return out
+
+
+def nusselt_by_rayleigh_figure(summary: pd.DataFrame, label: str, stem: Path) -> list[str]:
+    """(a) median rollout-averaged Nu against Ra, true and predicted; (b) median signed relative error;
+    (c) median |relative error|. Our models at 10% (open, dashed) and 100% (filled, solid) at one checkpoint."""
+    s = summary[summary.rayleigh.notna()]
+    ours = s[(s.budget == label) & s.model.isin(MODEL_NAMES)]
+    if ours.empty:
+        return []
+    plt = _plt()
+    from matplotlib.lines import Line2D
+
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(12.0, 3.6))
+    truth = s[s.model == "persistence"].sort_values("rayleigh")
+    a.fill_between(truth.rayleigh, truth.nu_true_q25, truth.nu_true_q75, color=INK, alpha=0.12, lw=0)
+    a.plot(truth.rayleigh, truth.nu_true, color=INK, lw=2.0)
+    for m in _models(ours.model):
+        st = STYLE[m]
+        for frac, ls, fill in ((0.1, "--", "white"), (1.0, "-", st["color"])):
+            g = ours[(ours.model == m) & (ours.fraction.round(3) == frac)].sort_values("rayleigh")
+            if g.empty:
+                continue
+            kw = dict(color=st["color"], ls=ls, marker=st["marker"], ms=5, mfc=fill, lw=1.4)
+            a.plot(g.rayleigh, g.nu_pred, **kw)
+            b.plot(g.rayleigh, 100 * g.rel_err_signed, **kw)
+            c.plot(g.rayleigh, 100 * g.rel_err_abs, **kw)
+    for name, color, ls in (("persistence", PERSIST["color"], ":"), ("released_cnext_unet", INK, "-.")):
+        g = s[s.model == name].sort_values("rayleigh")
+        if not g.empty:
+            if name != "persistence":
+                a.plot(g.rayleigh, g.nu_pred, color=color, ls=ls, lw=1.2)
+            b.plot(g.rayleigh, 100 * g.rel_err_signed, color=color, ls=ls, lw=1.3)
+            c.plot(g.rayleigh, 100 * g.rel_err_abs, color=color, ls=ls, lw=1.3)
+    a.set_yscale("log")
+    a.set_ylabel("Nu averaged over the rollout (median)")
+    a.set_title("(a) Heat transport, true (black, band: quartiles) and predicted", fontsize=9, color=INK)
+    b.axhline(0, color=MUTED, lw=0.8)
+    b.set_ylabel("median signed error (%)")
+    b.set_title("(b) Bias: below 0 = too little heat transport", fontsize=9, color=INK)
+    c.set_ylabel("median |error| (%)")
+    c.set_title("(c) Size of the error", fontsize=9, color=INK)
+    for ax in (a, b, c):
+        ax.set_xscale("log")
+        ax.set_xticks([1e6, 1e7, 1e8, 1e9, 1e10])
+        ax.set_xlabel("Rayleigh number")
+        _style_axes(ax)
+    handles = [Line2D([], [], color=INK, lw=2.0, label="true")]
+    handles += [Line2D([], [], color=STYLE[m]["color"], marker=STYLE[m]["marker"], ms=5, label=STYLE[m]["label"])
+                for m in _models(ours.model)]
+    handles += [Line2D([], [], color=MUTED, ls="--", marker="o", mfc="white", ms=5, label="10% data"),
+                Line2D([], [], color=MUTED, ls="-", marker="o", ms=5, label="100% data"),
+                Line2D([], [], color=INK, ls="-.", lw=1.2, label="released CNextU-Net"),
+                Line2D([], [], color=PERSIST["color"], ls=":", lw=1.3, label="persistence")]
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7.5, frameon=False,
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle(f"Heat transport over 30-step rollouts from frames 80 and 140, {label} checkpoints: median over the "
+                 "70 rollouts per Rayleigh number (7 Pr × 5 trajectories × 2 starts), mean over two seeds",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.94))
+    return _finish(fig, stem)
+
+
 # --- numerical solver (Dedalus) against the models -------------------------------------------------------
 
 SOLVER_STYLE = {"512x128": {"color": INK, "marker": "P"}, "256x64": {"color": "#6f6e69", "marker": "X"},

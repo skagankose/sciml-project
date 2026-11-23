@@ -44,10 +44,24 @@ def _models(names) -> list[str]:
 
 # --- evaluated runs ---------------------------------------------------------------------------
 
-def evaluated_runs(runs: pd.DataFrame, outputs: Path, manifest: str = "train") -> pd.DataFrame:
-    """One row per (run, checkpoint label) with an evaluation on disk."""
+def fraction_text(evals: pd.DataFrame) -> str:
+    """'10% data', '100% data' (or both) for the runs a figure is drawn from."""
+    fr = sorted({round(float(f), 3) for f in evals.fraction}) if not evals.empty else []
+    return (" / ".join(f"{f:.0%}" for f in fr) + " data") if fr else "data"
+
+
+def evaluated_runs(runs: pd.DataFrame, outputs: Path, manifest: str = "train",
+                   fraction: float | None = None) -> pd.DataFrame:
+    """One row per (run, checkpoint label) with an evaluation on disk; only runs at `fraction` when given.
+
+    `_load` pools every run of a model it is handed as seeds, so a figure for one data fraction must pass `fraction`:
+    with the 100% runs evaluated, an unfiltered call mixes 10% and 100% runs into one seed mean.
+    """
     rows = []
-    for _, r in runs[runs.manifest == manifest].iterrows():
+    sel = runs[runs.manifest == manifest]
+    if fraction is not None:
+        sel = sel[sel.fraction.round(3) == round(fraction, 3)]
+    for _, r in sel.iterrows():
         ev = outputs / "runs" / r.run_id / "evaluations"
         for done in sorted(ev.glob("EVAL_COMPLETE_*.json")):
             label = done.stem.removeprefix("EVAL_COMPLETE_")
@@ -263,7 +277,8 @@ def data_loader_figure(bench: Path, pilot_timings: Path, stem: Path) -> list[str
 
 
 def pilot_vs_actual_figure(pilot_timings: Path, runs: pd.DataFrame, stem: Path) -> list[str]:
-    actual = runs[(runs.manifest == "train") & (runs.status == "complete")]
+    # the pilots predicted the 10% runs, which read /pub; the 100% runs read a node-local copy (D29)
+    actual = runs[(runs.manifest == "train") & (runs.status == "complete") & (runs.fraction.round(3) == 0.1)]
     if not pilot_timings.exists() or actual.empty:
         return []
     plt = _plt()
@@ -424,7 +439,7 @@ def eval_one_step_by_frame(evals: pd.DataFrame, outputs: Path, stem: Path) -> li
                 ax.set_ylabel(f"one-step VRMSE, {unit}", fontsize=9)
     for ax in axes.flat:
         _onset_marker(ax, y_text=ax.get_ylim()[1] * 0.8)
-    handles = [Line2D([], [], color=MUTED, lw=1.9, label="ours, 4 h checkpoint (10% data)"),
+    handles = [Line2D([], [], color=MUTED, lw=1.9, label=f"ours, 4 h checkpoint ({fraction_text(evals)})"),
                Line2D([], [], color=MUTED, lw=1.1, alpha=0.5, label="ours, 1 h checkpoint"),
                Line2D([], [], color=INK, lw=1.2, ls="--", label="released checkpoint (100% data, the paper's)"),
                Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence")]
@@ -467,7 +482,7 @@ def eval_rollout_by_start(evals: pd.DataFrame, outputs: Path, label: str, stem: 
     handles.append(Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence"))
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7, frameon=False,
                bbox_to_anchor=(0.5, -0.03))
-    fig.suptitle(f"Rollouts from the study's start frames (D15), {label} checkpoints, 10% data: mean over 175 "
+    fig.suptitle(f"Rollouts from the study's start frames (D15), {label} checkpoints, {fraction_text(evals)}: mean over 175 "
                  "trajectories (band: range over seeds)", fontsize=10, color=INK)
     fig.tight_layout(rect=(0, 0.06, 1, 0.94))
     return _finish(fig, stem)
@@ -509,7 +524,7 @@ def eval_paper_rollout(evals: pd.DataFrame, outputs: Path, label: str, stem: Pat
     axes[0].text(30, 11.5, "paper: > 10", ha="right", fontsize=7, color=INK)
     handles = [Line2D([], [], color=STYLE[m]["color"], lw=1.9, label=STYLE[m]["label"])
                for m in _models(list(tables) + list(released))]
-    handles += [Line2D([], [], color=MUTED, lw=1.9, label=f"ours, {label} checkpoint (10% data)"),
+    handles += [Line2D([], [], color=MUTED, lw=1.9, label=f"ours, {label} checkpoint ({fraction_text(evals)})"),
                 Line2D([], [], color=MUTED, lw=1.3, ls="--", label="released checkpoint (100% data)"),
                 Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence")]
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7, frameon=False,
@@ -592,11 +607,65 @@ def eval_spectra_ratio(evals: pd.DataFrame, outputs: Path, label: str, stem: Pat
                        label=STYLE[m]["label"]) for m in names]
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7, frameon=False,
                bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(f"Horizontal kinetic-energy spectra ({label} checkpoints, 10% data). Top: one regime, mean over "
+    fig.suptitle(f"Horizontal kinetic-energy spectra ({label} checkpoints, {fraction_text(evals)}). Top: one regime, mean over "
                  "its rollouts. Bottom: predicted / true, median over regimes (band: middle 50%); 1 = exact",
                  fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.04, 1, 0.95))
     return _finish(fig, stem)
+
+
+# --- 10% against 100% data (WP3): one row per run and checkpoint, plus the two references ---------------------
+
+COMPARISON_FIELDS = ("buoyancy", "velocity_x", "velocity_y", "pressure")
+
+
+def _comparison_row(one: pd.DataFrame, roll: pd.DataFrame, t_on: dict, persist_dev: pd.Series) -> dict:
+    """One-step error over all windows and split at each trajectory's onset frame; rollout error and stability.
+
+    Onset: a window whose first input frame precedes the trajectory's t_on (rbbench.onset; a trajectory without a
+    crossing is all onset). Rollouts from frames 80 and 140 count as developed flow (t_on <= 78 on test).
+    """
+    on = np.array([s < t_on[t] if t_on.get(t) is not None else True for t, s in zip(one.traj_id, one.start)])
+    r = {"one_step_all": one.vrmse_mean.mean(), "one_step_onset": one.vrmse_mean[on].mean(),
+         "one_step_developed": one.vrmse_mean[~on].mean()}
+    for f in COMPARISON_FIELDS:
+        r[f"developed_{f}"] = one[f"vrmse_{f}"][~on].mean()
+        r[f"onset_{f}"] = one[f"vrmse_{f}"][on].mean()
+    roll = roll[roll.sigma == 0] if "sigma" in roll else roll
+    for s in (20, 80, 140):
+        r[f"rollout_step30_from{s}"] = roll[(roll.start == s) & (roll.step == 30)].vrmse_mean.mean()
+    worst = roll.groupby(["traj_id", "start"]).vrmse_mean.max()
+    r["share_below1_30steps"] = float((worst < 1).mean())
+    dev = roll[roll.start >= 80].groupby("step").vrmse_mean.mean()
+    ahead = (dev < persist_dev.reindex(dev.index)).to_numpy()
+    r["steps_ahead_of_persistence_developed"] = int(len(ahead) if ahead.all() else np.argmin(ahead))
+    return r
+
+
+def fraction_comparison(runs: pd.DataFrame, outputs: Path, onset_table: Path) -> pd.DataFrame:
+    """Per run and checkpoint (and persistence, the released CNextU-Net) the numbers of the 10%-vs-100% comparison."""
+    from rbbench.onset import load_onset_frames
+
+    evals = evaluated_runs(runs, outputs)
+    persist_dir = outputs / "baselines" / "persistence" / "evaluations"
+    if evals.empty or not onset_table.exists() or not (persist_dir / "rollout_na.parquet").exists():
+        return pd.DataFrame()
+    t_on = load_onset_frames(onset_table)
+    p_roll = pd.read_parquet(persist_dir / "rollout_na.parquet")
+    p_roll = p_roll[p_roll.sigma == 0]
+    persist_dev = p_roll[p_roll.start >= 80].groupby("step").vrmse_mean.mean()
+    rows = []
+    for _, e in evals.iterrows():
+        one, roll = (pd.read_parquet(e.dir / f"{k}_{e.label}.parquet") for k in ("one_step", "rollout"))
+        rows.append({"model": e.model, "fraction": e.fraction, "seed": e.seed, "budget": e.label,
+                     "run_id": e.run_id, **_comparison_row(one, roll, t_on, persist_dev)})
+    for name, d in (("persistence", persist_dir),
+                    ("released_cnext_unet", outputs / "baselines" / "released" / "cnext_unet" / "evaluations")):
+        if (d / "one_step_na.parquet").exists():
+            one, roll = (pd.read_parquet(d / f"{k}_na.parquet") for k in ("one_step", "rollout"))
+            rows.append({"model": name, "fraction": np.nan, "seed": np.nan, "budget": "-", "run_id": "",
+                         **_comparison_row(one, roll, t_on, persist_dev)})
+    return pd.DataFrame(rows).sort_values(["budget", "model", "fraction", "seed"], na_position="first")
 
 
 # --- numerical solver (Dedalus) against the models -------------------------------------------------------
@@ -656,7 +725,7 @@ def solver_rollout_comparison(evals: pd.DataFrame, outputs: Path, label: str, st
         _style_axes(ax)
     axes[0][0].set_ylabel("test VRMSE, physical units (field mean)")
     n = len({k[0] for k in keys})
-    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.8, label=f"{STYLE[m]['label']} ({label}, 10% data)")
+    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.8, label=f"{STYLE[m]['label']} ({label}, {fraction_text(evals)})")
                 for m in _models(models)]
     handles += [Line2D([], [], color=SOLVER_STYLE.get(r, {}).get("color", MUTED), lw=1.6,
                        marker=SOLVER_STYLE.get(r, {}).get("marker", "o"),
@@ -759,6 +828,17 @@ def _tres(alloc: str) -> dict:
     return out
 
 
+TRAINING_PURPOSES = ["learning-rate search", "10% runs", "100% runs", "dedicated 1 h runs", "UQ ensemble training"]
+
+
+def training_purpose(manifest: str, fraction: float) -> str:
+    """What a training job was for, from its run's manifest (and data fraction for the core study)."""
+    if manifest == "train":
+        return f"{round(float(fraction) * 100)}% runs"
+    return {"lr_search": "learning-rate search", "train_1h": "dedicated 1 h runs",
+            "train_1h_f100": "dedicated 1 h runs", "uq": "UQ ensemble training"}.get(manifest, "training (other)")
+
+
 def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.DataFrame:
     """One row per Slurm job (array task) with billed SU, GPU-hours, queue wait and what the job was for.
 
@@ -767,14 +847,15 @@ def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.Da
     """
     df = pd.read_csv(path, sep="|", dtype=str)
     rows = []
-    manifest_of = dict(zip(runs.run_id, runs.manifest)) if not runs.empty else {}
+    purpose_of = ({rid: training_purpose(m, f) for rid, m, f in zip(runs.run_id, runs.manifest, runs.fraction)}
+                  if not runs.empty else {})
     task_of = {}
     if not attempts.empty:
         for _, a in attempts.iterrows():
             if isinstance(a.array_task, str) and a.array_task:
-                task_of[a.array_task] = manifest_of.get(a.run_id, "")
+                task_of[a.array_task] = purpose_of.get(a.run_id, "")
             if pd.notna(a.job_id):
-                task_of.setdefault(str(a.job_id), manifest_of.get(a.run_id, ""))
+                task_of.setdefault(str(a.job_id), purpose_of.get(a.run_id, ""))
     for _, r in df.iterrows():
         tres = _tres(r.AllocTRES)
         started = isinstance(r.Start, str) and r.Start not in ("None", "Unknown")
@@ -786,10 +867,11 @@ def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.Da
         what = {"rb4-setup": "environment", "rb4-check": "environment", "bash": "environment",
                 "rb4-download": "data", "rb4-audit": "data", "rb4-probe": "data", "rb4-subsets": "data",
                 "rb4-conv": "data", "rb4-bench": "data", "rb4-released": "pipeline check",
-                "rb4-profile": "profiling", "rb4-eval": "evaluation", "rb4-visualize": "flow snapshots (CPU)"}.get(name, name)
+                "rb4-profile": "profiling", "rb4-eval": "evaluation", "rb4-visualize": "flow snapshots",
+                "rb4-uq": "UQ evaluation", "rb4-solver": "numerical solver", "rb4-solver-score": "numerical solver",
+                "rb4-onset": "data", "rb4-dedalus-setup": "environment"}.get(name, name)
         if name == "rb4-train":
-            m = task_of.get(str(r.JobID), "")
-            what = {"lr_search": "learning-rate search", "train": "10% runs"}.get(m, "training (other)")
+            what = task_of.get(str(r.JobID)) or "training (other)"
         queue = ((pd.Timestamp(r.Start) - pd.Timestamp(r.Submit)).total_seconds() / 3600 if started else np.nan)
         rows.append({"job": r.JobID, "array": str(r.JobID).split("_")[0], "name": name, "what": what,
                      "partition": r.Partition, "account": r.Account,
@@ -801,7 +883,7 @@ def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.Da
                      "gpu_hours": gpus * elapsed})
     out = pd.DataFrame(rows)
     # tasks that never wrote a run record (failed at start, cancelled, preempted early) take their array's purpose
-    known = out[out.what.isin(["learning-rate search", "10% runs"])].groupby("array").what.first()
+    known = out[out.what.isin(TRAINING_PURPOSES)].groupby("array").what.first()
     other = out.what == "training (other)"
     out.loc[other, "what"] = (out.loc[other, "array"].map(known).fillna(out.loc[other, "array"].map(KNOWN_ARRAYS))
                               .fillna("other training"))
@@ -817,7 +899,9 @@ def compute_timeline_figure(jobs: pd.DataFrame, stem: Path) -> list[str]:
     import matplotlib.dates as mdates
     from matplotlib.patches import Patch
 
-    colors = {"learning-rate search": "#1baf7a", "10% runs": "#2a78d6", "evaluation": "#eda100",
+    colors = {"learning-rate search": "#1baf7a", "10% runs": "#2a78d6", "100% runs": "#0b3f8a",
+              "dedicated 1 h runs": "#7fb2ea", "UQ ensemble training": "#c2185b", "UQ evaluation": "#f48fb1",
+              "numerical solver": "#5d4037", "flow snapshots": "#9e9d24", "evaluation": "#eda100",
               "pipeline check": "#eb6834", "profiling": "#8a6fd1", "environment": MUTED,
               "first replication try (stopped, I/O-bound; D23)": "#a8a7a2", "other training": "#a8a7a2"}
     gpu["t_submit"] = pd.to_datetime(gpu.submit)

@@ -24,10 +24,13 @@ and figures, each as .pdf and .png:
     data_loader_benchmark                        samples/s from /pub vs workers, against each model's demand
     pilot_vs_actual_wall_time                    pilot wall-time predictions against the 10% runs
   evaluation (test cohort, train manifest)
-    eval_one_step_by_frame_test                  one-step VRMSE by window: ours 1 h / 4 h, released, persistence
-    eval_rollout_by_start_<label>_test           rollouts from starts 20 / 80 / 140 against persistence
-    eval_paper_rollout_4h_test                   the paper's frame-0 rollouts: ours, released, persistence
-    eval_spectra_4h_test                         spectra (one regime) and predicted / true by wavenumber
+  (the evaluation and solver figures once per data fraction: suffix _f010 / _f100)
+    fraction_comparison.csv                      per run and checkpoint: one-step (all, onset, developed, per field),
+                                                 rollout VRMSE at step 30, share below 1, steps ahead of persistence
+    eval_one_step_by_frame_test_<f>              one-step VRMSE by window: ours 1 h / 4 h, released, persistence
+    eval_rollout_by_start_<label>_test_<f>       rollouts from starts 20 / 80 / 140 against persistence
+    eval_paper_rollout_4h_test_<f>               the paper's frame-0 rollouts: ours, released, persistence
+    eval_spectra_4h_test_<f>                     spectra (one regime) and predicted / true by wavenumber
   flow snapshots (from outputs/visuals/, scripts/visualize_rollouts.py)
     snapshots_{buoyancy,velocity_y}_<rollout>    true flow and each model at rollout steps 1, 6, 12, 30
     snapshots_buoyancy_error_<rollout>           |prediction - truth| of buoyancy, same layout
@@ -35,8 +38,8 @@ and figures, each as .pdf and .png:
     sacct_jobs.csv, sacct_summary.csv            billed SU, GPU-hours and queue waits per job / per purpose
     compute_timeline                             every GPU job: queue wait and run, by purpose and partition
   numerical solver (after `rbbench eval-solver`)
-    solver_vs_models_rollout_4h_test             Dedalus at 3 resolutions vs models and persistence, same rollouts
-    solver_cost_accuracy_4h_test                 seconds per rollout against mean VRMSE, per start frame
+    solver_vs_models_rollout_4h_test_<f>         Dedalus at 3 resolutions vs models and persistence, same rollouts
+    solver_cost_accuracy_4h_test_<f>             seconds per rollout against mean VRMSE, per start frame
 The learning-rate search has its own figures from `rbbench select-lr` (outputs/lr_search/); tables and the
 paper-protocol table come from `rbbench aggregate`. Prints the run table as Markdown.
 
@@ -70,8 +73,15 @@ from rbbench.visuals import snapshot_files
 PAID_PARTITIONS = {"gpu"}
 SU_PER_GPU_HOUR, SU_PER_CORE_HOUR = 32, 1
 ASSUMED_CPUS = 8  # train_a100.sbatch
-MANIFESTS = ("train", "lr_search", "replication")
-CURVE_MANIFESTS = ("train", "replication")  # select-lr already plots the learning-rate search
+MANIFESTS = ("train", "lr_search", "replication", "train_1h", "train_1h_f100", "uq")
+# select-lr already plots the learning-rate search
+CURVE_MANIFESTS = ("train", "replication", "train_1h", "train_1h_f100", "uq")
+
+
+def group_name(manifest: str, fraction: float) -> str:
+    """train_f010, uq_f100, ...; a manifest named after its fraction (train_1h_f100) keeps its name."""
+    tag = f"f{round(fraction * 100):03d}"
+    return manifest if manifest.endswith(f"_{tag}") else f"{manifest}_{tag}"
 
 
 def manifest_rows(tasks_dir: Path) -> dict[str, dict]:
@@ -173,13 +183,13 @@ def curves_figure(runs: pd.DataFrame, metrics: dict[str, pd.DataFrame], title: s
     models = [m for m in MODEL_NAMES if m in set(runs.model)]
     fig, axes = plt.subplots(3, len(models), figsize=(3.4 * len(models), 6.6), sharey="row", squeeze=False,
                              gridspec_kw={"height_ratios": [1, 1, 0.55]})
-    seed_styles = {0: "-", 1: "--", 2: ":"}
+    seed_styles = {0: "-", 1: "--", 2: ":", 3: "-.", 4: (0, (5, 1, 1, 1, 1, 1))}  # five UQ ensemble seeds
     for j, model in enumerate(models):
         st = STYLE[model]
         mine = runs[runs.model == model].sort_values("seed")
         for _, r in mine.iterrows():
             m = metrics[r.run_id]
-            ls = seed_styles.get(int(r.seed), "-.")
+            ls = seed_styles.get(int(r.seed), "-")
             tr = m[m.event == "train"]
             smooth = tr.loss.rolling(5, min_periods=1).mean()
             axes[0][j].plot(tr.train_seconds / 3600, smooth, color=st["color"], lw=1.6, ls=ls)
@@ -206,7 +216,7 @@ def curves_figure(runs: pd.DataFrame, metrics: dict[str, pd.DataFrame], title: s
     budget = max(runs.budget_hours)
     for ax in axes.flat:
         ax.set_xlim(0, budget * 1.03)
-    handles = [Line2D([], [], color=MUTED, lw=1.6, ls=seed_styles[s], label=f"seed {s}")
+    handles = [Line2D([], [], color=MUTED, lw=1.6, ls=seed_styles.get(s, "-"), label=f"seed {s}")
                for s in sorted(int(x) for x in set(runs.seed))]
     handles.append(Line2D([], [], color=MUTED, lw=0.8, ls=":", label="milestone checkpoint"))
     axes[0][-1].legend(handles=handles, fontsize=7, frameon=False)
@@ -356,14 +366,14 @@ def main() -> int:
     for (manifest, fraction), group in runs_df.groupby(["manifest", "fraction"]):
         if manifest not in CURVE_MANIFESTS:
             continue
-        name = f"{manifest}_f{round(fraction * 100):03d}"
+        name = group_name(manifest, fraction)
         label = f"{round(fraction * 100)}% data ({manifest} manifest)"
         written += curves_figure(group, metrics, f"Training curves, {label}", out / f"training_curves_{name}")
         written += time_figure(group, f"Where the wall time went, {label}", out / f"time_breakdown_{name}")
     for (manifest, fraction), group in runs_df.groupby(["manifest", "fraction"]):
         label = f"{round(fraction * 100)}% data ({manifest} manifest)"
         written += figs.wait_timeline_figure(group, raws, attempts_df, f"Waiting for data, {label}",
-                                             out / f"data_wait_timeline_{manifest}_f{round(fraction * 100):03d}")
+                                             out / f"data_wait_timeline_{group_name(manifest, fraction)}")
 
     # milestone 1: the pipeline check
     for split in ("test", "valid"):
@@ -382,14 +392,24 @@ def main() -> int:
 
     # evaluation of the core runs on the frozen test cohort
     evals = figs.evaluated_runs(runs_df, outputs) if not runs_df.empty else pd.DataFrame()
+    # one set of figures per data fraction (`_f010`, `_f100`): the figures average a model's runs as seeds
+    by_fraction = {f"f{int(round(f * 100)):03d}": figs.evaluated_runs(runs_df, outputs, fraction=f)
+                   for f in sorted(set(evals.fraction))} if not evals.empty else {}
     if not evals.empty:
         evals.drop(columns="dir").to_csv(out / "evaluated.csv", index=False)
         written.append(str(out / "evaluated.csv"))
-        written += figs.eval_one_step_by_frame(evals, outputs, out / "eval_one_step_by_frame_test")
-        written += figs.eval_paper_rollout(evals, outputs, "4h", out / "eval_paper_rollout_4h_test")
-        for lab in sorted(set(evals.label)):
-            written += figs.eval_rollout_by_start(evals, outputs, lab, out / f"eval_rollout_by_start_{lab}_test")
-        written += figs.eval_spectra_ratio(evals, outputs, "4h", out / "eval_spectra_4h_test")
+    for ftag, ev in by_fraction.items():
+        written += figs.eval_one_step_by_frame(ev, outputs, out / f"eval_one_step_by_frame_test_{ftag}")
+        written += figs.eval_paper_rollout(ev, outputs, "4h", out / f"eval_paper_rollout_4h_test_{ftag}")
+        for lab in sorted(set(ev.label)):
+            written += figs.eval_rollout_by_start(ev, outputs, lab, out / f"eval_rollout_by_start_{lab}_test_{ftag}")
+        written += figs.eval_spectra_ratio(ev, outputs, "4h", out / f"eval_spectra_4h_test_{ftag}")
+    # 10% against 100% (WP3): one-step by phase (per-trajectory onset, D29) and field, rollouts, stability
+    comp = figs.fraction_comparison(runs_df, outputs, REPO / "tasks" / "onset_test.json") if not runs_df.empty \
+        else pd.DataFrame()
+    if not comp.empty:
+        comp.to_csv(out / "fraction_comparison.csv", index=False)
+        written.append(str(out / "fraction_comparison.csv"))
 
     # Slurm accounting: billed SU, GPU-hours and queue waits of every job (sacct, run on HPC3 and pulled)
     sacct_path = outputs / "sacct_skose.txt"
@@ -414,8 +434,9 @@ def main() -> int:
         written += figs.rollout_snapshots_figure(npz, "buoyancy", out / f"snapshots_buoyancy_error_{tag}", errors=True)
 
     # the numerical solver (Dedalus) against the models, once `rbbench eval-solver` has scored its rollouts
-    written += figs.solver_rollout_comparison(evals, outputs, "4h", out / "solver_vs_models_rollout_4h_test")
-    written += figs.solver_cost_accuracy(evals, outputs, "4h", out / "solver_cost_accuracy_4h_test")
+    for ftag, ev in by_fraction.items():
+        written += figs.solver_rollout_comparison(ev, outputs, "4h", out / f"solver_vs_models_rollout_4h_test_{ftag}")
+        written += figs.solver_cost_accuracy(ev, outputs, "4h", out / f"solver_cost_accuracy_4h_test_{ftag}")
 
     cols = {"manifest": "manifest", "task_index": "row", "model": "model", "fraction": "data", "seed": "seed",
             "lr": "lr", "status": "status", "attempts": "attempts", "partitions": "partition",

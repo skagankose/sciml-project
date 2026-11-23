@@ -692,6 +692,7 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-22 | `/pub` `Errno 121 Remote I/O error` while saving TFNO 100% s0's checkpoint | attempt 1 died after 1.1 h | in-job restart (`run_with_restarts.sh`) resumed from step 4,322 and completed; ~25 min wall lost |
 | 11-22 | `/pub` outage at 00:08 PST: Slurm could not open the jobs' output files | row 10 and the persistence UQ evaluation `FAILED 0:53` in 1 s, no log | a job without a log can have failed at launch: check `sacct` after `/pub` incidents; resubmit |
 | 11-22 | same failure at 17:43:09 PST | UQ seed pairs 1-4 (59939381_1-4) `FAILED 0:53` in 0 s, no log; task 5 started 3 s later and completed | second launch failure in a day: check `sacct` for `0:53` after every submission; resubmit `--array=1-4` |
+| 11-23 | figure helpers pooled a model's runs as seeds without a fraction filter | with the 100% runs evaluated, `findings.py`'s evaluation figures mixed 10% and 100% under a "10% data" label (no table affected; report figures not rerun) | `evaluated_runs(fraction=)`, per-fraction figures, `tests/test_findings_fractions.py` (section 11) |
 | 11-22 | `/pub` write stalls of 10–22 min on every job at once (01:28, 02:03, 02:54, 04:19 PST) | 100% runs: up to 4,258 s of checkpoint time per run (22% of wall); 10% UQ runs: data waits | node-local data does not protect checkpoint writes; saving locally and copying in the background would (not implemented) |
 
 ## 6. Figures for the report
@@ -723,17 +724,18 @@ its evaluation is pulled.
 | 2 | `pilot_vs_actual_wall_time` | pilot predictions of wall time against the 10% runs |
 | 2 | `data_wait_timeline_lr_search_f010` | data waits and crashes during the search |
 | 2, 3 | `compute_timeline` | every GPU job from `sacct`: queue wait and run, by purpose, paid jobs outlined |
-| 3 Training | `training_curves_train_f010` | training loss, validation VRMSE and learning rate vs training hours |
-| 3 | `time_breakdown_train_f010` | wall time per run: training, waiting for data, other; SU |
-| 3 | `data_wait_timeline_train_f010` | cumulative data wait over UTC time, crashes and preemptions |
-| 3 Evaluation | `eval_one_step_by_frame_test` | one-step VRMSE by window: ours 1 h / 4 h, released, persistence |
-| 3 | `eval_rollout_by_start_{1h,4h}_test` | rollouts from frames 20 / 80 / 140 against persistence |
-| 3 | `eval_paper_rollout_4h_test` | the paper's frame-0 rollouts: ours, released, persistence |
-| 3 | `eval_spectra_4h_test` | spectra for one regime (top) and predicted / true over all regimes (bottom); smallest scales shaded |
+| 3 Training | `training_curves_<manifest>_f<fraction>` (`train_f010`, `train_f100`, `train_1h_f010`, `train_1h_f100`, `uq_f010`, `uq_f100`) | training loss, validation VRMSE and learning rate vs training hours |
+| 3 | `time_breakdown_<manifest>_f<fraction>` | wall time per run: training, waiting for data, other; SU |
+| 3 | `data_wait_timeline_<manifest>_f<fraction>` | cumulative data wait over UTC time, crashes and preemptions |
+| 3 Evaluation | `eval_one_step_by_frame_test_{f010,f100}` | one-step VRMSE by window: ours 1 h / 4 h, released, persistence |
+| 3 | `eval_rollout_by_start_{1h,4h}_test_{f010,f100}` | rollouts from frames 20 / 80 / 140 against persistence |
+| 3 | `eval_paper_rollout_4h_test_{f010,f100}` | the paper's frame-0 rollouts: ours, released, persistence |
+| 3 | `eval_spectra_4h_test_{f010,f100}` | spectra for one regime (top) and predicted / true over all regimes (bottom); smallest scales shaded |
 | 3 | `snapshots_{buoyancy,velocity_y}_<rollout>`, `snapshots_buoyancy_error_<rollout>` | true flow beside each model's rollout at steps 1, 6, 12, 30 (needs `visualize_cpu.sbatch`) |
-| Solver (D25) | `solver_vs_models_rollout_4h_test` | Dedalus at 512 × 128, 256 × 64, 128 × 32 against the models and persistence, same 105 rollouts |
-| Solver | `solver_cost_accuracy_4h_test` | seconds per rollout against mean VRMSE, per start frame |
-| 3 | `rbbench aggregate`: `figures/fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (`fig1`, data scaling, needs the 100% runs) |
+| Solver (D25) | `solver_vs_models_rollout_4h_test_{f010,f100}` | Dedalus at 512 × 128, 256 × 64, 128 × 32 against the models and persistence, same 105 rollouts |
+| Solver | `solver_cost_accuracy_4h_test_{f010,f100}` | seconds per rollout against mean VRMSE, per start frame |
+| 3 | `rbbench aggregate`: `figures/fig1_one_step_vrmse_vs_fraction`, `fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (fig1: data scaling) |
+| WP3 | `fraction_comparison.csv` | 10% against 100%, per run and checkpoint (section 11) |
 
 ## 7. Open items
 
@@ -1070,3 +1072,134 @@ UQ training, every evaluation, solver reruns and scoring), came to **2,572 SU an
 plan's 2,850–3,750 SU with the local copy (`docs/final_plan.md` section 6). Free CPU jobs in that period: no GPU.
 Before 11-21: 2,537 SU and 63.7 GPU-hours paid, plus 18.3 GPU-hours on `free-gpu`. **Paid in all: 5,109 SU.** The
 per-purpose split comes from `scripts/findings.py` (`sacct_summary.csv`).
+
+## 11. 10% against 100% data (WP3; 2026-11-23)
+
+All 12 core runs are evaluated at 1 h and 4 h, 24 evaluations in all (`rbbench aggregate`: 24 of 24 found, no
+problems).
+* Physical-field VRMSE on the test cohort. The onset split uses each trajectory's own onset frame (t_on at 10% of
+  the developed kinetic energy, D29).
+* Rollouts from frames 80 and 140 count as developed flow.
+* The numbers come from `outputs/findings/fraction_comparison.csv` (`scripts/findings.py`) and agree with
+  `outputs/tables/main_results.csv`.
+* "Below 1 for 30 steps": the share of the 525 rollouts whose VRMSE stays below 1 at every step.
+* "Steps ahead of persistence": the number of steps before the mean error over the developed-start rollouts first
+  reaches persistence's.
+
+4h checkpoints (mean ± std over the two seeds):
+
+| Model | Data | One-step all | Onset | Developed | Step 30 from 20 / 80 / 140 | Below 1 for 30 steps | Steps ahead of persistence |
+|---|---|---|---|---|---|---|---|
+| CNextU-Net | 10% | 0.136 ± 0.006 | 0.370 ± 0.024 | 0.0505 ± 0.0002 | 1.78 / 0.53 / 0.40 | 89% | 30.0 |
+| CNextU-Net | 100% | 0.130 ± 0.001 | 0.353 ± 0.003 | 0.0489 ± 0.0004 | 1.78 / 0.52 / 0.40 | 88% | 30.0 |
+| TFNO | 10% | 0.209 ± 0.001 | 0.480 ± 0.002 | 0.1105 ± 0.0001 | 1.79 / 0.59 / 0.45 | 75% | 30.0 |
+| TFNO | 100% | 0.199 ± 0.003 | 0.452 ± 0.014 | 0.1074 ± 0.0003 | 1.89 / 0.57 / 0.44 | 77% | 30.0 |
+| AViT | 10% | 0.134 ± 0.001 | 0.294 ± 0.003 | 0.0761 ± 0.0002 | 5.42 / 0.80 / 0.65 | 63% | 24.5 |
+| AViT | 100% | 0.112 ± 0.000 | 0.245 ± 0.000 | 0.0636 ± 0.0001 | 5.64 / 0.83 / 0.69 | 61% | 21.0 |
+| Persistence | - | 0.199 | 0.116 | 0.2292 | 0.68 / 0.86 / 0.54 | 94% | - |
+| Released CNextU-Net (100%, ~12 h H100) | - | 0.224 | 0.733 | 0.0382 | 1.65 / 0.63 / 0.51 | 77% | 30 |
+
+1h checkpoints (mean ± std over the two seeds):
+
+| Model | Data | One-step all | Onset | Developed | Step 30 from 20 / 80 / 140 | Below 1 for 30 steps | Steps ahead of persistence |
+|---|---|---|---|---|---|---|---|
+| CNextU-Net | 10% | 0.728 ± 0.176 | 2.510 ± 0.653 | 0.0783 ± 0.0022 | 3.60 / 1.09 / 1.04 | 34% | 19.5 |
+| CNextU-Net | 100% | 0.456 ± 0.035 | 1.503 ± 0.131 | 0.0751 ± 0.0001 | 2.78 / 1.00 / 0.86 | 50% | 19.0 |
+| TFNO | 10% | 0.473 ± 0.078 | 1.442 ± 0.292 | 0.1203 ± 0.0001 | 2.67 / 0.90 / 0.78 | 60% | 21.5 |
+| TFNO | 100% | 0.491 ± 0.047 | 1.494 ± 0.183 | 0.1262 ± 0.0023 | 3.58 / 1.23 / 1.09 | 23% | 12.5 |
+| AViT | 10% | 0.394 ± 0.036 | 1.244 ± 0.135 | 0.0846 ± 0.0001 | 4.67 / 1.11 / 0.98 | 34% | 12.0 |
+| AViT | 100% | 0.456 ± 0.062 | 1.485 ± 0.234 | 0.0804 ± 0.0001 | 5.26 / 0.97 / 0.85 | 52% | 14.5 |
+| Persistence | - | 0.199 | 0.116 | 0.2292 | 0.68 / 0.86 / 0.54 | 94% | - |
+| Released CNextU-Net (100%, ~12 h H100) | - | 0.224 | 0.733 | 0.0382 | 1.65 / 0.63 / 0.51 | 77% | 30 |
+
+Developed flow, one-step VRMSE per field, 4 h (seed mean):
+
+| Model | Data | Buoyancy | u | w | Pressure |
+|---|---|---|---|---|---|
+| CNextU-Net | 10% | 0.0945 | 0.0388 | 0.0440 | 0.0247 |
+| CNextU-Net | 100% | 0.0947 | 0.0371 | 0.0416 | 0.0221 |
+| TFNO | 10% | 0.1743 | 0.0959 | 0.1171 | 0.0547 |
+| TFNO | 100% | 0.1712 | 0.0928 | 0.1136 | 0.0520 |
+| AViT | 10% | 0.1217 | 0.0614 | 0.0813 | 0.0400 |
+| AViT | 100% | 0.1090 | 0.0495 | 0.0642 | 0.0315 |
+| Persistence | - | 0.2778 | 0.2475 | 0.2674 | 0.1242 |
+| Released CNextU-Net (100%, ~12 h H100) | - | 0.0708 | 0.0289 | 0.0327 | 0.0202 |
+
+
+Change in developed one-step VRMSE:
+* 10% → 100%:
+  * at 1 h: CNextU-Net −4.1%, TFNO +4.9%, AViT −5.0%;
+  * at 4 h: CNextU-Net −3.1%, TFNO −2.8%, AViT −16.5%.
+* 1 h → 4 h:
+  * at 10%: CNextU-Net −35.5%, TFNO −8.1%, AViT −10.0%;
+  * at 100%: CNextU-Net −34.9%, TFNO −14.9%, AViT −21.0%.
+
+Log spectral error at step 30 (4 h, 10% / 100%): CNextU-Net 1.317 / 1.319, TFNO 1.304 / 1.294, AViT 2.398 /
+2.435. Data leaves it unchanged.
+
+### Reading
+
+* **At 4 h, ten times more data barely helps CNextU-Net and TFNO.** Their developed one-step error drops about 3%,
+  and their rollouts do not change. AViT is the exception: −16.5%, on every field (buoyancy −10%, u −19%, w −21%,
+  pressure −21%), and its onset error also drops 17%.
+  * The ranking in developed flow is unchanged: CNextU-Net < AViT < TFNO.
+  * AViT's gap to CNextU-Net narrows from 1.51× to 1.30×.
+* **Training time matters more than data at these budgets.**
+  * From 1 h to 4 h, CNextU-Net improves by 35% at both fractions.
+  * With the full data, AViT and TFNO gain about twice as much from the extra hours as at 10% (−21% vs −10%, −15%
+    vs −8%).
+  * Passes over the training windows in 4 h: CNextU-Net 2.8 at 100% vs ~28 at 10%; TFNO 6.1 vs ~61; AViT 17.5 vs
+    ~175.
+  * A reading consistent with this (not tested): at 10%, AViT and TFNO have seen their subset many times and are
+    limited by data, while CNextU-Net, at fewer passes, is limited by compute at both fractions.
+* **The one-step gain does not reach the rollouts.** At 4 h, AViT at 100% is slightly worse over 30 steps from
+  developed flow: 0.83 / 0.69 vs 0.80 / 0.65 at steps 30 from 80 / 140, 61% vs 63% below 1, and 21 vs 24.5 steps
+  ahead of persistence. Training is one-step only (D28; rollout training was not taken up).
+* **After 1 hour the picture is mixed.**
+  * More data makes CNextU-Net stable across seeds: the all-window std falls from 0.176 to 0.035, and the share
+    below 1 rises from 34% to 50%.
+  * AViT's rollouts improve (52% vs 34% below 1), but its onset error rises (1.49 vs 1.24).
+  * TFNO at 100% is clearly worse over rollouts after 1 h: 23% vs 60% below 1, and 12.5 vs 21.5 steps ahead of
+    persistence, in both seeds.
+    * Not explained. Its 1 h checkpoint follows ~1.5 passes over the full data against ~15 over the subset, with
+      the learning rate still at 85% of its peak.
+    * At 4 h, TFNO at 100% matches 10% on rollouts.
+* **Our 100% CNextU-Net against the released one.**
+  * The released model's one-step error in developed flow is 22% lower (0.0382 vs 0.0489; ours is 1.28×).
+  * Ours is better at onset (0.353 vs 0.733) and more stable over rollouts (0.52 / 0.40 vs 0.63 / 0.51 at step 30;
+    88% vs 77% below 1).
+  * Ten times more data took our gap from 1.32× to 1.28×. The rest is training length: the released model
+    trained ~12 h on an H100, while ours made 2.8 passes in 4 h on an A100.
+* **Buoyancy stays the hardest field** in developed flow for every model. CNextU-Net's buoyancy error does not move
+  with data (0.0945 → 0.0947); its velocity and pressure errors improve 4–11%.
+* **From frame 20 (onset), persistence still wins every rollout** (0.68 at step 30 against ≥ 1.65).
+* **Cost:** the six 100% runs held 33.4 GPU-hours (1,338 SU) against 49.8 (1,907 SU) for the six 10% runs, thanks
+  to the node-local copy (D29). The data did not cost more GPU time; the 10% runs waited on `/pub`.
+* **Caveats:** two seeds per configuration; one 10% subset draw shared by the seeds; one-step training only; fp32
+  for all.
+
+### Fix found while aggregating: figures pooled 10% and 100% runs
+
+* `findings_figures.evaluated_runs` did not filter by data fraction, and `_load` treats every run of a model as a
+  seed. With the 100% runs evaluated, the evaluation figures of `scripts/findings.py` averaged both fractions into
+  one "seed mean" labelled "10% data". So would `scripts/report_figures.py` on its next run.
+* The pooled figures existed only in `outputs/findings/` for about an hour. No table or number was affected: the
+  tables group by fraction. `reports/figures/` was not regenerated.
+* Fix:
+  * `evaluated_runs(..., fraction=)` filters by fraction.
+  * `findings.py` draws every evaluation and solver figure per fraction (`_f010`, `_f100`), with the label taken
+    from the runs it was given.
+  * `report_figures.py` draws from the 10% runs only (`fraction=0.1` by default), so a rerun reproduces the
+    mid-project figures. Checked on the five evaluation figures.
+  * The pilot-vs-actual figure is 10% only, since the pilots predicted those runs.
+  * `sacct` purposes now split "10% runs", "100% runs", "dedicated 1 h runs" and "UQ ensemble training"; the run
+    table now includes the UQ and dedicated 1 h manifests.
+  * Tests: `tests/test_findings_fractions.py`.
+
+### Still to do for the report (WP7)
+
+* The report figures with both fractions: accuracy against cost at both fractions (Fig. 6), rollouts and test error
+  by window per fraction, and the 10% vs 100% snapshots.
+* Those figures should also move the `report_figures._developed` split from frame 50 to the per-trajectory onset
+  (D29); the mid-project figures keep frame 50.
+* The "which model when" table updated with the 100% results.

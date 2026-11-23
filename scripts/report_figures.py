@@ -173,8 +173,8 @@ def training(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
 
 # --- 4. test error by window: ours against the references --------------------------------------------------------
 
-def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h") -> list[str]:
-    evals = ff.evaluated_runs(runs, outputs)
+def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", fraction: float = 0.1) -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     tables = ff._load(evals, "one_step", label) if not evals.empty else {}
     if not tables:
         return []
@@ -210,10 +210,11 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4
 
 # --- 4b. rollouts: error by step (developed convection) and survival below VRMSE 1 ---------------------------
 
-def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", threshold: float = 1.0) -> list[str]:
+def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", threshold: float = 1.0,
+             fraction: float = 0.1) -> list[str]:
     from rbbench.evaluate import failure_step, kaplan_meier
 
-    evals = ff.evaluated_runs(runs, outputs)
+    evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     tables = ff._load(evals, "rollout", label) if not evals.empty else {}
     if not tables:
         return []
@@ -267,8 +268,8 @@ def _rollout_end(t: pd.DataFrame, step: int = 30, starts=(80, 140)) -> float:
     return float(t[t.start.isin(starts) & (t.step == step)].vrmse_mean.mean())
 
 
-def accuracy_cost(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
-    evals = ff.evaluated_runs(runs, outputs)
+def accuracy_cost(outputs: Path, runs: pd.DataFrame, out: Path, fraction: float = 0.1) -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     res_csv = outputs / "tables" / "resource_use.csv"
     if evals.empty or not res_csv.exists():
         return []
@@ -277,8 +278,8 @@ def accuracy_cost(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
     if not one["4h"] or not roll:
         return []
     res = pd.read_csv(res_csv)
-    res = res[(res.budget == "4h") & (res.fraction.round(3) == 0.1)]
-    train = runs[(runs.manifest == "train") & (runs.fraction.round(3) == 0.1)]
+    res = res[(res.budget == "4h") & (res.fraction.round(3) == round(fraction, 3))]
+    train = runs[(runs.manifest == "train") & (runs.fraction.round(3) == round(fraction, 3))]
     released = ff._released(outputs, "cnext_unet", "one_step")
     p_one, p_roll = ff._persistence(outputs, "one_step"), ff._persistence(outputs, "rollout")
     models = [m for m in MODEL_NAMES if m in one["4h"]]
@@ -372,8 +373,8 @@ def _by_ra_nusselt(t: pd.DataFrame, starts=(80, 140)) -> pd.Series:
     return ((g.nu_pred - g.nu_true) / g.nu_true).abs().groupby(level="rayleigh").median()
 
 
-def by_rayleigh(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h") -> list[str]:
-    evals = ff.evaluated_runs(runs, outputs)
+def by_rayleigh(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", fraction: float = 0.1) -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     one, roll, phys = (ff._load(evals, k, label) for k in ("one_step", "rollout", "physics"))
     if not one or not roll or not phys:
         return []
@@ -417,8 +418,9 @@ def by_rayleigh(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h")
 
 # --- 5. spectra: where in scale the error is ----------------------------------------------------------------------
 
-def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", regime=(1e8, 1.0)) -> list[str]:
-    evals = ff.evaluated_runs(runs, outputs)
+def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", regime=(1e8, 1.0),
+            fraction: float = 0.1) -> list[str]:
+    evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     tables = ff._load(evals, "spectra", label) if not evals.empty else {}
     if not tables:
         return []

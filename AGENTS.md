@@ -737,4 +737,16 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Job 59959731 ran correctly (pulled 2026-11-23). Two 100% files sit beside the 10% ones; the runs and shapes
     are right, values are finite and the truth is identical. At Ra = 1e8 every model keeps its 10% failure mode
     (`docs/report_notes.md` section 10).
+* 2026-11-23: WP3, 10% against 100% data. `rbbench aggregate` found all 24 evaluations (mid-project tables kept in
+  `outputs/archive/midproject_2026-11-11/`). `scripts/findings.py` writes `fraction_comparison.csv`; results and
+  their reading are in `docs/report_notes.md` section 11.
+  * At 4 h, more data helps CNextU-Net and TFNO by ~3% in developed flow and AViT by 16.5%; rollouts do not
+    improve.
+  * 1 h → 4 h gives −35% for CNextU-Net.
+  * Our 100% CNextU-Net is 1.28× the released model in developed flow, better at onset and over rollouts.
+  * TFNO at 100% after 1 h has unstable rollouts (unexplained).
+  * Fix: the figure helpers pooled 10% and 100% runs as seeds. `evaluated_runs(fraction=)`, per-fraction figures
+    (`_f010` / `_f100`), report figures held at 10%, `sacct` purposes per fraction and manifest, and UQ / 1 h
+    manifests in the run table. `tests/test_findings_fractions.py`.
+  * Report figures with both fractions, and the per-trajectory onset split in `report_figures`, are left for WP7.
 

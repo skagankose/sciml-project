@@ -772,5 +772,18 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     * Correction noted under D25 and in `solver_dedalus.py`.
     * Options (a) report as is, (b) a ~200 SU diagnostic, (c) a ~450 SU rerun at safety 0.05.
     * Owner: (a), no rerun. Ra 1e10 is reported with the time step as a limitation (D25 correction).
+* 2026-11-23: WP8 and WP9 analysis from the existing `eval-uq` outputs (no GPU time).
+  * Code: `rbbench.uq_analysis` (statistics, tested on synthetic data in `tests/test_uq_analysis.py`) and
+    `scripts/uq_findings.py` (called by `findings.py`; writes `outputs/findings/uq/`). Results in
+    `docs/report_notes.md` section 14.
+  * β-NLL ensembles: CRPS 26–32% below an MSE model's MAE at the same accuracy. Slightly too wide at one step
+    (90% → 0.96), too narrow along rollouts (0.73 at step 10; the aleatoric part shrinks, the epistemic part
+    dominates from step ~4). No data effect at 1 h.
+  * Seed pairs are under-dispersed (spread-skill 0.41–0.70) despite flat rank histograms; more data makes the seeds
+    agree (AViT −71%).
+  * Conformal coverage holds on test (0.90). Kept from step 1, a constant interval collapses along rollouts while a
+    spread-scaled one stays at 0.87–0.94. Ra 1e10 under-covers unless recalibrated on Ra 1e10.
+  * Noise: CNextU-Net is the most robust (×1.47 at σ 0.2); AViT the most fragile (×4.3 at 100%, worse than at 10%
+    from σ 0.05).
     * Details in `docs/report_notes.md` section 13.
 

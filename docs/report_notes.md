@@ -736,6 +736,9 @@ its evaluation is pulled.
 | Solver | `solver_cost_accuracy_4h_test_{f010,f100}` | seconds per rollout against mean VRMSE, per start frame |
 | 3 | `rbbench aggregate`: `figures/fig1_one_step_vrmse_vs_fraction`, `fig2_rollout_vrmse_vs_step`, `fig3_failure_survival`, `fig5_nusselt_rel_err_by_ra`, `fig6_ke_spectra`, `fig7_resources` | the study's summary figures (fig1: data scaling) |
 | WP3 | `fraction_comparison.csv` | 10% against 100%, per run and checkpoint (section 11) |
+| WP5 | `nusselt_by_rayleigh_{1h,4h}_test`, `nusselt_by_rayleigh.csv` | heat transport per Rayleigh number (section 12) |
+| WP6 | `solver_matching_4h_test`, `solver_matching.csv`, `solver_comparison.csv` | solver grid matching (section 13) |
+| WP8, WP9 | `uq/uq_calibration`, `uq/uq_variance_parts`, `uq/uq_rank_pit`, `uq/uq_conformal_width`, `uq/noise_robustness` and six tables | uncertainty and noise robustness (section 14) |
 
 ## 7. Open items
 
@@ -1378,3 +1381,134 @@ change. Against the released CNextU-Net: 128 × 32, 192 × 48 and none.
   * Ra 1e10 is reported as "no grid matches CNextU-Net with our solver's time step". The limitation is stated:
     our CFL safety is 0.5 against the data's 0.0039, and at Ra 1e10 the restart piles up small-scale energy.
   * The 512 × 128 restart is not called the dataset's reproducibility limit at Ra 1e10.
+
+## 14. Uncertainty (WP9, D30) and input-noise robustness (WP8, D17) (2026-11-23)
+
+**What is analysed.** All 11 `eval-uq` ensembles on validation (calibration) and test, from `outputs/uq/`:
+* the six 4 h seed pairs (3 models × 10% / 100%);
+* persistence;
+* the two 5-member β-NLL CNextU-Net ensembles at 1 h (10%, 100%);
+* their two 1 h MSE pairs.
+
+`scripts/uq_findings.py` (called by `scripts/findings.py`) writes `outputs/findings/uq/`:
+* tables: `uq_summary.csv`, `uq_conformal.csv`, `uq_shifts.csv`, `uq_rank_pit.csv`, `noise_robustness.csv`,
+  `uq_yprofile.csv`;
+* figures: `uq_calibration`, `uq_variance_parts`, `uq_rank_pit`, `uq_conformal_width`, `noise_robustness`.
+
+Statistics are in `rbbench.uq_analysis`, tested on synthetic data with known answers (`tests/test_uq_analysis.py`).
+
+Conventions:
+* Normalised units, field mean.
+* One step: every 4th window of every test trajectory, split by the per-trajectory onset (D29).
+* Rollouts from developed flow (frames 80 and 140).
+* Conformal: split from validation to test, per field, with one q-hat per rollout step, at 128 random grid points
+  per window (32 under noise).
+* Spread-skill: corrected for the finite ensemble, so a consistent ensemble scores 1.
+
+### UQ-A: the β-NLL deep ensembles (CNextU-Net, 1 h, 5 members)
+
+| | One step, developed | Rollout step 10 | Rollout step 30 |
+|---|---|---|---|
+| Ensemble-mean VRMSE, 10% / 100% (MSE pair: 0.0773 / 0.0773 at one step) | 0.0792 / 0.0775 | 0.271 / 0.263 | 0.505 / 0.493 |
+| CRPS against the MSE model's MAE (100%) | 0.034 vs 0.047 (−28%) | 0.133 vs 0.182 (−27%) | 0.262 vs 0.388 (−32%) |
+| Gaussian coverage, 50% / 90% (100%) | 0.71 / 0.95 (all windows 0.76 / 0.96) | 0.39 / 0.73 | 0.42 / 0.76 |
+| Spread-skill ratio (100%) | 1.13 | 0.69 | 0.90 |
+| Aleatoric share of the predicted variance | 91% | 11% | 2% |
+
+* **The ensemble mean is as accurate as two MSE runs averaged,** and the forecast distribution adds information:
+  CRPS is 26–32% below the absolute error of an MSE point forecast at every horizon. The variance output costs
+  no accuracy here.
+* **At one step the intervals are slightly too wide:** 96% of points fall in the 90% interval, the PIT histogram
+  is hump-shaped (4% in the 5% tails against 10%), and the spread-skill ratio is 1.13. At onset they are much
+  too wide (90% inside the 50% interval).
+* **Along a rollout they become too narrow:** 90% coverage falls to 73% by step 10, the PIT is U-shaped (30% in
+  the tails), and the spread-skill ratio drops to 0.69.
+  * The aleatoric variance falls along the rollout (0.0087 → 0.0034 → 0.0030). The model is confident on its own
+    smoother inputs.
+  * The epistemic variance (the members' divergence) grows 30-fold by step 10 and dominates from step ~4.
+  * The one-step variance is not propagated by sampling: the limitation stated in D30, now measured.
+* **More data does not shrink the uncertainty after 1 h.** The 10% and 100% ensembles agree to 1–3% on every
+  measure: epistemic variance 0.0008 at one step for both, aleatoric 0.0079 for both.
+  * The lecture's expectation (epistemic variance shrinks with data) is not visible at this budget.
+  * At 1 h a CNextU-Net sees under one pass of the full data, so it is limited by compute, as in section 11.
+* **Boundary layers** (buoyancy, one step, developed, 100%):
+  * The error peaks a few rows above the bottom wall (RMSE 0.194 at row 4), and the predicted std peaks there too
+    but falls 16% short.
+  * In the interior the std is 4–16% too large.
+  * On the wall rows themselves it is about 2× too large (0.11 against 0.04–0.05): the model does not learn that
+    the walls' values are fixed.
+
+### UQ-B: seed pairs, conformal intervals and shifts (all three families)
+
+**Seed pairs are under-dispersed where it matters.**
+* One-step spread-skill ratios (10% / 100%): CNextU-Net 0.49 / 0.41, TFNO 0.53 / 0.50, AViT 0.70 / 0.44. They
+  rise to 0.84–0.89 by rollout step 30 as the two seeds' rollouts diverge.
+* Their rank histograms are nearly flat (0.31–0.36 per rank at one step). This is because a rank histogram
+  counts every grid point equally, while the spread-skill ratio is dominated by the large errors. Flat rank
+  histograms do not imply calibration (Hamill 2001).
+* **More data makes the seeds agree more:** one-step epistemic variance falls 71% for AViT (0.0013 → 0.0004),
+  35% for CNextU-Net and 15% for TFNO. This is the data effect the β-NLL ensembles do not show at 1 h.
+
+**Split-conformal 90% intervals hold their coverage on test** (0.899–0.904 for every model and scale), so the
+validation and test splits behave as exchangeable.
+* Coverage is marginal only: one q-hat for all windows over-covers onset (0.94–0.99) and under-covers developed
+  flow (0.87–0.88).
+* Width of the 90% interval (constant scale):
+
+| Model (4 h) | One step, 10% / 100% | Rollout step 30, 10% / 100% |
+|---|---|---|
+| CNextU-Net | 0.116 / 0.112 | 1.74 / 1.71 |
+| TFNO | 0.293 / 0.284 | 1.73 / 1.67 |
+| AViT | 0.185 / 0.153 | 2.39 / 2.49 |
+| Persistence | 0.654 | 2.49 |
+| CNextU-Net β-NLL 1 h, Gaussian scale | 0.140 / 0.136 | 1.64 / 1.61 |
+| CNextU-Net MSE 1 h | 0.199 / 0.197 | 1.95 / 1.99 |
+
+* The widths rank the models as their errors do; by step 30 TFNO's intervals are as narrow as CNextU-Net's.
+* The β-NLL scale gives intervals 30% narrower than its MSE counterpart at one step, with the same coverage.
+* Scaling by the two seeds' spread widens the intervals on average (0.17 against 0.11 for CNextU-Net) but
+  improves the coverage within each phase a little (onset 0.94, developed 0.88).
+
+**Shifts** (90% nominal):
+* **Longer rollouts** (the q-hat of step 1 kept): a constant-width interval collapses.
+  * Coverage at steps 10 / 30: CNextU-Net 0.57 / 0.31, TFNO 0.62 / 0.43, AViT 0.32 / 0.24, persistence 0.61 /
+    0.59, and the β-NLL Gaussian scale 0.62 / 0.66.
+  * An interval scaled by the members' spread stays valid: seed pairs 0.87–0.91 and the five β-NLL means
+    0.92–0.94 at every step.
+  * So the ensembles' disagreement tracks how the rollout error grows; the aleatoric head does not.
+* **Noisy inputs** (clean q-hat, one step): coverage at σ = 0.05 / 0.20:
+  * CNextU-Net 0.90 / 0.76–0.78, TFNO 0.89 / 0.70–0.73, persistence 0.90 / 0.75;
+  * AViT 0.78–0.87 / 0.42–0.56, worst at 100%;
+  * the spread scale keeps AViT at 0.81–0.86.
+  * At rollout step 10, noise barely matters (≥ 0.88 except AViT's constant scale, 0.82–0.85 at σ = 0.2).
+* **Rayleigh number** (one step, Ra = 1e10 test windows):
+  * Calibrated on Ra ≤ 1e9: coverage 0.66 for CNextU-Net (100%), 0.70 AViT, 0.76 TFNO, 0.83 persistence. The
+    β-NLL Gaussian scale reaches 0.85, its predicted std capturing part of the regime's difficulty.
+  * Even calibrating on all validation gives only 0.76 on Ra 1e10 for CNextU-Net.
+  * Recalibrating on just two Ra = 1e10 validation trajectories restores 0.84–0.87 (constant), 0.90 (spread) and
+    0.90 (β-NLL).
+
+### Input-noise robustness (WP8)
+
+Gaussian noise of σ (normalised units; walls not perturbed, D17) on the four input frames; the same draws for
+every model. VRMSE relative to clean, one step in developed flow:
+
+| Model (4 h) | σ = 0.01 | 0.05 | 0.10 | 0.20 | Clean → σ = 0.2 VRMSE |
+|---|---|---|---|---|---|
+| CNextU-Net 10% / 100% | 1.00 / 1.00 | 1.04 / 1.04 | 1.14 / 1.15 | 1.46 / 1.47 | 0.049 → 0.072 (100%) |
+| TFNO 10% / 100% | 1.01 / 1.01 | 1.09 / 1.10 | 1.25 / 1.27 | 1.57 / 1.62 | 0.108 → 0.175 |
+| AViT 10% / 100% | 1.02 / 1.07 | 1.33 / 1.88 | 1.89 / 2.87 | 2.94 / 4.27 | 0.064 → 0.272 |
+| Persistence | 1.00 | 1.07 | 1.20 | 1.56 | 0.230 → 0.359 |
+
+* **CNextU-Net is the most robust and stays the most accurate at every noise level.** TFNO degrades about like
+  persistence.
+* **AViT is the most fragile, and more data makes it more so.**
+  * The 100% model is better clean (0.064 against 0.076) but worse from σ = 0.05 (0.120 against 0.101).
+  * At σ ≥ 0.05 it falls behind TFNO.
+  * A reading consistent with this (not tested): the patch embedding maps noise within a patch to tokens it never
+    saw in training, and more training tightens its fit to clean inputs.
+* **Over a rollout, input noise fades.** At step 10 the VRMSE rises at most 13% at σ = 0.2 for CNextU-Net, TFNO
+  and persistence (AViT 39–53%), and at step 30 at most 14%: the rollout's own error dominates.
+* Over all windows the ratios are much larger (up to 64× for AViT, 39× for persistence at σ = 0.2): in the nearly
+  still onset windows the true field barely varies, so any noise is large relative to it. The developed-flow
+  numbers are the meaningful ones.

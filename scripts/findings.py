@@ -29,6 +29,8 @@ and figures, each as .pdf and .png:
                                                  rollout VRMSE at step 30, share below 1, steps ahead of persistence
     nusselt_rollouts.csv, nusselt_by_rayleigh.csv  rollout-averaged Nu (frames 80, 140), predicted vs true, per Ra
     nusselt_by_rayleigh_{1h,4h}_test             the same as a figure: Nu, bias and |error| per Ra, 10% and 100%
+  uq/ (scripts/uq_findings.py)                   uncertainty (WP9) and noise robustness (WP8): uq_summary, uq_conformal,
+                                                 uq_shifts, uq_rank_pit, noise_robustness, uq_yprofile and five figures
     eval_one_step_by_frame_test_<f>              one-step VRMSE by window: ours 1 h / 4 h, released, persistence
     eval_rollout_by_start_<label>_test_<f>       rollouts from starts 20 / 80 / 140 against persistence
     eval_paper_rollout_4h_test_<f>               the paper's frame-0 rollouts: ours, released, persistence
@@ -462,6 +464,10 @@ def main() -> int:
         match.to_csv(out / "solver_matching.csv", index=False)
         written += [str(out / "solver_comparison.csv"), str(out / "solver_matching.csv")]
         written += figs.solver_matching_figure(comp, match, outputs, runs_df, "4h", out / "solver_matching_4h_test")
+
+    # uncertainty and noise robustness (WP8, WP9): scripts/uq_findings.py -> outputs/findings/uq/
+    import uq_findings  # scripts/, next to this file
+    written += uq_findings.main(outputs, out / "uq")
 
     cols = {"manifest": "manifest", "task_index": "row", "model": "model", "fraction": "data", "seed": "seed",
             "lr": "lr", "status": "status", "attempts": "attempts", "partitions": "partition",

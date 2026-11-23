@@ -691,6 +691,7 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 | 11-21 | MPI_Init failed on free nodes with a qedr RoCE card (hpc3-14-*, hpc3-15-*): UCX `rc_verbs/qedr0` | 15 of 90 solver tasks did nothing (no SUs; free partition) | `UCX_TLS=self,sm,tcp` (one rank, one node) in `solver_cpu.sbatch`; rerun on the class partition (D31) |
 | 11-22 | `/pub` `Errno 121 Remote I/O error` while saving TFNO 100% s0's checkpoint | attempt 1 died after 1.1 h | in-job restart (`run_with_restarts.sh`) resumed from step 4,322 and completed; ~25 min wall lost |
 | 11-22 | `/pub` outage at 00:08 PST: Slurm could not open the jobs' output files | row 10 and the persistence UQ evaluation `FAILED 0:53` in 1 s, no log | a job without a log can have failed at launch: check `sacct` after `/pub` incidents; resubmit |
+| 11-22 | same failure at 17:43:09 PST | UQ seed pairs 1-4 (59939381_1-4) `FAILED 0:53` in 0 s, no log; task 5 started 3 s later and completed | second launch failure in a day: check `sacct` for `0:53` after every submission; resubmit `--array=1-4` |
 | 11-22 | `/pub` write stalls of 10–22 min on every job at once (01:28, 02:03, 02:54, 04:19 PST) | 100% runs: up to 4,258 s of checkpoint time per run (22% of wall); 10% UQ runs: data waits | node-local data does not protect checkpoint writes; saving locally and copying in the background would (not implemented) |
 
 ## 6. Figures for the report
@@ -950,6 +951,38 @@ Slurm logs: no traceback, no non-finite loss, the cohort hash 0e6dc760 and the p
   evaluations 0-5 (seed pairs at 4 h) and 7-10 (ensembles and their MSE baselines). Those were never submitted,
   because their member runs were not all trained; now they are.
 
+### Status (pulled 2026-11-22 19:40 PST): row 10 evaluation and the UQ evaluations
+
+The owner submitted the row-10 evaluation (59939380_10, correlation on), the UQ seed pairs (59939381, indices 0-5)
+and the ensembles with their MSE baselines (59939382, indices 7-10) at commit 620fd64.
+
+* **Row 10 (AViT 100% s0)**: evaluation complete at 1 h and 4 h (644 s, hpc3-gpu-l54-05; 34,300 windows, 525
+  rollouts, cohort hash matched, physics audit passed). One-step test VRMSE, physical fields, all windows, 1 h /
+  4 h: 0.500 / 0.112 (s1 0.411 / 0.112). **All 12 core runs are now evaluated at both budgets.**
+* **UQ evaluations complete** (`UQ_COMPLETE.json` on valid and test; 175 trajectories; cohort hash matched; member
+  checkpoints equal to the runs' `COMPLETE.json`; no non-finite value in any `summary.parquet`). Wall time valid /
+  test:
+  * 0, CNextU-Net 10% seed pair at 4 h: 992 / 4,871 s;
+  * 5, AViT 100% seed pair at 4 h: 324 / 1,411 s;
+  * 6, persistence: 129 / 624 s (earlier, 59920839_6);
+  * 7 / 8, β-NLL ensembles at 10% / 100%: 2,788 / 1,511 s and 2,795 / 1,503 s;
+  * 9 / 10, MSE 1 h baselines at 10% / 100%: 955 / 592 s each. They ran side by side on hpc3-gpu-l54-04 and
+    finished within 0.1 s of each other. Their outputs and checkpoints differ.
+* **Not run: indices 1-4** (CNextU-Net 100%, TFNO 10% and 100%, AViT 10% seed pairs). There is no log and no
+  output folder on HPC3. `sacct` (owner, 19:50 PST): all four `FAILED 0:53` at 17:43:09, elapsed 0 s, the
+  launch failure seen at 00:08 (Slurm could not open the log on `/pub`). Task 5 started 3 s later and completed.
+  No GPU time billed. To be resubmitted (`--array=1-4`).
+* **Resubmitted as 59946048 (indices 1-4), all complete** (pulled 2026-11-23 08:30 PST; all on hpc3-gpu-l54-04,
+  commit 620fd64; checks as above). Wall time valid / test:
+  * 1, CNextU-Net 100% seed pair: 1,171 / 5,481 s;
+  * 2, TFNO 10%: 1,217 / 3,360 s;
+  * 3, TFNO 100%: 371 / 2,149 s;
+  * 4, AViT 10%: 647 / 1,939 s.
+* **All 11 UQ entries are complete on both splits (22 passes).** Test carries the noise levels 0-0.20 for the
+  seed pairs and persistence (WP8). With this, every GPU job of the final-submission plan has run. What is left
+  is Mac analysis (WP3 aggregation, WP5, WP6 matching, the WP8 and WP9 analysis, WP7) and a final `sacct` for
+  the costs.
+
 ### `/pub` stalls now hit checkpoint writes
 
 The 100% runs read their data from local disk but still write checkpoints and logs to `/pub`. Every running job
@@ -1013,3 +1046,10 @@ Process wall time plus the local copy, at 40 SU per hour (1 A100 + 8 cores):
 Row 2 (4.4 h, ~180 SU) was logged on 11-21. The five finished 4 h runs held 26.3 GPU-hours; with row 10 the 100%
 runs come to ~32 h, at the low end of the plan's 32–38 h with the local copy (docs/final_plan.md WP2). UQ training
 came to 18.3 h against the 15–18 h planned.
+
+**Billed (`sacct`, pulled 2026-11-23 into `outputs/sacct_skose.txt`, 228 allocations).** The paid `gpu` partition
+bills `billing` × elapsed. Jobs submitted from 2026-11-21 on, which is all of the final-submission work (100% runs,
+UQ training, every evaluation, solver reruns and scoring), came to **2,572 SU and 64.3 GPU-hours**, against the
+plan's 2,850–3,750 SU with the local copy (`docs/final_plan.md` section 6). Free CPU jobs in that period: no GPU.
+Before 11-21: 2,537 SU and 63.7 GPU-hours paid, plus 18.3 GPU-hours on `free-gpu`. **Paid in all: 5,109 SU.** The
+per-purpose split comes from `scripts/findings.py` (`sacct_summary.csv`).

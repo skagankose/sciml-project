@@ -708,4 +708,16 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     solver scoring (59921126) covers all six grids. 64 x 16 has a step-30 mean of inf from its 3 diverged rollouts.
   * Still to submit: the evaluation of row 10, then the UQ evaluations 0-5 and 7-10 (every member run is trained
     now). Details in `docs/report_notes.md` sections 8 and 10.
+* 2026-11-22 (19:40 PST): the owner submitted the row-10 evaluation (59939380) and the UQ evaluations 59939381
+  (0-5) and 59939382 (7-10). The pull reused the SSH master, which the owner reopened with `ssh -fN hpc3-xfer`
+  after its 8 h expiry.
+  * Complete and checked: the row-10 evaluation, so all 12 core runs are evaluated at 1 h and 4 h. Also UQ
+    indices 0, 5 and 7-10 on valid and test, with the cohort hash, member checkpoints and finite summaries checked.
+  * UQ indices 1-4 failed at launch: `sacct` gives `FAILED 0:53` at 17:43:09, elapsed 0 s, no log. This is the
+    same `/pub` launch failure as at 00:08. Resubmit `--array=1-4`. After a submission, check `sacct` for `0:53`.
+* 2026-11-23: the resubmitted UQ indices 1-4 (59946048) completed. All 22 UQ passes (11 ensembles × valid, test)
+  are checked: cohort, member checkpoints, 175 trajectories, finite summaries. Every GPU job of
+  `docs/final_plan.md` has now run. Next is Mac work: aggregate both fractions (WP3), Nu per Ra (WP5), solver grid
+  matching (WP6), the noise and UQ analysis (WP8, WP9; analysis code not written yet) and the results package (WP7).
+  The final costs need a `sacct` pulled into `outputs/sacct_skose.txt`.
 

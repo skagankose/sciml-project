@@ -787,3 +787,17 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     from σ 0.05).
     * Details in `docs/report_notes.md` section 13.
 
+* 2026-11-23: WP7, results package (`docs/report_notes.md` section 15).
+  * `scripts/final_figures.py` draws the final-report figures into `reports/figures/final/`:
+    * both fractions in every figure (solid / filled = 100%, dashed / open = 10%), onset split per trajectory;
+    * new: data scaling, solver, uncertainty, noise, and 10% vs 100% snapshots;
+    * redrawn: accuracy against cost, test error by window, rollouts at 1 h and 4 h, Rayleigh number (signed Nu
+      error), GPU time for all 12 runs, training curves per fraction, spectra at 100%.
+    * The released CNextU-Net comes from its study evaluation (the eval-released tables have no rollouts).
+    * Checked: the figures' developed means equal `fraction_comparison.csv` for all 24 evaluations.
+    * `report_figures.py` is unchanged for the mid-project figures; `sync_figures.sh` runs both scripts.
+  * Section 15 adds the figure index, cost per run at both fractions (100% runs held 4.5–5.8 h against 5.6–11.6 h
+    at 10%), inference cost, billed compute for the project (146.3 GPU-h, 5,109 SU), and the "which model when"
+    table updated with the 100% runs, noise, UQ, Nu and the solver.
+  * A last `sacct` pull (owner) closes the accounting: the 100% snapshot job ran after the current one.
+  * Tests: `tests/test_final_figures.py`. 206 pass and smoke passes.

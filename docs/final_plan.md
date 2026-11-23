@@ -163,6 +163,10 @@ Steps:
 
 ### WP7. Results package (Mac; the report is written afterwards)
 
+**Status (2026-11-23):** done. Final figures in `reports/figures/final/` (`scripts/final_figures.py`), the index, cost
+tables and the updated "which model when" table in `docs/report_notes.md` section 15. A last `sacct` pull closes the
+accounting (the 100% snapshot job ran after the current one).
+
 Every result is saved as for the mid-project report, so that the final report can be written from them:
 * `outputs/tables/` and `outputs/findings/`;
 * figures via `scripts/report_figures.py`;

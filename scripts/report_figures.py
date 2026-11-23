@@ -133,8 +133,8 @@ def loader(outputs: Path, out: Path) -> list[str]:
 
 # --- 3. training curves (all models on shared axes) -----------------------------------------------------------
 
-def training(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
-    runs = runs[(runs.manifest == "train") & (runs.fraction == 0.1)]
+def training(outputs: Path, runs: pd.DataFrame, out: Path, fraction: float = 0.1, name: str = "fig_training") -> list[str]:
+    runs = runs[(runs.manifest == "train") & (runs.fraction.round(3) == round(fraction, 3))]
     if runs.empty:
         return []
     fig, (ax_loss, ax_val) = plt.subplots(1, 2, figsize=(FULL, 2.5))
@@ -168,7 +168,7 @@ def training(outputs: Path, runs: pd.DataFrame, out: Path) -> list[str]:
     handles += [Line2D([], [], color=MUTED, ls="-", label="seed 0"), Line2D([], [], color=MUTED, ls="--", label="seed 1")]
     fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, 0.98))
     fig.tight_layout()
-    return save(fig, out, "fig_training")
+    return save(fig, out, name)
 
 
 # --- 4. test error by window: ours against the references --------------------------------------------------------
@@ -419,7 +419,7 @@ def by_rayleigh(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h",
 # --- 5. spectra: where in scale the error is ----------------------------------------------------------------------
 
 def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", regime=(1e8, 1.0),
-            fraction: float = 0.1) -> list[str]:
+            fraction: float = 0.1, tag: str | None = None) -> list[str]:
     evals = ff.evaluated_runs(runs, outputs, fraction=fraction)
     tables = ff._load(evals, "spectra", label) if not evals.empty else {}
     if not tables:
@@ -479,7 +479,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
            color=MUTED, va="bottom")
     a.text(2.2, 0.04, "large scales", transform=a.get_xaxis_transform(), fontsize=7, color=MUTED, va="bottom")
     handles = [Line2D([], [], color=INK, lw=TRUTH_LW, label="true flow")]
-    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.2, label=f"{STYLE[m]['label']} (ours, {label})")
+    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.2, label=f"{STYLE[m]['label']} (ours, {tag or label})")
                 for m in MODEL_NAMES if m in tables]
     if persist is not None:
         handles.append(Line2D([], [], color=PERSIST["color"], ls=":", lw=1.2, label="persistence"))

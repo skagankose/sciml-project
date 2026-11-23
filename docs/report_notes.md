@@ -697,6 +697,9 @@ Rollouts from the study's starts (D15), 30 steps, VRMSE (physical) at steps 1 / 
 
 ## 6. Figures for the report
 
+Final report (both fractions, onset per trajectory): `scripts/final_figures.py` → `reports/figures/final/`, indexed
+in section 15. The rest of this section describes the mid-project figures and the exploratory ones.
+
 The written reports use `scripts/report_figures.py` (`reports/figures/fig_*.pdf`, rebuilt by
 `reports/sync_figures.sh`): each figure drawn at its printed size (6.9 in text width, 7–8 pt text), one message
 each, no titles inside, all models on shared axes where they are compared. The table below lists the exploratory
@@ -1201,11 +1204,9 @@ Log spectral error at step 30 (4 h, 10% / 100%): CNextU-Net 1.317 / 1.319, TFNO 
 
 ### Still to do for the report (WP7)
 
-* The report figures with both fractions: accuracy against cost at both fractions (Fig. 6), rollouts and test error
-  by window per fraction, and the 10% vs 100% snapshots.
-* Those figures should also move the `report_figures._developed` split from frame 50 to the per-trajectory onset
-  (D29); the mid-project figures keep frame 50.
-* The "which model when" table updated with the 100% results.
+Done 2026-11-23 (section 15): `scripts/final_figures.py` draws the report figures with both fractions and the
+per-trajectory onset split into `reports/figures/final/`; the mid-project figures keep frame 50; the "which model
+when" table is updated with the 100% results.
 
 ## 12. Heat transport per Rayleigh number (WP5; D28; 2026-11-23)
 
@@ -1512,3 +1513,109 @@ every model. VRMSE relative to clean, one step in developed flow:
 * Over all windows the ratios are much larger (up to 64× for AViT, 39× for persistence at σ = 0.2): in the nearly
   still onset windows the true field barely varies, so any noise is large relative to it. The developed-flow
   numbers are the meaningful ones.
+
+## 15. Results package for the final report (WP7; 2026-11-23)
+
+Every GPU job of `docs/final_plan.md` has run; this section indexes the results the final report is written from.
+Rebuild everything from the pulled outputs on the Mac (no data, no GPU):
+
+```
+.venv/bin/rbbench aggregate ...            # outputs/tables/ (section 11 lists the command's inputs)
+.venv/bin/python scripts/findings.py       # outputs/findings/ (+ uq/), tables and exploratory figures
+.venv/bin/python scripts/final_figures.py  # reports/figures/final/fig_*.pdf, at printed size
+```
+
+`reports/sync_figures.sh` runs the last two plus the mid-project figures (`scripts/report_figures.py`, unchanged:
+10% only, frame-50 split).
+
+### Final-report figures (`reports/figures/final/`)
+
+Conventions in every figure: colour = model; solid line / filled marker = 100% data, dashed / open = 10%;
+persistence dotted; the released CNextU-Net dashed black (its study evaluation, same cohort and rollouts).
+Developed one-step windows start at or after their trajectory's own onset frame (D29, `tasks/onset_test.json`); the
+figure helpers reproduce `fraction_comparison.csv` exactly (checked for all 24 evaluations and the released model).
+
+| Figure | Message | Source |
+|---|---|---|
+| `fig_data_scaling` | 10% → 100% at 1 h and 4 h: one step developed, onset, and 30 steps from developed flow. Only AViT gains clearly at 4 h; rollouts do not improve | `fraction_comparison.csv` (section 11) |
+| `fig_accuracy_cost` | developed error against active training time, allocated GPU-hours per run and inference time, both fractions | `fraction_comparison.csv`, `runs.csv`, `resource_use.csv` |
+| `fig_test_by_window` | one-step error by window start, 10% and 100% panels; onset zone shaded up to the earliest t_on (41), lighter to the latest (78) | evaluations |
+| `fig_rollouts` | rollout error from frames 80/140 and Kaplan–Meier survival below VRMSE 1, at 1 h and 4 h; shows TFNO 100%'s unstable 1 h rollouts | evaluations |
+| `fig_by_rayleigh` | by Ra (4 h): developed one step, step 30, signed Nusselt error of the rollout-averaged Nu (released +34% to +299%, off scale above 1e8) | evaluations, `nusselt_by_rayleigh.csv` (section 12) |
+| `fig_spectra` | spectra at 100% / 4 h (10% version: mid-project `fig_spectra`; unchanged with data, section 11) | evaluations |
+| `fig_solver` | Dedalus grids against CNextU-Net 100% / 4 h per Ra, and each grid's worst ratio over steps 1/10/30 against its cost | `solver_comparison.csv`, `solver_matching.csv` (section 13) |
+| `fig_uq` | β-NLL ensemble coverage along the rollout; conformal 90% kept from step 1 (spread-scaled vs constant); spread-skill ratio | `uq/uq_summary.csv`, `uq/uq_shifts.csv` (section 14) |
+| `fig_noise` | VRMSE against input noise σ, one step and rollout step 10 | `uq/noise_robustness.csv` (section 14) |
+| `fig_time` | GPU time held per 4-h run, 12 runs: training, data waits, other | `runs.csv` |
+| `fig_training_f010`, `fig_training_f100` | training loss and validation VRMSE against active training time | run metrics |
+| `fig_snapshots_fractions_buoyancy_step30_<rollout>` | true buoyancy at step 30 above each model at 10% (left) and 100% (right); Ra 1e8 and 1e10 | `outputs/visuals/` |
+| `fig_snapshots_buoyancy_<rollout>__f{010,100}_4h_s0` | true flow and each model at steps 1, 12, 30, per fraction | `outputs/visuals/` |
+
+Accuracy tables (one step all / onset / developed, rollouts, field-wise, both checkpoints, both fractions, released
+and persistence) are in section 11; Nusselt per Ra in section 12; the solver in section 13; uncertainty and noise
+in section 14. Not drawn as final figures: the paper-protocol tables (`outputs/tables/paper_protocol.csv`) and the
+three failure thresholds (`main_results.csv`, `survival_thr{1,2,5}`, `km_median_failure_step_thr{1,2,5}`).
+
+### Cost per 4-h run, both fractions (`runs.csv`, `resource_use.csv`; A100 80 GB, batch 64, fp32)
+
+| Model | Data | Active training | GPU time held (range) | Waiting for data | Other | SU (2 runs, logs) | Passes over the data | GPU busy |
+|---|---|---|---|---|---|---|---|---|
+| CNextU-Net | 10% | 4.0 h | 5.6 h (5.2–6.0) | 0.97 h | 0.64 h | 380 | 28 | 72% |
+| CNextU-Net | 100% | 4.0 h | 4.5 h (4.4–4.6) | 0.01 h | 0.49 h | 361 | 2 | 89% |
+| TFNO | 10% | 4.0 h | 7.0 h (6.9–7.1) | 2.68 h | 0.32 h | 560 | 61 | 57% |
+| TFNO | 100% | 4.0 h | 5.6 h (5.5–5.8) | 0.07 h | 1.57 h | 451 | 6 | 71% |
+| AViT | 10% | 4.0 h | 11.6 h (11.1–12.2) | 6.69 h | 0.94 h | 931 | 175 | 34% |
+| AViT | 100% | 4.0 h | 5.8 h (5.7–6.0) | 0.51 h | 1.31 h | 466 | 17 | 69% |
+
+* The 100% runs held less GPU time than the 10% runs, although they read ten times more data: they read from the
+  node-local copy (D29), the 10% runs from `/pub`. Their "other" time is the copy (4–8 min), the in-job restart of
+  TFNO s0, and checkpoint writes during `/pub` write stalls (up to 22% of wall time; section 10).
+* All six 10% runs: 24.0 h active, 48.5 h held; all six 100% runs: 24.0 h active, 31.9 h held.
+* "Passes over the data" are the logged epochs (training windows seen / windows in the subset).
+
+| Model | Parameters | Training memory (allocated / reserved) | Inference per frame (batch 1) | 30-step rollout | Inference memory |
+|---|---|---|---|---|---|
+| CNextU-Net | 18.58 M | 60.8 / 64.8 GB | 8.3 ms | 248 ms | 0.31 GB |
+| TFNO | 19.28 M | 48.7 / 57.1 GB | 4.4 ms | 133–135 ms | 0.44 GB |
+| AViT | 18.57 M | 8.7 / 8.9 GB | 5.4–5.5 ms | 163–168 ms | 0.23 GB |
+
+Inference is the same at both fractions (same architecture); batched, AViT is cheapest per sample (0.89 / 3.15 /
+6.74 ms at batch 64 for AViT / TFNO / CNextU-Net, section 3).
+
+### Compute billed for the whole project (`sacct` of 2026-11-23, `outputs/findings/sacct_summary.csv`)
+
+| Purpose | Partition | Jobs | GPU-hours | SU |
+|---|---|---|---|---|
+| 10% runs | gpu | 9 | 47.7 | 1,907 |
+| 100% runs | gpu | 12 | 33.4 | 1,337 |
+| UQ ensemble training (β-NLL, 10 runs) | gpu | 10 | 16.1 | 644 |
+| UQ and noise evaluation | gpu | 16 | 10.6 | 425 |
+| Dedicated 1 h runs (10% MSE; 100% MSE pair for UQ) | gpu | 8 | 10.1 | 403 |
+| Test evaluations (core runs at 1 h and 4 h, persistence, released, dedicated 1 h runs) | gpu | 20 | 7.6 | 303 |
+| Pipeline check | gpu | 1 | 2.3 | 84 |
+| Numerical solver (rerun of 2 grids, scoring) | gpu | 3 | 0.1 | 5 |
+| Free partitions (before D31: 10% first attempts, learning-rate search, pipeline check, profiling, replication try, 75 solver tasks, data, setup, 10% snapshots) | free, free-gpu | 148 | 18.3 | 0 |
+| **All** | | | **146.3** (128.0 paid) | **5,109** |
+
+* The 100% flow-snapshot job (59959731, paid, one idle GPU, ~0.1 h) ran after this `sacct`. A last `sacct` pull
+  (owner; command in section 4) closes the accounting; `scripts/findings.py` rebuilds the table from it.
+* Core study (12 runs of 4 h): 81.1 GPU-hours held on the paid partition plus 2.2 on free-gpu, against the
+  abstract's ~100 GPU-h and the revised ~131–142; the node-local copy saved the difference.
+
+### Which model under which constraint (updated with the 100% runs; 4 h unless stated)
+
+| If the priority is | Best of the three | Trade-off and evidence |
+|---|---|---|
+| Accurate, stable forecasts of developed convection | CNextU-Net, at both fractions | Developed one step 0.0505 (10%) / 0.0489 (100%); 88–89% of rollouts stay below VRMSE 1; slowest inference (248 ms per 30 steps), 61 GB training memory. 1.28× the released model's one-step error, but more stable over rollouts (step 30 from 80/140: 0.52 / 0.40 vs 0.63 / 0.51) |
+| Fastest single forecast (batch 1) | TFNO (133–135 ms per 30 steps) | Largest one-step error (0.107–0.111 developed); too smooth: loses energy at k_x ≈ 25–240 after one step, from k_x ≈ 10 by step 30; gains ~3% from data; after 1 h at 100% its rollouts are unstable (23% below 1, both seeds) |
+| Least training memory; cheapest batched forecasts | AViT (8.7 GB; 0.89 ms per sample at batch 64) | Gains most from data (−16.5% developed, 0.0761 → 0.0636), but its rollouts do not (61% below 1; behind persistence after ~21 steps); patch-block artifacts; most fragile to input noise (×4.3 at σ = 0.2 at 100%, worse than at 10% from σ = 0.05) |
+| More training data, same 4 h budget | AViT benefits; CNextU-Net, TFNO barely | 10% → 100%: AViT −16.5%, CNextU-Net −3.1%, TFNO −2.8% (developed one step); no model's rollouts improve. 1 h → 4 h matters more for CNextU-Net (−35%) |
+| Only one hour of training | 10%: AViT (one step), TFNO (rollouts). 100%: CNextU-Net or AViT | 100% / 1 h: all-window one step CNextU-Net 0.456, AViT 0.456, TFNO 0.491; developed 0.0751 / 0.0804 / 0.126; below 1 for 30 steps 50% / 52% / 23% |
+| Convection onset (before t_on) | None: persistence | Onset one step: persistence 0.116 against AViT 0.245, CNextU-Net 0.353, TFNO 0.452 (100%); from frame 20 persistence wins every rollout |
+| Heat transport (Nusselt number over 30 steps) | TFNO | Median |error| ~20% at both fractions; AViT carries too little heat (−17%, −40% at Ra 1e10); CNextU-Net unbiased to Ra 1e9 but scattered (49%); the released CNextU-Net +108% |
+| Noisy inputs | CNextU-Net | Error ×1.47 at σ = 0.2 (one step, developed, 100%); TFNO ×1.62 and persistence ×1.56; AViT ×4.27 (×2.94 at 10%) |
+| Calibrated uncertainty | CNextU-Net β-NLL ensemble (5 × 1 h) + split conformal | CRPS 26–32% below an MSE model's MAE; intervals too narrow along rollouts (90% → 73% by step 10) unless recalibrated per step or spread-scaled (0.87–0.94 at step 30); Ra 1e10 needs its own calibration |
+| Many forecasts at Ra ≤ 1e8 instead of a solver | CNextU-Net, above a break-even | A coarse Dedalus grid matches CNextU-Net at Ra 1e6 (128 × 32, 16 s per rollout on one core) and 1e8 (256 × 64, 115 s); training pays off after ~86,000 and ~6,200 rollouts. No grid matches at 1e10 (with our time step 128× larger than the data's; section 13) |
+
+Caveats for the whole table: two seeds per configuration; one 10% subset draw shared by the seeds; one-step training
+only; fp32 for all (bf16 would speed up CNextU-Net 1.7× and AViT 2.2×); learning rate at the top of the searched grid.

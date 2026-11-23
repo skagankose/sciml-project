@@ -699,4 +699,13 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     rollouts are done: 87 finished, 3 diverged at 64 x 16. Timings vary up to ~1.4x with the CPU and the number of
     rollouts side by side (`docs/report_notes.md` section 8).
   * Next: `solver_score_cpu.sbatch`. No push while row 10 is queued.
+* 2026-11-22 (16:50 PST): cluster check from the Mac (outputs and logs pulled through `hpc3-xfer`). Every job
+  submitted at 10:40 completed, with no tracebacks or non-finite losses, and the cohort hash and physics audit pass
+  in every record.
+  * Row 10 (AViT 100% s0) trained its full 4 h in one attempt, with short validation 0.142 at 4 h. Checkpoint
+    saves took 17% of its 5.96 h wall time (`/pub` write stalls). All 12 core runs are now trained.
+  * The evaluations of rows 3, 6, 7 and 11 and the persistence UQ evaluation (valid and test) are complete, and the
+    solver scoring (59921126) covers all six grids. 64 x 16 has a step-30 mean of inf from its 3 diverged rollouts.
+  * Still to submit: the evaluation of row 10, then the UQ evaluations 0-5 and 7-10 (every member run is trained
+    now). Details in `docs/report_notes.md` sections 8 and 10.
 

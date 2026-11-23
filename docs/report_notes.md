@@ -813,6 +813,10 @@ its evaluation is pulled.
     rollout records its CPU and `concurrent_rollouts`. The owner declined a uniform timing rerun (2026-11-21).
   * Next: score with `sbatch cluster/slurm/solver_score_cpu.sbatch` (writes `outputs/baselines/solver_<res>/`),
     then match grids against CNextU-Net (WP6).
+* Scored (job 59921126, hpc3-gpu-18-02, commit 620fd64, 2026-11-22 10:46-10:48 PST; pulled 16:50): all six grids,
+  15 trajectories and 30 rollouts each, cohort hash 0e6dc760, physics audit passed. Mean VRMSE at step 30: 512 x 128
+  0.275, 384 x 96 0.280, 256 x 64 0.324, 192 x 48 0.373, 128 x 32 0.726; 64 x 16 inf (its 3 diverged rollouts).
+  The 64 x 16 mean must be reported without them, or as a median. Grid matching against CNextU-Net (WP6) is next.
 
 ## 9. Onset per trajectory (D28, D29; final_plan WP4)
 
@@ -923,6 +927,28 @@ score.
   started at 00:08:36 PST, on hpc3-gpu-l54-05 and -06, and ended within a second with `FAILED 0:53`: Slurm could
   not open the output file in `logs/` on `/pub`. This was 1.5 min before TFNO s0's `Errno 121`, in the same `/pub`
   outage. No log, no output, about 1 s billed. Both are to be resubmitted.
+
+### Status (pulled 2026-11-22 16:50 PST, commit 620fd64)
+
+Every job submitted at 10:40 PST completed. Checked from `COMPLETE.json`, `EVAL_COMPLETE_<label>.json` and the
+Slurm logs: no traceback, no non-finite loss, the cohort hash 0e6dc760 and the physics audit passed in every record.
+
+* **Row 10 (AViT 100% s0, job 59920838_10)**: complete in one attempt, 74,916 steps in 14,400 s of training.
+  Local copy 3.0 min (1.61 GB/s). Wall 21,460 s (5.96 h): data waits 605 s, checkpoint saves 3,585 s (17%, the
+  `/pub` write stalls again), validation 203 s. Short validation at 1 h / 4 h: 0.546 / 0.142 (s1 0.486 / 0.152).
+  Peak memory 8.7 GB. Not yet evaluated.
+* **Evaluations of rows 3, 6, 7, 11 (59920842)**: both checkpoints, 34,300 windows and 525 rollouts each; 10-27
+  min per run. One-step test VRMSE, physical fields, all windows, 1 h / 4 h (from the logs; onset / developed split
+  from `aggregate`):
+  * CNextU-Net s1: 0.432 / 0.131 (s0 0.481 / 0.129);
+  * TFNO s0, s1: 0.525 / 0.202 and 0.458 / 0.197;
+  * AViT s1: 0.411 / 0.112.
+* **Persistence UQ evaluation (59920839_6)**: valid (128.5 s) and test (624 s, noise 0-0.20) complete
+  (`outputs/uq/persistence/{valid,test}/UQ_COMPLETE.json`).
+* Status of every manifest row: the 12 core runs, the 6 dedicated 1 h runs at 10%, the 2 MSE 1 h runs at 100% and
+  the 10 β-NLL runs all have a complete training record. Still to run: the evaluation of row 10, and the UQ
+  evaluations 0-5 (seed pairs at 4 h) and 7-10 (ensembles and their MSE baselines). Those were never submitted,
+  because their member runs were not all trained; now they are.
 
 ### `/pub` stalls now hit checkpoint writes
 

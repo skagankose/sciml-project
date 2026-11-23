@@ -311,9 +311,14 @@ On the Mac: `cluster/pull.sh` brings the scored tables (`outputs/baselines/solve
 
 ```bash
 sbatch cluster/slurm/visualize_cpu.sbatch     # our 10% / 4 h / seed 0 models on two test trajectories, on the GPU
+# the 100% / 4 h / seed 0 models on the same trajectories and start (final report; owner, 2026-11-23)
+sbatch --export=ALL,VIS_ARGS="--fraction 1.0" cluster/slurm/visualize_cpu.sbatch
 ```
 
-Writes `outputs/visuals/rollout_*.npz` (a few frames of the true flow and each model's rollout, ~5 MB each).
+Writes `outputs/visuals/rollout_<file>__<index>__s<start>__f<fraction>_<label>_s<seed>.npz` (a few frames of the
+true flow and each model's rollout, ~5 MB each; `rbbench.visuals`). The fraction is in the name, so the 10% and
+100% files sit side by side. The mid-project report's 10% files carry the older name without it; the readers label
+every file from its stored metadata.
 After `cluster/pull.sh`, `scripts/findings.py` draws `snapshots_*` and `reports/sync_figures.sh` copies them.
 
 ## 9. Dedicated 1 h runs at 10% data (D6, owner 2026-11-11)

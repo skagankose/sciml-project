@@ -65,6 +65,7 @@ from rbbench.aggregate import GRID, INK, MUTED, STYLE, _save, _style_axes
 from rbbench.data import FIELDS
 from rbbench.manifests import read_json
 from rbbench.sweep import read_jsonl
+from rbbench.visuals import snapshot_files
 
 PAID_PARTITIONS = {"gpu"}
 SU_PER_GPU_HOUR, SU_PER_CORE_HOUR = 32, 1
@@ -407,8 +408,7 @@ def main() -> int:
               f"GPU-hours in all: {jobs.gpu_hours.sum():.1f}")
 
     # flow snapshots: the true flow beside our models' rollouts (scripts/visualize_rollouts.py on HPC3)
-    for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
-        tag = npz.stem.removeprefix("rollout_")
+    for npz, tag in snapshot_files(outputs / "visuals"):  # one per fraction / checkpoint / seed (rbbench.visuals)
         for field in ("buoyancy", "velocity_y"):
             written += figs.rollout_snapshots_figure(npz, field, out / f"snapshots_{field}_{tag}")
         written += figs.rollout_snapshots_figure(npz, "buoyancy", out / f"snapshots_buoyancy_error_{tag}", errors=True)

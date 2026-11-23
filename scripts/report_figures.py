@@ -35,6 +35,7 @@ from matplotlib.lines import Line2D
 
 from rbbench import MODEL_NAMES
 from rbbench.aggregate import GRID, INK, MUTED, ONSET_FRAMES, STYLE
+from rbbench.visuals import snapshot_files
 
 FULL, HALF = 6.9, 3.35            # text width and a half column, inches (reports/midproject.tex: 0.8 in margins)
 PERSIST = STYLE["persistence"]
@@ -487,7 +488,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
 
 # --- 6. flow snapshots ------------------------------------------------------------------------------------------
 
-def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) -> list[str]:
+def snapshots(npz: Path, out: Path, tag: str, field: str = "buoyancy", steps=(1, 12, 30)) -> list[str]:
     from rbbench.solver_grid import LX, LY, gauss_nodes, x_grid
 
     d = np.load(npz)
@@ -530,7 +531,6 @@ def snapshots(npz: Path, out: Path, field: str = "buoyancy", steps=(1, 12, 30)) 
     what = ff.FIELD_LABELS.get(field, field)
     cbar.set_label("Buoyancy $b$" if field == "buoyancy" else what, fontsize=7, color=INK)
     cbar.ax.tick_params(labelsize=6.5)
-    tag = npz.stem.removeprefix("rollout_")
     return save(fig, out, f"fig_snapshots_{field}_{tag}")
 
 
@@ -659,8 +659,8 @@ def main() -> int:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)
                     + accuracy_cost(outputs, runs, out) + by_rayleigh(outputs, runs, out)
                     + spectra(outputs, runs, out) + time_breakdown(runs, out))
-    for npz in sorted((outputs / "visuals").glob("rollout_*.npz")) if (outputs / "visuals").exists() else []:
-        written += snapshots(npz, out)
+    for npz, tag in snapshot_files(outputs / "visuals"):  # one per fraction / checkpoint / seed (rbbench.visuals)
+        written += snapshots(npz, out, tag)
     print("\n".join(f"wrote {p}" for p in written if p.endswith(".pdf")))
     return 0
 

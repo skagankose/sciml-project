@@ -720,4 +720,18 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   `docs/final_plan.md` has now run. Next is Mac work: aggregate both fractions (WP3), Nu per Ra (WP5), solver grid
   matching (WP6), the noise and UQ analysis (WP8, WP9; analysis code not written yet) and the results package (WP7).
   The final costs need a `sacct` pulled into `outputs/sacct_skose.txt`.
+* 2026-11-23: `sacct` pulled (owner): from 11-21 on, 2,572 SU and 64.3 GPU-hours paid; 5,109 SU paid in all
+  (`docs/report_notes.md` section 10).
+* 2026-11-23: flow snapshots of the 100% models for the final report (owner).
+  * The snapshot files were named only by trajectory and start, so a 100% run would have overwritten the 10% files
+    on HPC3 and, after a pull, on the Mac.
+  * `rbbench.visuals` now names them `rollout_<file>__<index>__s<start>__f<fraction>_<label>_s<seed>.npz`.
+    `findings.py` and `report_figures.py` read them through `snapshot_files`, which labels each file from its
+    stored metadata, so the mid-project report's 10% files (old names) still work. A duplicate under both names is
+    listed once.
+  * The 10% figures now carry the suffix too (`fig_snapshots_buoyancy_<rollout>__f010_4h_s0`); the old PDFs stay in
+    `reports/figures/`.
+  * Job: `sbatch --export=ALL,VIS_ARGS="--fraction 1.0" cluster/slurm/visualize_cpu.sbatch` (`cluster/README.md`
+    section 8).
+  * Tests: `tests/test_visuals.py`. 188 pass and smoke passes.
 

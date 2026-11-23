@@ -5,10 +5,12 @@ For each chosen trajectory and start frame, every trained run in the manifest at
 is loaded at the given checkpoint and rolled out over the cohort's 30 steps from the same 4 input frames, as in
 the evaluation. Only the frames at a few steps are kept, in physical units, so the file is small (~5 MB per
 trajectory) and the figure can be drawn on the Mac (`scripts/findings.py` -> `rollout_snapshots_*`):
-    outputs/visuals/rollout_<file>__<index>__s<start>.npz   truth / <model> [steps, X, Y, 4], steps, meta (json)
+    outputs/visuals/rollout_<file>__<index>__s<start>__f<fraction>_<label>_s<seed>.npz   (rbbench.visuals)
+        truth / <model> [steps, X, Y, 4], steps, meta (json)
 
     python scripts/visualize_rollouts.py --device cpu                  # defaults: the regimes and start below
     python scripts/visualize_rollouts.py --regimes 1e8,1 1e10,1 --start 80 --label 4h --fraction 0.1 --seed 0
+    python scripts/visualize_rollouts.py --fraction 1.0                # the 100% models; the 10% files stay
 """
 from __future__ import annotations
 
@@ -47,8 +49,8 @@ def main() -> int:
     from rbbench.data import full_trajectory_dataset, list_trajectories, load_trajectory
     from rbbench.evaluate import _physical, model_predictor
     from rbbench.rollout import rollout
-    from rbbench.solver_grid import rollout_name
     from rbbench.sweep import read_jsonl
+    from rbbench.visuals import snapshot_path
 
     dataset_dir = Path(args.data_root) / "datasets" / "rayleigh_benard"
     out_root = Path(args.output_root)
@@ -91,7 +93,7 @@ def main() -> int:
                 "label": args.label, "fraction": args.fraction, "seed": args.seed,
                 "runs": {k: v[1] for k, v in models.items()}, "fields": list(cfg["task"]["fields"]),
                 "seconds_per_rollout": timing, "device": str(device)}
-        path = out_root / "visuals" / f"rollout_{rollout_name(entry['id'], t0)}.npz"
+        path = snapshot_path(out_root / "visuals", entry["id"], t0, args.fraction, args.label, args.seed)
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(path, steps=np.array(steps), meta=json.dumps(meta), **out)
         print(f"wrote {path} ({path.stat().st_size / 1e6:.1f} MB): {', '.join(models)}", flush=True)

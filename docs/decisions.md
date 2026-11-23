@@ -486,6 +486,16 @@ nodes in y (D18) and a RealFourier x grid without a Nyquist mode (the data's Nyq
 * *Free partition only.* No SUs; the preemptible jobs resume rollout by rollout.
 * *Mid-project report (owner, 2026-11-12).* Named there as a planned baseline, with the coarse grids as the
   comparison and 512 x 128 as the reproducibility limit; runs still after the 100% runs.
+* *Correction (2026-11-23).* The data were not generated with the Dedalus example's CFL settings. The generator
+  (`RudyMorel/the-well-rbc-sf`, linked from the dataset card) uses CFL safety 0.5/4/32 = 0.0039 and `min_dt` 1e-8;
+  ours uses the example's 0.5. So our steps are up to 128× larger. The claim above that the 512 × 128 restart
+  differs only by float32 storage and the step sequence is therefore wrong in its size.
+  * At Ra 1e6 and 1e8 the restart still reproduces the data at step 1 (2e-4, 7e-4).
+  * At Ra 1e10 it piles up energy at the grid scale, so it is not the data's reproducibility limit there.
+  * Results and options: `docs/report_notes.md` section 13.
+  * *Owner (2026-11-23): option (a).* Nothing is rerun. The solver comparison reports Ra 1e6 and 1e8 as matched
+    (128 × 32, 256 × 64). Ra 1e10 is reported as "no grid matches with our time step", with the step stated as a
+    limitation: the data's step would cost up to ~45 h per 512 × 128 rollout.
 
 **D26 — One-step results split by phase (owner, 2026-11-11).** Besides the mean over all windows (the paper's
 protocol), one-step VRMSE is reported separately for convection onset (first input frame < 50) and developed

@@ -757,4 +757,20 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * The released CNextU-Net carries 2× the true heat (+108%): right at steps 1–3, then drifting to +200% by step 30.
   * Caveat: the true 30-step average is not stationary (bottom wall > volume > top). Details in
     `docs/report_notes.md` section 12.
+* 2026-11-23: WP6, solver grid matching (rule of D29). `scripts/findings.py` writes `solver_comparison.csv`,
+  `solver_matching.csv` and `solver_matching_4h_test`, replacing the two 35-regime-era solver figures. Tests in
+  `tests/test_findings_solver.py`.
+  * Against CNextU-Net 100% / 4 h:
+    * Ra 1e6 → 128 × 32 (16 s per rollout, 320× more accurate at step 30);
+    * Ra 1e8 → 256 × 64 (115 s);
+    * Ra 1e10 → none.
+  * Break-even with training: ~86,000 and ~6,200 rollouts.
+  * Finding: the data generator (`RudyMorel/the-well-rbc-sf`) used CFL safety 0.0039; our solver (D25) uses the
+    Dedalus example's 0.5, so steps are up to 128× larger.
+    * At Ra 1e10 the restart piles up small-scale energy (9× at step 1), so the Ra 1e10 "no match" may come from
+      our time step.
+    * Correction noted under D25 and in `solver_dedalus.py`.
+    * Options (a) report as is, (b) a ~200 SU diagnostic, (c) a ~450 SU rerun at safety 0.05.
+    * Owner: (a), no rerun. Ra 1e10 is reported with the time step as a limitation (D25 correction).
+    * Details in `docs/report_notes.md` section 13.
 

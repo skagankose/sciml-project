@@ -788,10 +788,6 @@ def nusselt_by_rayleigh_figure(summary: pd.DataFrame, label: str, stem: Path) ->
 
 # --- numerical solver (Dedalus) against the models -------------------------------------------------------
 
-SOLVER_STYLE = {"512x128": {"color": INK, "marker": "P"}, "256x64": {"color": "#6f6e69", "marker": "X"},
-                "128x32": {"color": "#a8a7a2", "marker": "D"}}
-
-
 def _solvers(outputs: Path) -> dict[str, Path]:
     """Scored solver resolutions (outputs/baselines/solver_<res>/evaluations), finest first."""
     base = outputs / "baselines"
@@ -805,116 +801,208 @@ def _subset(df: pd.DataFrame, keys: set) -> pd.DataFrame:
     return df[idx.isin(list(keys))]
 
 
-def solver_rollout_comparison(evals: pd.DataFrame, outputs: Path, label: str, stem: Path) -> list[str]:
+MATCH_STEPS = (1, 10, 30)          # the matching rule's steps (WP6, D29)
+SU_PER_GPU_HOUR_EQ, SU_PER_CORE_HOUR_EQ = 32, 1  # SU equivalents of the plan (docs/final_plan.md WP6)
+
+
+def _latency_seconds(clean_json: Path) -> float:
+    return json.loads(clean_json.read_text())["latency"]["ms_per_rollout"] / 1000 if clean_json.exists() else np.nan
+
+
+def solver_comparison(runs: pd.DataFrame, outputs: Path, label: str = "4h") -> pd.DataFrame:
+    """Every source on the solver's rollouts, per Rayleigh number: VRMSE at the matching steps and its cost.
+
+    Sources: the Dedalus grids (one core per rollout, build + stepping), our models at `label` (seed mean; one A100,
+    batch 1), the released CNextU-Net and persistence. A diverged solver rollout scores inf from its first missing
+    step (`solver_eval`), so a regime's mean is inf there: the rule counts it as a failure.
+    """
     solvers = _solvers(outputs)
     if not solvers:
+        return pd.DataFrame()
+    rolls = {res: pd.read_parquet(d / "rollout_na.parquet") for res, d in solvers.items()}
+    keys = set(map(tuple, next(iter(rolls.values()))[["traj_id", "start"]].drop_duplicates().values))
+    rows = []
+
+    def add(source, kind, tables, seconds, model="", fraction=np.nan, grid="", sec_range=(np.nan, np.nan),
+            n_div=None, device=""):
+        for ra in sorted({k for t in tables for k in t.rayleigh.unique()}):
+            per = [t[t.rayleigh == ra] for t in tables]
+            r = {"source": source, "kind": kind, "model": model, "fraction": fraction, "grid": grid, "rayleigh": ra,
+                 "n_rollouts": len(per[0].groupby(["traj_id", "start"])), "n_seeds": len(per)}
+            for k in MATCH_STEPS:
+                r[f"vrmse_step{k}"] = float(np.mean([t[t.step == k].vrmse_mean.mean() for t in per]))
+            r["vrmse_mean_30"] = float(np.mean([t.vrmse_mean.mean() for t in per]))
+            r["n_diverged"] = n_div.get(ra, 0) if n_div else 0
+            sec = seconds.get(ra, np.nan) if isinstance(seconds, dict) else seconds
+            lo, hi = (sec_range[0].get(ra, np.nan), sec_range[1].get(ra, np.nan)) if isinstance(sec_range[0], dict) \
+                else sec_range
+            rows.append({**r, "seconds_per_rollout": sec, "seconds_min": lo, "seconds_max": hi, "device": device})
+
+    for res, roll in rolls.items():
+        roll = roll[roll.sigma == 0]
+        rp = solvers[res] / "runs_na.parquet"
+        sr = pd.read_parquet(rp) if rp.exists() else pd.DataFrame()
+        div = roll.groupby(["rayleigh", "traj_id", "start"]).vrmse_mean.apply(lambda v: not np.isfinite(v).all())
+        n_div = div.groupby(level="rayleigh").sum().astype(int).to_dict()
+        g = sr.groupby("rayleigh").seconds_per_rollout if not sr.empty else None
+        add(f"Dedalus {res}", "solver", [roll], g.median().to_dict() if g is not None else np.nan, grid=res,
+            sec_range=(g.min().to_dict(), g.max().to_dict()) if g is not None else (np.nan, np.nan), n_div=n_div,
+            device="1 CPU core: " + ", ".join(sorted(sr.cpu.unique())) if not sr.empty else "1 CPU core")
+    evals = evaluated_runs(runs, outputs)
+    for (model, fraction), ev in evals[evals.label == label].groupby(["model", "fraction"]):
+        tables = [_subset(pd.read_parquet(e.dir / f"rollout_{label}.parquet").query("sigma == 0"), keys)
+                  for _, e in ev.iterrows()]
+        sec = float(np.nanmean([_latency_seconds(e.dir / f"clean_{label}.json") for _, e in ev.iterrows()]))
+        add(f"{STYLE[model]['label']} {fraction:.0%} {label}", "model", tables, sec, model=model, fraction=fraction,
+            device="1 A100, batch 1")
+    for name, d in (("Released CNextU-Net", outputs / "baselines" / "released" / "cnext_unet" / "evaluations"),
+                    ("Persistence", outputs / "baselines" / "persistence" / "evaluations")):
+        if (d / "rollout_na.parquet").exists():
+            t = _subset(pd.read_parquet(d / "rollout_na.parquet").query("sigma == 0"), keys)
+            add(name, "reference", [t], _latency_seconds(d / "clean_na.json"),
+                model="cnext_unet" if name.startswith("Released") else "persistence", device="1 A100, batch 1")
+    return pd.DataFrame(rows)
+
+
+def solver_matching(comp: pd.DataFrame, train_su: dict[tuple[str, float], float]) -> pd.DataFrame:
+    """Per Rayleigh number and target model: the coarsest grid at or below the target's VRMSE at steps 1, 10, 30.
+
+    The rule was fixed before the solver ran (docs/final_plan.md WP6, D29). The main target is our CNextU-Net at
+    100% / 4 h; the 10% one and the released checkpoint are shown too. Cost per rollout in SU equivalents (1 per
+    core-hour; 32 per GPU-hour); break-even: the number of rollouts after which training plus inference costs less
+    than the solver at its matching grid.
+    """
+    if comp.empty:
+        return pd.DataFrame()
+    grids = comp[comp.kind == "solver"].copy()
+    grids["cells"] = grids.grid.map(lambda g: int(g.split("x")[0]) * int(g.split("x")[1]))
+    targets = [("CNextU-Net 100% 4h", ("cnext_unet", 1.0)), ("CNextU-Net 10% 4h", ("cnext_unet", 0.1)),
+               ("Released CNextU-Net", None)]
+    rows = []
+    for ra in sorted(grids.rayleigh.unique()):
+        for name, key in targets:
+            t = comp[(comp.source == name) & (comp.rayleigh == ra)]
+            if t.empty:
+                continue
+            t = t.iloc[0]
+            g = grids[grids.rayleigh == ra].sort_values("cells")              # coarsest first
+            ok = np.ones(len(g), bool)
+            fails = {}
+            for k in MATCH_STEPS:
+                passed = (g[f"vrmse_step{k}"] <= t[f"vrmse_step{k}"]).to_numpy()
+                ok &= passed
+                for grid, p in zip(g.grid, passed):
+                    if not p:
+                        fails.setdefault(grid, []).append(k)
+            match = g[ok].iloc[0] if ok.any() else None
+            model_su = t.seconds_per_rollout / 3600 * SU_PER_GPU_HOUR_EQ
+            row = {"rayleigh": ra, "target": name, "target_step1": t.vrmse_step1, "target_step10": t.vrmse_step10,
+                   "target_step30": t.vrmse_step30, "target_seconds": t.seconds_per_rollout, "target_su": model_su,
+                   "matching_grid": match.grid if match is not None else "none",
+                   "failed_steps_by_grid": "; ".join(f"{gr}: {','.join(map(str, ks))}" for gr, ks in fails.items())}
+            if match is not None:
+                solver_su = match.seconds_per_rollout / 3600 * SU_PER_CORE_HOUR_EQ
+                tr = train_su.get(key, np.nan) if key else np.nan
+                row.update({"solver_step1": match.vrmse_step1, "solver_step10": match.vrmse_step10,
+                            "solver_step30": match.vrmse_step30, "solver_seconds": match.seconds_per_rollout,
+                            "solver_seconds_min": match.seconds_min, "solver_seconds_max": match.seconds_max,
+                            "solver_su": solver_su, "train_su": tr,
+                            "break_even_rollouts": tr / (solver_su - model_su) if solver_su > model_su else np.inf})
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def solver_matching_figure(comp: pd.DataFrame, match: pd.DataFrame, outputs: Path, runs: pd.DataFrame,
+                           label: str, stem: Path) -> list[str]:
+    """Row 1: VRMSE against rollout step per regime (grids, CNextU-Net 10% / 100%, released, persistence).
+    Row 2: each grid's VRMSE over CNextU-Net 100%'s at steps 1, 10, 30 against seconds per rollout; a grid
+    matches when all three are at or below 1 (the rule); the matching grid is ringed."""
+    if comp.empty:
         return []
     plt = _plt()
     from matplotlib.lines import Line2D
 
-    rolls = {res: pd.read_parquet(d / "rollout_na.parquet") for res, d in solvers.items()}
-    keys = set(map(tuple, next(iter(rolls.values()))[["traj_id", "start"]].drop_duplicates().values))
-    models = _load(evals, "rollout", label) if not evals.empty else {}
-    persist = _persistence(outputs, "rollout")
-    starts = sorted({k[1] for k in keys})
-    names = {20: "convection onset", 80: "developed", 140: "late"}
-    fig, axes = plt.subplots(1, len(starts), figsize=(3.6 * len(starts) + 0.6, 3.6), sharey=True, squeeze=False)
-    handles, diverged = [], {}
-    for ax, start in zip(axes[0], starts):
-        for model in _models(models):
-            st = STYLE[model]
-            mine = [_subset(t[(t.start == start) & (t.sigma == 0)], keys) for t in models[model]]
-            mean, _, _ = _seed_mean(mine, "step", "vrmse_mean")
-            ax.plot(mean.index, mean.values, color=st["color"], lw=1.8)
-        if persist is not None:
-            g = _subset(persist[(persist.start == start) & (persist.sigma == 0)], keys).groupby("step").vrmse_mean.mean()
-            ax.plot(g.index, g.values, color=PERSIST["color"], lw=1.3, ls=":")
-        for res, roll in rolls.items():
-            st = SOLVER_STYLE.get(res, {"color": MUTED, "marker": "o"})
-            r = roll[(roll.start == start) & (roll.sigma == 0)]
-            bad = r.groupby("traj_id").vrmse_mean.apply(lambda s: not np.isfinite(s).all())
-            diverged[res] = diverged.get(res, 0) + int(bad.sum())
-            good = r[~r.traj_id.isin(bad[bad].index)]
-            g = good.groupby("step").vrmse_mean.mean()
-            ax.plot(g.index, g.values, color=st["color"], lw=1.6, marker=st["marker"], ms=3.5, markevery=5)
-        ax.set_yscale("log")
-        ax.set_title(f"start frame {start} ({names.get(int(start), '')})", fontsize=9, color=INK)
-        ax.set_xlabel("rollout step")
-        _style_axes(ax)
-    axes[0][0].set_ylabel("test VRMSE, physical units (field mean)")
-    n = len({k[0] for k in keys})
-    handles += [Line2D([], [], color=STYLE[m]["color"], lw=1.8, label=f"{STYLE[m]['label']} ({label}, {fraction_text(evals)})")
-                for m in _models(models)]
-    handles += [Line2D([], [], color=SOLVER_STYLE.get(r, {}).get("color", MUTED), lw=1.6,
-                       marker=SOLVER_STYLE.get(r, {}).get("marker", "o"),
-                       label=f"Dedalus {r}" + (f" ({diverged[r]} diverged, left out)" if diverged.get(r) else ""))
-                for r in rolls]
-    if persist is not None:
-        handles.append(Line2D([], [], color=PERSIST["color"], lw=1.3, ls=":", label="persistence"))
-    fig.legend(handles=handles, loc="lower center", ncol=min(len(handles), 4), fontsize=7, frameon=False,
-               bbox_to_anchor=(0.5, -0.08))
-    fig.suptitle(f"Numerical solver against the models on the same {n} test trajectories (one per regime): mean "
-                 "over trajectories", fontsize=10, color=INK)
-    fig.tight_layout(rect=(0, 0.1, 1, 0.94))
-    return _finish(fig, stem)
-
-
-def solver_cost_accuracy(evals: pd.DataFrame, outputs: Path, label: str, stem: Path) -> list[str]:
     solvers = _solvers(outputs)
-    if not solvers:
-        return []
-    plt = _plt()
-
-    rolls = {res: pd.read_parquet(d / "rollout_na.parquet") for res, d in solvers.items()}
-    runs = {res: pd.read_parquet(d / "runs_na.parquet") for res, d in solvers.items()
-            if (d / "runs_na.parquet").exists()}
+    rolls = {res: pd.read_parquet(d / "rollout_na.parquet").query("sigma == 0") for res, d in solvers.items()}
     keys = set(map(tuple, next(iter(rolls.values()))[["traj_id", "start"]].drop_duplicates().values))
-    starts = sorted({k[1] for k in keys})
-    points = []  # (start, name, seconds, error, color, marker)
-    models = _load(evals, "rollout", label) if not evals.empty else {}
-    for model in _models(models):
-        lat = []
-        for _, e in evals[(evals.model == model) & (evals.label == label)].iterrows():
-            p = e.dir / f"clean_{label}.json"
-            if p.exists():
-                lat.append(json.loads(p.read_text())["latency"]["ms_per_rollout"] / 1000)
-        for start in starts:
-            mine = [_subset(t[(t.start == start) & (t.sigma == 0)], keys) for t in models[model]]
-            err = float(np.mean([m.vrmse_mean.mean() for m in mine]))
-            points.append((start, f"{STYLE[model]['label']} {label}", float(np.mean(lat)) if lat else np.nan, err,
-                           STYLE[model]["color"], STYLE[model]["marker"]))
-    pj = outputs / "baselines" / "persistence" / "evaluations" / "clean_na.json"
-    persist = _persistence(outputs, "rollout")
-    if persist is not None and pj.exists():
-        sec = json.loads(pj.read_text())["latency"]["ms_per_rollout"] / 1000
-        for start in starts:
-            err = float(_subset(persist[(persist.start == start) & (persist.sigma == 0)], keys).vrmse_mean.mean())
-            points.append((start, "persistence", sec, err, PERSIST["color"], "o"))
-    for res, roll in rolls.items():
-        st = SOLVER_STYLE.get(res, {"color": MUTED, "marker": "o"})
-        for start in starts:
-            r = roll[(roll.start == start) & (roll.sigma == 0)]
-            fin = r.groupby("traj_id").vrmse_mean.apply(lambda s: np.isfinite(s).all())
-            err = float(r[r.traj_id.isin(fin[fin].index)].vrmse_mean.mean()) if fin.any() else np.nan
-            sec = float(runs[res][runs[res].start == start].seconds_per_rollout.median()) if res in runs else np.nan
-            points.append((start, f"Dedalus {res}", sec, err, st["color"], st["marker"]))
-    fig, axes = plt.subplots(1, len(starts), figsize=(3.8 * len(starts) + 0.6, 3.7), sharex=True, sharey=True,
-                             squeeze=False)
-    for ax, start in zip(axes[0], starts):
-        for s, name, sec, err, color, marker in points:
-            if s != start or not np.isfinite(sec) or not np.isfinite(err):
-                continue
-            ax.plot(sec, err, marker=marker, color=color, ms=7, ls="none")
-            ax.annotate(name, (sec, err), xytext=(5, 3), textcoords="offset points", fontsize=6.5, color=INK)
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_title(f"start frame {start}", fontsize=9, color=INK)
-        ax.set_xlabel("seconds per 30-step rollout")
-        _style_axes(ax)
-    axes[0][0].set_ylabel("mean VRMSE over the 30 steps")
-    fig.suptitle("Cost against accuracy. Models and persistence: one A100, batch 1 (training cost not included); "
-                 "Dedalus: one CPU core, including setup", fontsize=9.5, color=INK)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    evals = evaluated_runs(runs, outputs)
+    curves = {}
+    for frac in (1.0, 0.1):
+        ev = evals[(evals.model == "cnext_unet") & (evals.fraction.round(3) == frac) & (evals.label == label)]
+        curves[f"CNextU-Net {frac:.0%}"] = [_subset(pd.read_parquet(e.dir / f"rollout_{label}.parquet")
+                                                    .query("sigma == 0"), keys) for _, e in ev.iterrows()]
+    for name, d in (("released", outputs / "baselines" / "released" / "cnext_unet" / "evaluations"),
+                    ("persistence", outputs / "baselines" / "persistence" / "evaluations")):
+        if (d / "rollout_na.parquet").exists():
+            curves[name] = [_subset(pd.read_parquet(d / "rollout_na.parquet").query("sigma == 0"), keys)]
+    ras = sorted(comp.rayleigh.unique())
+    grid_names = list(rolls)                                            # finest first
+    shades = plt.get_cmap("Greys")(np.linspace(0.95, 0.35, len(grid_names)))
+    gcol = dict(zip(grid_names, shades))
+    curve_style = {"CNextU-Net 100%": dict(color=STYLE["cnext_unet"]["color"], lw=2.2),
+                   "CNextU-Net 10%": dict(color=STYLE["cnext_unet"]["color"], lw=1.5, ls="--"),
+                   "released": dict(color=INK, lw=1.3, ls="-."), "persistence": dict(color=PERSIST["color"], lw=1.3, ls=":")}
+    fig, axes = plt.subplots(2, len(ras), figsize=(4.2 * len(ras), 7.2), squeeze=False)
+    for j, ra in enumerate(ras):
+        a, b = axes[0][j], axes[1][j]
+        for res, roll in rolls.items():
+            gm = roll[roll.rayleigh == ra].groupby("step").vrmse_mean.mean()
+            a.plot(gm.index, gm.values, color=gcol[res], lw=1.2)
+        for name, ts in curves.items():
+            if ts:
+                gm = pd.concat([t[t.rayleigh == ra].groupby("step").vrmse_mean.mean() for t in ts], axis=1).mean(axis=1)
+                a.plot(gm.index, gm.values, **curve_style[name])
+        a.set_yscale("log")
+        a.set_xlabel("rollout step")
+        a.set_title(f"Ra = 1e{int(round(np.log10(ra)))}, Pr = 1: error along the rollout", fontsize=9, color=INK)
+        tgt = comp[(comp.source == f"CNextU-Net 100% {label}") & (comp.rayleigh == ra)]
+        g = comp[(comp.kind == "solver") & (comp.rayleigh == ra)]
+        if not tgt.empty:
+            t = tgt.iloc[0]
+            for k, mk in zip(MATCH_STEPS, ("o", "s", "^")):
+                ratio = g[f"vrmse_step{k}"] / t[f"vrmse_step{k}"]
+                fin = np.isfinite(ratio)
+                b.plot(g.seconds_per_rollout[fin], ratio[fin], marker=mk, color=MUTED, ms=5, lw=0.8)
+                b.plot(g.seconds_per_rollout[~fin], np.full((~fin).sum(), 30.0), marker=mk, color="#c62828", ms=6,
+                       ls="none")
+            for _, r in g.iterrows():                                  # label under each grid's step-30 point
+                y30 = r.vrmse_step30 / t.vrmse_step30
+                b.annotate(r.grid, (r.seconds_per_rollout, y30 if np.isfinite(y30) else 30.0), xytext=(0, -12),
+                           textcoords="offset points", ha="center", fontsize=6.5, color=MUTED)
+            b.axhline(1.0, color=STYLE["cnext_unet"]["color"], lw=1.4)
+            b.axvline(t.seconds_per_rollout, color=STYLE["cnext_unet"]["color"], lw=1.0, ls="--")
+            m = match[(match.rayleigh == ra) & (match.target == f"CNextU-Net 100% {label}")]
+            if not m.empty and m.iloc[0].matching_grid != "none":
+                mg = g[g.grid == m.iloc[0].matching_grid].iloc[0]
+                b.plot([mg.seconds_per_rollout], [1.0], marker="o", ms=16, mfc="none", mec=STYLE["cnext_unet"]["color"],
+                       mew=1.6)
+                b.set_title(f"matching grid: {mg.grid} ({mg.seconds_per_rollout:.0f} s per rollout)", fontsize=9,
+                            color=INK)
+            else:
+                b.set_title("no grid matches CNextU-Net at steps 1, 10 and 30", fontsize=9, color=INK)
+        b.set_xscale("log")
+        b.set_yscale("log")
+        b.set_xlabel("seconds per 30-step rollout")
+        for ax in (a, b):
+            _style_axes(ax)
+    axes[0][0].set_ylabel("VRMSE, mean over 10 rollouts")
+    axes[1][0].set_ylabel("solver VRMSE / CNextU-Net 100% VRMSE")
+    fig.align_ylabels(axes[:, 0])
+    handles = [Line2D([], [], color=gcol[r], lw=1.4, label=f"Dedalus {r}") for r in grid_names]
+    handles += [Line2D([], [], label=n if n.startswith("CNextU") else
+                       {"released": "released CNextU-Net", "persistence": "persistence"}[n], **curve_style[n])
+                for n in curves]
+    handles += [Line2D([], [], marker=mk, color=MUTED, ls="none", label=f"step {k}")
+                for k, mk in zip(MATCH_STEPS, ("o", "s", "^"))]
+    handles.append(Line2D([], [], marker="o", color="#c62828", ls="none", label="diverged (plotted at 30)"))
+    handles.append(Line2D([], [], color=STYLE["cnext_unet"]["color"], lw=1.0, ls="--",
+                          label="CNextU-Net time per rollout (1 A100, batch 1)"))
+    handles.append(Line2D([], [], marker="o", ms=10, mfc="none", mec=STYLE["cnext_unet"]["color"], ls="none",
+                          label="matching grid (solver: 1 CPU core)"))
+    fig.legend(handles=handles, loc="lower center", ncol=6, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(f"Numerical solver (Dedalus, restarted from the last input frame) against CNextU-Net ({label}) on the "
+                 "same 10 rollouts per regime (5 test trajectories × starts 80, 140)", fontsize=10, color=INK)
+    fig.tight_layout(rect=(0, 0.09, 1, 0.96))
     return _finish(fig, stem)
 
 

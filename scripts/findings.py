@@ -40,8 +40,10 @@ and figures, each as .pdf and .png:
     sacct_jobs.csv, sacct_summary.csv            billed SU, GPU-hours and queue waits per job / per purpose
     compute_timeline                             every GPU job: queue wait and run, by purpose and partition
   numerical solver (after `rbbench eval-solver`)
-    solver_vs_models_rollout_4h_test_<f>         Dedalus at 3 resolutions vs models and persistence, same rollouts
-    solver_cost_accuracy_4h_test_<f>             seconds per rollout against mean VRMSE, per start frame
+    solver_comparison.csv                        per regime: VRMSE at steps 1 / 10 / 30 and seconds per rollout of
+                                                 every Dedalus grid, our 4 h models, the released one, persistence
+    solver_matching.csv                          the coarsest grid matching CNextU-Net (WP6 rule), cost, break-even
+    solver_matching_4h_test                      error along the rollout; solver / CNextU-Net error against cost
 The learning-rate search has its own figures from `rbbench select-lr` (outputs/lr_search/); tables and the
 paper-protocol table come from `rbbench aggregate`. Prints the run table as Markdown.
 
@@ -445,9 +447,21 @@ def main() -> int:
         written += figs.rollout_snapshots_figure(npz, "buoyancy", out / f"snapshots_buoyancy_error_{tag}", errors=True)
 
     # the numerical solver (Dedalus) against the models, once `rbbench eval-solver` has scored its rollouts
-    for ftag, ev in by_fraction.items():
-        written += figs.solver_rollout_comparison(ev, outputs, "4h", out / f"solver_vs_models_rollout_4h_test_{ftag}")
-        written += figs.solver_cost_accuracy(ev, outputs, "4h", out / f"solver_cost_accuracy_4h_test_{ftag}")
+    # the numerical solver against the models (WP6): same rollouts, per regime; the matching rule of D29
+    comp = figs.solver_comparison(runs_df, outputs, "4h") if not runs_df.empty else pd.DataFrame()
+    if not comp.empty:
+        train_su = {}
+        if (out / "sacct_jobs.csv").exists() and not attempts_df.empty:
+            jobs = pd.read_csv(out / "sacct_jobs.csv").set_index("job").su
+            for (model, frac), g in runs_df[runs_df.manifest == "train"].groupby(["model", "fraction"]):
+                tasks = attempts_df[attempts_df.run_id.isin(g.run_id)].array_task.dropna()
+                billed = [jobs.get(t, np.nan) for t in tasks]
+                train_su[(model, round(float(frac), 3))] = float(np.nansum(billed)) / max(len(g), 1)
+        match = figs.solver_matching(comp, train_su)
+        comp.to_csv(out / "solver_comparison.csv", index=False)
+        match.to_csv(out / "solver_matching.csv", index=False)
+        written += [str(out / "solver_comparison.csv"), str(out / "solver_matching.csv")]
+        written += figs.solver_matching_figure(comp, match, outputs, runs_df, "4h", out / "solver_matching_4h_test")
 
     cols = {"manifest": "manifest", "task_index": "row", "model": "model", "fraction": "data", "seed": "seed",
             "lr": "lr", "status": "status", "attempts": "attempts", "partitions": "partition",

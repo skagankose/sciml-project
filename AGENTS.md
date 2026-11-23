@@ -799,5 +799,5 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Section 15 adds the figure index, cost per run at both fractions (100% runs held 4.5–5.8 h against 5.6–11.6 h
     at 10%), inference cost, billed compute for the project (146.3 GPU-h, 5,109 SU), and the "which model when"
     table updated with the 100% runs, noise, UQ, Nu and the solver.
-  * A last `sacct` pull (owner) closes the accounting: the 100% snapshot job ran after the current one.
+  * Final `sacct` pulled (owner): 146.4 GPU-hours (128.0 paid) and 5,111 SU for the whole project.
   * Tests: `tests/test_final_figures.py`. 206 pass and smoke passes.

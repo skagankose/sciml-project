@@ -1582,7 +1582,7 @@ three failure thresholds (`main_results.csv`, `survival_thr{1,2,5}`, `km_median_
 Inference is the same at both fractions (same architecture); batched, AViT is cheapest per sample (0.89 / 3.15 /
 6.74 ms at batch 64 for AViT / TFNO / CNextU-Net, section 3).
 
-### Compute billed for the whole project (`sacct` of 2026-11-23, `outputs/findings/sacct_summary.csv`)
+### Compute billed for the whole project (final `sacct`, pulled 2026-11-23 after the last job; `outputs/findings/sacct_summary.csv`)
 
 | Purpose | Partition | Jobs | GPU-hours | SU |
 |---|---|---|---|---|
@@ -1594,11 +1594,12 @@ Inference is the same at both fractions (same architecture); batched, AViT is ch
 | Test evaluations (core runs at 1 h and 4 h, persistence, released, dedicated 1 h runs) | gpu | 20 | 7.6 | 303 |
 | Pipeline check | gpu | 1 | 2.3 | 84 |
 | Numerical solver (rerun of 2 grids, scoring) | gpu | 3 | 0.1 | 5 |
+| Flow snapshots of the 100% models | gpu | 1 | 0.06 | 3 |
 | Free partitions (before D31: 10% first attempts, learning-rate search, pipeline check, profiling, replication try, 75 solver tasks, data, setup, 10% snapshots) | free, free-gpu | 148 | 18.3 | 0 |
-| **All** | | | **146.3** (128.0 paid) | **5,109** |
+| **All** | | | **146.4** (128.0 paid) | **5,111** |
 
-* The 100% flow-snapshot job (59959731, paid, one idle GPU, ~0.1 h) ran after this `sacct`. A last `sacct` pull
-  (owner; command in section 4) closes the accounting; `scripts/findings.py` rebuilds the table from it.
+* This is the final accounting: no job ran after this `sacct` (the last, 59959731, flow snapshots of the 100%
+  models, 3 min 53 s). The class account's balance was not queried.
 * Core study (12 runs of 4 h): 81.1 GPU-hours held on the paid partition plus 2.2 on free-gpu, against the
   abstract's ~100 GPU-h and the revised ~131–142; the node-local copy saved the difference.
 

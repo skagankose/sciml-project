@@ -27,6 +27,7 @@ still open (section 6).
 | Correlation (D27) | On wherever it costs nothing: the 100% evaluation and the noise/UQ evaluation. It changes no existing number, and `aggregate` ignores the columns. Probably not reported |
 | Noise robustness | Included, at evaluation time only, as planned (WP8) |
 | Report format | Later. For now, save every result (accuracy, cost, performance) as before; the report follows afterwards, like the mid-project report but more comprehensive (WP7) |
+| Report format (2026-11-23) | The mid-project report's LaTeX template, no page limit for now; every extension (solver, Nusselt, noise, UQ) in the main text; what moves to appendices is decided later |
 | Uncertainty quantification | Added to the study, following Lecture 17 (WP9) |
 
 ## 3. Where we stand
@@ -164,8 +165,8 @@ Steps:
 ### WP7. Results package (Mac; the report is written afterwards)
 
 **Status (2026-11-23):** done. Final figures in `reports/figures/final/` (`scripts/final_figures.py`), the index, cost
-tables and the updated "which model when" table in `docs/report_notes.md` section 15. A last `sacct` pull closes the
-accounting (the 100% snapshot job ran after the current one).
+tables and the updated "which model when" table in `docs/report_notes.md` section 15. Final `sacct`: 146.4 GPU-hours,
+5,111 SU.
 
 Every result is saved as for the mid-project report, so that the final report can be written from them:
 * `outputs/tables/` and `outputs/findings/`;

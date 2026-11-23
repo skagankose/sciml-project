@@ -983,6 +983,23 @@ and the ensembles with their MSE baselines (59939382, indices 7-10) at commit 62
   is Mac analysis (WP3 aggregation, WP5, WP6 matching, the WP8 and WP9 analysis, WP7) and a final `sacct` for
   the costs.
 
+### Flow snapshots of the 100% models (job 59959731, 2026-11-23; owner)
+
+* `visualize_cpu.sbatch` with `--fraction 1.0` on hpc3-gpu-16-03, commit 6412b3d, finished 09:07 PST.
+  * Files: `outputs/visuals/rollout_*__s080__f100_4h_s0.npz` for Ra = 1e8 and 1e10 (Pr = 1, frame 80).
+  * Checks: rows 2, 6 and 10 (100%, seed 0, 4 h); steps 1-30 at 512 × 128; all values finite; true frames
+    identical to the 10% files. The 10% files (11-11) are untouched beside them.
+  * The `seconds_per_rollout` in these files include the first call's warm-up on an unspecified GPU. They are not
+    an inference benchmark; the inference times come from the profile.
+* Picture at Ra = 1e8 (buoyancy, steps 1 / 12 / 30; first look, `report_figures.snapshots`):
+  * At 4 h, ten times more data leaves every model's failure mode as it was.
+  * CNextU-Net still tracks the plumes through step 30 and drifts locally; at 100% a cold patch appears on the
+    left.
+  * TFNO still blurs the plumes. Its warm bottom layer is thinner at 100%, but the interior warms by step 30.
+  * AViT still shows patch-sized vertical blocks by step 12.
+  * This matches the numbers: developed-flow error at 4 h moves by a few percent from 10% to 100%.
+  * The figures are drawn with the results package (WP7).
+
 ### `/pub` stalls now hit checkpoint writes
 
 The 100% runs read their data from local disk but still write checkpoints and logs to `/pub`. Every running job

@@ -734,4 +734,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * Job: `sbatch --export=ALL,VIS_ARGS="--fraction 1.0" cluster/slurm/visualize_cpu.sbatch` (`cluster/README.md`
     section 8).
   * Tests: `tests/test_visuals.py`. 188 pass and smoke passes.
+  * Job 59959731 ran correctly (pulled 2026-11-23). Two 100% files sit beside the 10% ones; the runs and shapes
+    are right, values are finite and the truth is identical. At Ra = 1e8 every model keeps its 10% failure mode
+    (`docs/report_notes.md` section 10).
 

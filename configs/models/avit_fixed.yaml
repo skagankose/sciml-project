@@ -1,0 +1,13 @@
+# The Well AViT with its 2-D axial attention fixed (rbbench.models.well_models.fix_axial_attention): upstream's
+# second attention pass runs over the heads instead of along x, so tokens mix only along y (docs/report_notes.md
+# section 17). Same sizes and parameters as avit.yaml (18,568,512 at 512x128); only the attention axes differ.
+full:
+  hidden_dim: 432
+  num_heads: 6
+  processor_blocks: 8
+  drop_path: 0.0
+tiny:
+  hidden_dim: 48
+  num_heads: 2
+  processor_blocks: 2
+  drop_path: 0.0

@@ -79,9 +79,9 @@ from rbbench.visuals import snapshot_files
 PAID_PARTITIONS = {"gpu"}
 SU_PER_GPU_HOUR, SU_PER_CORE_HOUR = 32, 1
 ASSUMED_CPUS = 8  # train_a100.sbatch
-MANIFESTS = ("train", "lr_search", "replication", "train_1h", "train_1h_f100", "uq")
+MANIFESTS = ("train", "lr_search", "replication", "train_1h", "train_1h_f100", "uq", "train_avit_fixed")
 # select-lr already plots the learning-rate search
-CURVE_MANIFESTS = ("train", "replication", "train_1h", "train_1h_f100", "uq")
+CURVE_MANIFESTS = ("train", "replication", "train_1h", "train_1h_f100", "uq", "train_avit_fixed")
 
 
 def group_name(manifest: str, fraction: float) -> str:

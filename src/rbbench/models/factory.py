@@ -11,6 +11,7 @@ UPSTREAM_CLASS = {
     "cnext_unet": "the_well.benchmark.models.UNetConvNext",
     "tfno": "the_well.benchmark.models.TFNO -> neuralop.models.TFNO (FNO, factorization='Tucker')",
     "avit": "the_well.benchmark.models.AViT",
+    "avit_fixed": "the_well.benchmark.models.AViT, 2-D axial attention fixed (rbbench.models.well_models.fix_axial_attention)",
     "convlstm": "rbbench.vendor.openstl.convlstm_modules.ConvLSTMCell (OpenSTL)",
 }
 
@@ -34,8 +35,12 @@ def build_model(
         from rbbench.models.well_models import build_cnext_unet as builder
     elif name == "tfno":
         from rbbench.models.well_models import build_tfno as builder
-    elif name == "avit":
-        from rbbench.models.well_models import build_avit as builder
+    elif name in ("avit", "avit_fixed"):
+        from functools import partial
+
+        from rbbench.models.well_models import build_avit
+
+        builder = partial(build_avit, fix_axial=name == "avit_fixed")
     else:
         from rbbench.models.convlstm import build_convlstm as builder
     return builder(dict(args), resolution, n_steps_input, n_fields, n_out)

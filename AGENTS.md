@@ -845,3 +845,47 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   now stated in Section 8 (hump-shaped one step ahead, 4% in the outer 5% tails; U-shaped by step 10, 29–30%), and
   Section 1 now says no full-length TFNO was retrained (professors' answer 3). Every planned item and every answer is
   in `reports/final.tex` (31 pages).
+* 2026-11-24: two-column version of the final report (owner), in ACL conference style: `reports/final_acl.tex`, with
+  `acl.sty` and `acl_natbib.bst` copied unchanged from acl-org/acl-style-files and the references in `final_acl.bib`.
+  * The text, tables and numbers are the same as `final.tex`, which is unchanged.
+  * Changes for the format:
+    * the title page became a title block and abstract, without the contents list;
+    * the VRMSE display is split over two lines;
+    * five citations were reworded so their parentheses do not nest.
+  * Figures were not redrawn: they span both columns at the text width, apart from the data-loader plot.
+  * Two tables fit one column; the other 20 span both.
+  * 26 pages, no overfull lines (`docs/report_notes.md` section 15).
+  * BibTeX by-products (`*.blg`, `*.bbl`) added to `.gitignore`.
+* 2026-11-24: `reports/final_acl.tex` is the final report (owner). The one-column `final.tex` and `final.pdf` moved to
+  `reports/deprecated/`, unchanged (its figure paths no longer resolve there; the PDF is the last full build). README
+  and `docs/final_plan.md` point at the ACL version. The 25 files for Overleaf are listed in `docs/report_notes.md`
+  section 15.
+* 2026-11-24: `reports/final_acl.tex` retitled (owner: the abstract's title was too generic): "Data–Compute Trade-offs in
+  Neural Forecasting of Rayleigh–Bénard Convection: Convolutional, Spectral and Attention Models Compared", broken by
+  hand over two lines. The README heading and the abstract keep the original title.
+* 2026-11-24: `reports/final_acl.tex` float layout (owner: too much white space from the full-width figures). Float-only
+  pages had their floats at the top and 16–28% blank below them (pages 4, 7, 10, 12, 13). `\floatpagefraction` and
+  `\dblfloatpagefraction` raised from 0.7 to 0.9 (`\topfraction`, `\dbltopfraction` 0.85 → 0.9): float groups under 90%
+  of a page now go to the top of a text page. No blank bands remain except the end of the last page; 27 → 26 pages; floats
+  still land a mean ~2 pages after their first mention (1.9 before, 2.0 after; measured from the .aux).
+* 2026-11-24: `reports/final_acl.tex`, fewer floats in Section 4 (owner: "do your recommendation"). Five secondary floats
+  moved to a new Appendix E "Additional Results" (onset-aligned error, field-wise table, spectra, Ra = 1e10 snapshots,
+  Nu predicted vs true); their paragraphs and numbers stay in Section 4 and cite "Appendix Fig./Table". Six Section 4
+  floats are now defined earlier in the source so they can reach the page that discusses them. Main-body floats land a
+  mean 1.6 pages after their first mention (2.5 before). 26 pages, appendices A–H, clean build
+  (`docs/report_notes.md` section 15).
+* 2026-11-24: owner question on AViT's fractured predictions. Found an upstream bug: The Well's 2-D
+  `AxialAttentionBlock` (e63dec8, unchanged on master) attends across heads instead of along x in its second pass, so
+  every block mixes tokens only along y and each 16-px x-strip is predicted from itself. Our use matches upstream
+  (compare_upstream, adapter, eval mode). Seams in our predictions run only across x-strip boundaries (2.4–3.2× at
+  step 1, 6–13× at step 30); one-step error is 1.35–1.87× higher at strip edges. A two-line fix (same parameters) is
+  checked but not applied; retraining the four AViT runs would cost ~26 GPU-h (~1,000–1,100 SU) and needs the owner.
+  `docs/report_notes.md` section 17; `docs/architectures.md` corrected.
+* 2026-11-24: owner chose option 3 for the AViT bug (D32): keep the four AViT runs as "AViT as released" and add
+  `avit_fixed` (same model, sizes and recipe; `fix_axial_attention` sets the 2-D second pass to attend along x;
+  refuses if upstream's permutations change). New: `configs/models/avit_fixed.yaml`, lr 1e-3 in `main.yaml`,
+  `tasks/train_avit_fixed.jsonl` (4 rows), UQ ensembles 11–12 (entries 0–10 unchanged), `aggregate --tasks` takes
+  several manifests, `visualize_rollouts.py --manifest` takes several, figure style "AViT (fixed)".
+  `tasks/train.jsonl` regenerates byte for byte. `tests/test_avit_fix.py` (6 tests; random-vector perturbations,
+  since a constant shift is removed by LayerNorm). Issue draft for the owner: `docs/upstream_issue_avit_axial.md`.
+  Commands: `cluster/README.md` section 12.

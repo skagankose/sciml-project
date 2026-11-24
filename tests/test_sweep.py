@@ -16,12 +16,15 @@ def tasks_dir(tmp_path):
     return d
 
 
-def test_main_sweep_has_36_unique_tasks(tasks_dir, tmp_path):
+def test_main_sweep_has_one_unique_task_per_model_fraction_seed(tasks_dir, tmp_path):
+    from rbbench import MODEL_NAMES
+
     rows = make_sweep("main", tasks_dir, repo_root=tmp_path)
-    assert len(rows) == 36
-    assert len({r["run_id"] for r in rows}) == 36
+    n = len(MODEL_NAMES) * 3 * 3  # 45 with avit_fixed (36 before it was added)
+    assert len(rows) == n
+    assert len({r["run_id"] for r in rows}) == n
     assert {(r["model"], r["fraction"], r["seed"]) for r in rows} == {
-        (m, f, s) for m in ("cnext_unet", "tfno", "avit", "convlstm") for f in (0.1, 0.3, 1.0) for s in (0, 1, 2)
+        (m, f, s) for m in MODEL_NAMES for f in (0.1, 0.3, 1.0) for s in (0, 1, 2)
     }
     path = tmp_path / "train.jsonl"
     write_jsonl(rows, path)

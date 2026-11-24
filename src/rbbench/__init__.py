@@ -6,4 +6,5 @@ __version__ = "0.1.0"
 # file records it and aggregation refuses to mix versions.
 METRIC_VERSION = "1"
 
-MODEL_NAMES = ("cnext_unet", "tfno", "avit", "convlstm")
+# avit_fixed: The Well's AViT with its 2-D axial attention fixed (docs/report_notes.md section 17).
+MODEL_NAMES = ("cnext_unet", "tfno", "avit", "avit_fixed", "convlstm")

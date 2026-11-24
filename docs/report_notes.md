@@ -1650,6 +1650,43 @@ only; fp32 for all (bf16 would speed up CNextU-Net 1.7× and AViT 2.2×); learni
   * README rewritten for the final state: the study as run, main findings, and how to reproduce from the HPC3 runbook
     to the compiled report.
 
+### Two-column version (`reports/final_acl.tex`, ACL style; owner 2026-11-24)
+
+* The ACL conference format (`acl.sty` and `acl_natbib.bst` from github.com/acl-org/acl-style-files, unchanged), option
+  `preprint`: A4, two columns of 7.7 cm, Times, page numbers. The bibliography moved to `final_acl.bib` (author-year).
+  `final.tex` (one column) is unchanged.
+* Same text, tables and numbers as `final.tex`. Changes for the format:
+  * the title page became an ACL title block and abstract (goal plus the seven findings), without the contents list;
+  * the VRMSE display is split over two lines;
+  * five citations were reworded so author-year citations do not nest parentheses;
+  * Appendix G gained a one-line lead-in to its table;
+  * appendices follow the references directly.
+* The figures were not redrawn (owner). All 20 except the data-loader plot span both columns (`figure*`), scaled from
+  their 6.5–6.9 in printed width to the 16 cm text width (0.92–0.98). The loader plot fits one column. Two tables fit one
+  column (learning-rate search, compute billed); the other 20 span both.
+* Compiles with `tectonic --keep-logs final_acl.tex` in `reports/` (tectonic runs BibTeX): 26 pages, no overfull lines
+  or undefined references.
+* Float layout (2026-11-24, owner: too much white space): float-only pages are made only when their floats fill 90% of the
+  page (was 70%, which left pages 4, 7, 10, 12 and 13 16–28% blank); smaller groups go to the top of a text page. 26
+  pages; the only blank band is the end of the last page.
+* Section 4 had 14 full-width floats for about three pages of text, so they landed 2–4 pages after their first mention
+  (owner, 2026-11-24: move secondary floats to the appendix). Five moved to a new Appendix E, "Additional Results"
+  (`app:results`): the onset-aligned error (`fig:onset`), field-wise VRMSE (`tab:fields`), the spectra
+  (`fig:spectra`), the Ra = 1e10 snapshots (`fig:snapshots10`) and Nu predicted against true (`fig:nusselt`). Their
+  paragraphs stay in Section 4 with every number and now cite "Appendix Fig./Table". The training-curve figure and the
+  one-step table are defined before Section 3's heading, the test-by-window and data-scaling figures before "One-step
+  test error", and the rollout table and figure before "Ten times more data", so each can reach the page where it is
+  discussed (a full-width float goes at the earliest to the page after its source). Main-body floats now land a mean
+  1.6 pages after their first mention (2.5 before); the training curves and the one-step table sit at the top of page
+  5, one page before Section 4's heading. Still 26 pages; appendices now A–H.
+* 2026-11-24 (owner): `final_acl.tex` is now the final report. The one-column `final.tex` and its PDF moved to
+  `reports/deprecated/`, unchanged. Its figure paths are relative to `reports/`, so it no longer finds its figures
+  where it is; `deprecated/final.pdf` is the last full build (31 pages).
+* Overleaf: upload `final_acl.tex`, `final_acl.bib`, `acl.sty`, `acl_natbib.bst` and the 21 figures it includes,
+  keeping `figures/` and `figures/final/` (a missing figure prints a "pending:" box instead of an error). Built from
+  those 25 files alone with tectonic: 26 pages, no placeholders. The source is plain ASCII with no XeTeX-only
+  packages, so Overleaf's default pdfLaTeX should also work (not tested here).
+
 
 ## 16. Plan audit: the remaining WP4, WP5, WP6 and WP9 items (2026-11-23; no GPU time)
 
@@ -1787,3 +1824,51 @@ Appendix D (`tab:corr`).
   * the models get the pattern of the first motion wrong, not only its scale;
   * at step 30, CNextU-Net 0.61 = persistence 0.61, TFNO 0.48–0.49, AViT 0.41.
 * More data changes r at step 30 by at most 0.03 (AViT −0.03).
+
+
+## 17. The Well's 2-D AViT attends only along y (owner question, 2026-11-24; no GPU time)
+
+Question: why AViT's predictions look fractured into rectangles while CNextU-Net and TFNO look smooth, and whether our
+AViT and its use are correct.
+
+* **Upstream bug.** In `AxialAttentionBlock` (the_well `e63dec8`, unchanged on master as of 2026-11-24), the 2-D path's
+  second permutation is `"b h he w c -> b h w he c"`, applied to q, k, v already in the first pass's layout. The second
+  `scaled_dot_product_attention` therefore runs over the 6 heads (sequence axis `he`), not over `h`. With our layout
+  (`h` = x, 512 px, 32 tokens; `w` = y, 128 px, 8 tokens) every attention block mixes a token only with the 8 tokens in
+  its own column (same x). The 3-D path chains its three permutations correctly.
+  * Check (one block, hidden 432, 32 × 8 tokens; a random vector added to token (5, 3), since a constant shift is removed
+    by the block's LayerNorm): the 7 other tokens with x-token 5 change by ≥ 0.097, the tokens of its row by exactly 0.
+    With the fix the row is reached too (31 tokens, up to 0.136). The 3-D block reaches the expected 10 tokens.
+    `tests/test_avit_fix.py` pins both, through a single block and through the model's own blocks.
+  * Patch embedding and decoder are non-overlapping strided (transposed) convolutions, so each 16 × 16 output tile
+    depends only on its own token. The only coupling between x-strips is GroupNorm's global statistics: in the full
+    model (untrained weights, layer scale 1) a change to one input patch moves the output in its own 16-px x-strip 47×
+    more than in the other 31.
+  * So each 16-pixel-wide vertical strip of the domain is predicted from itself; a plume crossing a strip edge is
+    invisible to the strip it enters.
+  * Not reported upstream (GitHub issue search for "avit": one unrelated issue, #41).
+* **Seen in our predictions** (`outputs/visuals/` snapshot files: Ra = 1e8 and 1e10, 10% and 100%, 4 h, seed 0, steps
+  1–30 from frame 80; buoyancy, 8 rows next to each wall dropped):
+  * Seam ratio (mean |jump| across 16-px patch boundaries over the mean jump elsewhere): AViT 2.4–3.2 across the
+    x-boundaries at step 1, growing to 6.3–12.9 at step 30; across the y-boundaries 0.6–1.1, like the truth (0.7–1.1).
+    CNextU-Net and TFNO stay 0.6–1.2 in both directions.
+  * One-step error at strip edges (x mod 16 ∈ {0, 15}) over strip centres (6–9): AViT 1.35–1.87, CNextU-Net 1.03–1.11,
+    TFNO 0.97–1.00; along y AViT 1.04–1.12.
+  * Reading: the fractured look is the missing x-mixing, not the patching as such (seams along y are absent). It is
+    small one step ahead, which is why AViT's one-step VRMSE is still second best, and it compounds in rollouts: the
+    seams are fed back as input, so AViT degrades fastest (crosses persistence after 21–25 steps).
+* **Our use matches upstream.** `compare_upstream.py` (2026-11-08) found our rollouts identical to upstream's for
+  every Well model (max abs diff 0.0); the adapter stacks time and fields into channels as upstream's channels-last
+  formatter does; evaluation calls `model.eval()` (no dropout or batch norm in these models, drop-path 0). Our AViT
+  results are therefore The Well's AViT as released, which is not a full axial ViT.
+* **Fix:** second pass `("b h he w c -> b w he h c", "b w he h c -> b h w (he c)")`. Same parameters
+  and state-dict keys; checked to mix along both axes. Applying it means retraining the four AViT core runs (10% / 100%
+  × 2 seeds, 4 h; with `STAGE_DATA=1` for the 10% runs too, about 6 h held each) and re-evaluating them: about 26
+  GPU-hours, ~1,000–1,100 SU at the ~40 SU per GPU-hour billed so far. Owner decision (rule 1).
+* **Owner (2026-11-24): option 3 (D32).** The four AViT core runs stay as "AViT as released"; `avit_fixed` (same model,
+  sizes and recipe, attention fixed; `rbbench.models.well_models.fix_axial_attention`) is trained on the same four
+  configurations (`tasks/train_avit_fixed.jsonl`), evaluated on test at 1 h and 4 h, its seed pairs through the noise
+  and uncertainty evaluation (`tasks/uq_ensembles.json` 11, 12), and drawn in the flow snapshots
+  (`cluster/README.md` section 12). The learning rate stays 1e-3 (not searched again), so the comparison isolates
+  the fix. `rbbench aggregate` takes both manifests. The owner reports the bug upstream
+  (`docs/upstream_issue_avit_axial.md`; its reproduction prints 4 tokens reached, 11 with the fix).

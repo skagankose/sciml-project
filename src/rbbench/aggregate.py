@@ -26,6 +26,7 @@ STYLE = {
     "cnext_unet": {"color": "#2a78d6", "marker": "o", "label": "CNextU-Net"},
     "tfno": {"color": "#eb6834", "marker": "s", "label": "TFNO"},
     "avit": {"color": "#1baf7a", "marker": "^", "label": "AViT"},
+    "avit_fixed": {"color": "#7d4fd6", "marker": "v", "label": "AViT (fixed)"},
     "convlstm": {"color": "#eda100", "marker": "D", "label": "ConvLSTM"},
     "persistence": {"color": "#52514e", "marker": "", "label": "Persistence"},
 }
@@ -74,9 +75,14 @@ def row_labels(row: dict) -> list[str]:
     return budget_labels(cfg)
 
 
-def collect(tasks_path: Path, output_root: Path, labels=None):
-    """Load every task's evaluations; `labels` defaults to each task's own milestones."""
-    rows = read_jsonl(tasks_path)
+def collect(tasks_path, output_root: Path, labels=None):
+    """Load every task's evaluations; `labels` defaults to each task's own milestones. `tasks_path` is one manifest
+    or several (e.g. tasks/train.jsonl and tasks/train_avit_fixed.jsonl); their run ids must not repeat."""
+    paths = [tasks_path] if isinstance(tasks_path, (str, Path)) else list(tasks_path)
+    rows = [r for p in paths for r in read_jsonl(Path(p))]
+    ids = [r["run_id"] for r in rows]
+    if len(set(ids)) != len(ids):
+        raise ValueError("the manifests repeat run ids")
     loaded, problems, expected = [], [], 0
     for row in rows:
         want = list(labels) if labels else row_labels(row)

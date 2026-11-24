@@ -19,3 +19,8 @@ model_overrides:
   avit:
     optim:
       lr: 1.0e-03
+  # Same rate as AViT: the fixed model (2026-11-24, docs/report_notes.md section 17) keeps the recipe unchanged, so
+  # the comparison with AViT as released isolates the attention fix. Not searched separately.
+  avit_fixed:
+    optim:
+      lr: 1.0e-03

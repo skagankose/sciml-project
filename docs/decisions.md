@@ -619,3 +619,16 @@ pending approval).** Full design in `docs/final_plan.md` WP9.
   on the partition. Solver timings come from mixed free-partition CPUs; each rollout file records its CPU
   model, so the cost comparison states them.
 * *Cost:* the remaining CPU work (15 solver tasks, scoring, snapshots) is ~50–150 SU.
+
+**D32 — AViT with its axial attention fixed, beside AViT as released (owner, 2026-11-24)**
+* *Finding:* The Well's 2-D `AxialAttentionBlock` (e63dec8; unchanged on master) runs its second attention pass over
+  the heads instead of along the first spatial axis, so tokens mix only along y and each 16-px strip in x is
+  predicted from itself (`docs/report_notes.md` section 17). Our use matches upstream; the bug is upstream's.
+* *Decision (option 3):* keep the four AViT core runs as "AViT as released", and add `avit_fixed`: the same model,
+  sizes and recipe (lr 1e-3, not searched again, so the comparison isolates the fix) with the attention fixed
+  (`rbbench.models.well_models.fix_axial_attention`). Four runs (`tasks/train_avit_fixed.jsonl`: 10% and 100% ×
+  seeds 0, 1; 4 h; 1 h checkpoint), the test evaluation, the seed pairs' noise and uncertainty evaluation
+  (`tasks/uq_ensembles.json` entries 11, 12) and the flow snapshots. Paid partition, class account (D31); approved
+  by the owner at an estimate of ~26 GPU-hours, ~1,000–1,100 SU.
+* *Upstream:* the owner reports the bug as a GitHub issue on PolymathicAI/the_well (draft:
+  `docs/upstream_issue_avit_axial.md`).

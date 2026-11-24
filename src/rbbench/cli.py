@@ -505,7 +505,7 @@ def cmd_aggregate(args):
     from rbbench.aggregate import ONSET_TABLE
 
     onset = None if args.onset_table == "none" else Path(args.onset_table or ONSET_TABLE)
-    out = aggregate(Path(args.tasks), _output_root(args), Path(args.tables), Path(args.figures), args.labels,
+    out = aggregate([Path(t) for t in args.tasks], _output_root(args), Path(args.tables), Path(args.figures), args.labels,
                     baseline_dir=_output_root(args) / "baselines" / "persistence" / "evaluations",
                     onset_table=onset)
     print(json.dumps({k: v for k, v in out.items() if k != "figures"}, indent=2))
@@ -814,7 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", default=str(REPO_ROOT / "tasks" / "eval_cohort.json"))
     sp.set_defaults(func=cmd_make_cohort)
 
-    sp = sub.add_parser("make-sweep", help="write the task manifest (36 rows for the main sweep)")
+    sp = sub.add_parser("make-sweep", help="write the task manifest (models x fractions x seeds)")
     common(sp, data=False)
     sp.add_argument("--tasks-dir", default=str(REPO_ROOT / "tasks"))
     sp.add_argument("--out", default=str(REPO_ROOT / "tasks" / "train.jsonl"))
@@ -968,7 +968,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("aggregate", help="tables and figures from copied outputs")
     common(sp, data=False, out=True, exp=False)
-    sp.add_argument("--tasks", default=str(REPO_ROOT / "tasks" / "train.jsonl"))
+    sp.add_argument("--tasks", nargs="+", default=[str(REPO_ROOT / "tasks" / "train.jsonl")],
+                    help="one or more task manifests (e.g. tasks/train.jsonl tasks/train_avit_fixed.jsonl)")
     sp.add_argument("--tables", default=str(REPO_ROOT / "tables"))
     sp.add_argument("--figures", default=str(REPO_ROOT / "figures"))
     sp.add_argument("--labels", nargs="+", help="milestones to aggregate (default: all in each task's config)")

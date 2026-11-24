@@ -9,6 +9,7 @@ Frozen, committed manifests. Never edit by hand; regenerate with the commands be
 | `eval_cohort.json` | `rbbench make-cohort` (after rollout starts are frozen on validation) | HPC3 |
 | `pilot.jsonl` | `rbbench make-sweep --experiment pilot --fractions 0.1 --seeds 0 --out tasks/pilot.jsonl` | Mac |
 | `train.jsonl` | `rbbench make-sweep --experiment main --models cnext_unet tfno avit --fractions 0.1 1.0 --seeds 0 1` (12 core rows) | Mac |
+| `train_avit_fixed.jsonl` | `rbbench make-sweep --experiment main --models avit_fixed --fractions 0.1 1.0 --seeds 0 1 --out tasks/train_avit_fixed.jsonl` (4 rows; D32) | Mac |
 
 Each `train.jsonl` row stores the SHA-256 of its subset manifest and of its resolved config.
 `train-task` refuses to run if either has changed.

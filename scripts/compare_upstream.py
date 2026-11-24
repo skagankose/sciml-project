@@ -88,7 +88,7 @@ def main() -> int:
             if name == "convlstm":
                 entry["upstream"] = "n/a (not a Well model)"
             else:
-                formatter = (DefaultChannelsLastFormatter if name == "avit" else DefaultChannelsFirstFormatter)(ds.metadata)
+                formatter = (DefaultChannelsLastFormatter if name.startswith("avit") else DefaultChannelsFirstFormatter)(ds.metadata)
                 theirs = upstream_rollout(model.net, formatter, batch, args.steps)
                 entry["rollout_max_abs_diff"] = float((ours - theirs).abs().max())
                 ok &= entry["rollout_max_abs_diff"] <= 1e-5 * max(1.0, float(theirs.abs().max()))

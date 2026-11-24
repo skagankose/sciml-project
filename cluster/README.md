@@ -381,3 +381,32 @@ Outputs: `outputs/uq/<ensemble>/{valid,test}/` (`summary.parquet`, `members.parq
 `UQ_COMPLETE.json`); pulled by `cluster/pull.sh` with the other outputs. The 100% pairs (indices 1, 3, 5) need the
 100% runs to have finished; a task whose runs are not complete stops with "has not finished training" and can be
 resubmitted later.
+
+## 12. AViT with its axial attention fixed (owner, 2026-11-24; D32)
+
+The Well's 2-D AViT mixes tokens only along y (`docs/report_notes.md` section 17). `avit_fixed` is the same model
+with the attention fixed. Its four runs (`tasks/train_avit_fixed.jsonl`: 10% s0, s1, then 100% s0, s1) use the core
+recipe, and all four copy the training split to local disk. On the paid partition, from the repo root:
+
+```bash
+mkdir -p logs
+T=$(sbatch --parsable -p gpu -A eecs195221_class_gpu --array=0-3 --time=12:00:00 --tmp=400G \
+    --export=ALL,MANIFEST=tasks/train_avit_fixed.jsonl,STAGE_DATA=1 cluster/slurm/train_a100.sbatch)
+# after training (afterany: a task that did not finish refuses to evaluate and can be resubmitted):
+# the test evaluation at 1 h and 4 h, with correlation as the 100% core runs
+sbatch -p gpu -A eecs195221_class_gpu --dependency=afterany:$T --array=0-3 \
+    --export=ALL,MANIFEST=tasks/train_avit_fixed.jsonl,CORRELATION=1 cluster/slurm/eval_a100.sbatch
+# the seed pairs: noise robustness and seed-pair uncertainty (tasks/uq_ensembles.json entries 11, 12)
+sbatch -p gpu -A eecs195221_class_gpu --dependency=afterany:$T --array=11,12 cluster/slurm/uq_eval_a100.sbatch
+# flow snapshots with all four models (each file is rewritten whole, so pass both manifests)
+sbatch --dependency=afterany:$T \
+    --export=ALL,VIS_ARGS="--fraction 0.1 --manifest tasks/train.jsonl tasks/train_avit_fixed.jsonl" \
+    cluster/slurm/visualize_cpu.sbatch
+sbatch --dependency=afterany:$T \
+    --export=ALL,VIS_ARGS="--fraction 1.0 --manifest tasks/train.jsonl tasks/train_avit_fixed.jsonl" \
+    cluster/slurm/visualize_cpu.sbatch
+```
+
+Estimate: ~5–6 h held per training run, ~0.3 h per evaluation, ~0.5 h per seed pair, ~0.2 h per snapshot job:
+~26 GPU-hours, ~1,000–1,100 SU. After a submission, check `sacct` for `FAILED 0:53` (launch failures in `/pub`
+outages). On the Mac: `rbbench aggregate --tasks tasks/train.jsonl tasks/train_avit_fixed.jsonl`.

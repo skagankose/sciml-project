@@ -289,6 +289,58 @@
           0.0
         ]
       }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train_avit_fixed.jsonl",
+          "row": 0
+        },
+        {
+          "manifest": "tasks/train_avit_fixed.jsonl",
+          "row": 1
+        }
+      ],
+      "name": "avit_fixed_f010_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
+    },
+    {
+      "label": "4h",
+      "members": [
+        {
+          "manifest": "tasks/train_avit_fixed.jsonl",
+          "row": 2
+        },
+        {
+          "manifest": "tasks/train_avit_fixed.jsonl",
+          "row": 3
+        }
+      ],
+      "name": "avit_fixed_f100_4h_seeds",
+      "splits": {
+        "test": [
+          0.0,
+          0.01,
+          0.05,
+          0.1,
+          0.2
+        ],
+        "valid": [
+          0.0
+        ]
+      }
     }
   ]
 }

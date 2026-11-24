@@ -11,6 +11,8 @@ trajectory) and the figure can be drawn on the Mac (`scripts/findings.py` -> `ro
     python scripts/visualize_rollouts.py --device cpu                  # defaults: the regimes and start below
     python scripts/visualize_rollouts.py --regimes 1e8,1 1e10,1 --start 80 --label 4h --fraction 0.1 --seed 0
     python scripts/visualize_rollouts.py --fraction 1.0                # the 100% models; the 10% files stay
+    python scripts/visualize_rollouts.py --manifest tasks/train.jsonl tasks/train_avit_fixed.jsonl   # + avit_fixed
+A file holds the models of its manifests only: pass every manifest whose models it should keep.
 """
 from __future__ import annotations
 
@@ -33,7 +35,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data-root", default=os.environ.get("DATA_ROOT"))
     ap.add_argument("--output-root", default=os.environ.get("OUTPUT_ROOT", str(REPO / "outputs")))
-    ap.add_argument("--manifest", default=str(REPO / "tasks" / "train.jsonl"))
+    ap.add_argument("--manifest", nargs="+", default=[str(REPO / "tasks" / "train.jsonl")],
+                    help="one or more manifests; every model goes into the same file (a file is rewritten whole)")
     ap.add_argument("--cohort", default=str(REPO / "tasks" / "eval_cohort.json"))
     ap.add_argument("--regimes", nargs="+", default=["1e8,1", "1e10,1"], help="Ra,Pr pairs; first cohort trajectory")
     ap.add_argument("--start", type=int, default=80, help="start frame (one of the cohort's starts)")
@@ -60,7 +63,7 @@ def main() -> int:
     horizon = cohort["rollout_steps"]
     steps = [s for s in STEPS if s <= horizon]
     device = torch.device(args.device)
-    rows = [r for r in read_jsonl(Path(args.manifest))
+    rows = [r for m in args.manifest for r in read_jsonl(Path(m))
             if abs(r["fraction"] - args.fraction) < 1e-9 and r["seed"] == args.seed
             and (out_root / "runs" / r["run_id"] / f"checkpoint_{args.label}.pt").exists()]
     if not rows:

@@ -341,5 +341,9 @@ def default_ensembles() -> dict:
     for f, manifest in ((0.1, "tasks/train_1h.jsonl"), (1.0, "tasks/train_1h_f100.jsonl")):
         ens.append({"name": f"cnext_unet_f{int(round(f * 100)):03d}_1h_mse", "label": "1h", "splits": clean,
                     "members": [{"manifest": manifest, "row": r} for r in (0, 1)]})
+    # AViT with its axial attention fixed (docs/report_notes.md section 17): seed pairs as the core ones (11, 12).
+    for f, a, b in ((0.1, 0, 1), (1.0, 2, 3)):
+        ens.append({"name": f"avit_fixed_f{int(round(f * 100)):03d}_4h_seeds", "label": "4h", "splits": noisy,
+                    "members": [{"manifest": "tasks/train_avit_fixed.jsonl", "row": r} for r in (a, b)]})
     return {"description": "Ensembles for uncertainty quantification (D30) and noise robustness (D17); "
                            "rbbench eval-uq --index i runs entry i", "ensembles": ens}

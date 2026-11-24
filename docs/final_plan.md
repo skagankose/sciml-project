@@ -32,21 +32,17 @@ still open (section 6).
 
 ## 3. Where we stand
 
-**Push 1 is ready (2026-11-21).** WP0, WP1, WP4's command and WP6's code are committed and tested; the commands to
-submit are in `cluster/README.md` section 10. The local copy is on: each A100 node has 1.83 TB of local disk
-(`sinfo`, owner), and the owner approved the GPU cost of WP8 and WP9.
+**Status (2026-11-23): every work package is done.** All GPU jobs ran (146.4 GPU-hours, 5,111 SU for the whole
+project, final `sacct`). An audit against this plan and the professors' answers (2026-11-23) found five smaller
+analysis items missing; they were completed on the Mac from existing outputs (`docs/report_notes.md` section 16):
+the error aligned at each trajectory's onset (WP4), predicted-against-true Nu with the one-hour values and the
+truth's spread (WP5), the released CNextU-Net's solver matches in the report (WP6), reliability, coverage per window
+and by Ra, CRPS per field and the variance parts by regime (WP9), and the mid-project Table 9 carried into the final
+report with the per-trajectory split (professors' answer 5). The final report draft is `reports/final.tex`.
 
-* **Done:** pipeline check (D2); recipe and budgets fixed (D6, D7, D8, D24); six 10% runs trained and evaluated
-  at 1 h and 4 h; the dedicated 1 h runs at 10% trained and test-evaluated (not reported); the released
-  CNextU-Net through the study evaluation; persistence; mid-project report.
-* **Left in the core study:** the six 100% runs (rows 2, 3, 6, 7, 10, 11 of `tasks/train.jsonl`), their
-  evaluation, and the 10% against 100% comparison at 1 h and 4 h. This is the abstract's main result
-  (data-scaling and accuracy–cost curves) and the critical path.
-* **New:** per-trajectory onset (WP4), Nusselt per Rayleigh number (WP5), bounded solver baseline (WP6), noise
-  robustness (WP8), uncertainty quantification (WP9).
-* **Dropped:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM.
-* **Not committed yet:** the D27 opt-in correlation code and tests, the `eval_a100.sbatch` FORCE/CORRELATION
-  switches, the last report edits, and this plan (WP0).
+* **Not done, by decision:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM (dropped); a
+  solver rerun with the data's time step (owner chose option (a), D25); correlation is computed but not reported.
+* **Open formality:** Gate E's rerun-hash check of the subset manifests (`AGENTS.md`).
 
 ## 4. Work packages
 
@@ -103,6 +99,8 @@ died on `/pub` `Errno 70`, and on the paid partition a crash costs a new queue w
 
 ### WP4. Onset per trajectory (CPU job, done on `free` 2026-11-21, and Mac)
 
+**Status (2026-11-23):** done, including step 4 (error aligned at t_on: `fig_onset_aligned`, report_notes section 16).
+
 Definition, fixed on validation before it touches any test result:
 * KE(t): domain mean of ½(u² + w²) of the true fields, with Chebyshev weights in y
   (`physics.mean_kinetic_energy`).
@@ -131,6 +129,8 @@ Steps:
 
 ### WP5. Heat transport per Rayleigh number (Mac, existing outputs)
 
+**Status (2026-11-23):** done (report_notes sections 12 and 16; `fig_nusselt`, `fig_by_rayleigh`, Table 7 of the draft with 1 h rows and the truth's spread).
+
 * `physics_*.parquet` holds the predicted and true Nu at every rollout step. For each rollout from developed
   flow, average both over its 30 steps.
 * Then per Ra, over its 70 rollouts (7 Pr × 5 trajectories × 2 starts), report the true and predicted mean Nu
@@ -141,6 +141,8 @@ Steps:
 * Rerun after WP3 to add the 100% runs.
 
 ### WP6. Bounded numerical-solver baseline (CPU work; first rollouts on `free`, the rest on the class partition, D31)
+
+**Status (2026-11-23):** done (report_notes sections 8, 13 and 16). Ra = 1e10 reported with the time-step limitation (D25, option (a)).
 
 * **Regimes:** Ra = 1e6, 1e8 and 1e10 at Pr = 1.
 * **Rollouts:** all 5 test trajectories of each regime, starts 80 and 140 (developed flow). That gives 30
@@ -187,6 +189,9 @@ robustness and uncertainty. Costs come from a final `sacct`.
 * The noise levels are also WP9's input-shift test for interval coverage (lecture slide 20).
 
 ### WP9. Uncertainty quantification (new; Lecture 17)
+
+**Status (2026-11-23):** done: every ensemble evaluated on valid and test; analysis in report_notes sections 14 and
+16 (all measures below, including reliability, coverage per window and by Ra, and CRPS per field).
 
 **Status (2026-11-21):** code written and tested on the Mac (`rbbench.uq`, `eval-uq`, the variance output and
 β-NLL, `tasks/uq.jsonl`, `tasks/train_1h_f100.jsonl`, `tasks/uq_ensembles.json`), committed, not pushed. It goes

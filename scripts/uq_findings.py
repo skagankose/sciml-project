@@ -14,6 +14,12 @@ Tables (CSV):
   uq_rank_pit.csv       rank histograms of the members and PIT histograms of the Gaussian mixtures
   noise_robustness.csv  each configuration's VRMSE at input noise sigma = 0-0.20 (seed mean), and its ratio to clean
   uq_yprofile.csv       squared error and predicted variance per y row (one step, developed): the boundary layers
+  uq_reliability.csv    RMSE of the ensemble mean in deciles of its predicted std, per field and pooled (one step;
+                        rollout steps 1, 10, 30 from developed flow)
+  uq_coverage_by_rayleigh.csv  conformal (and the beta-NLL Gaussian) coverage per Rayleigh number
+  uq_coverage_per_window.csv   distribution of each window's own coverage (conditional coverage), by phase
+  uq_crps_fields.csv    per field: the beta-NLL ensembles' CRPS against the MSE point forecast's absolute error
+  uq_variance_by_group.csv     aleatoric and epistemic variance against the squared error, by phase and Ra
 Figures: uq_calibration, uq_variance_parts, uq_rank_pit, uq_conformal_width, noise_robustness.
 """
 
@@ -159,6 +165,169 @@ def conformal_tables(outputs: Path, specs: list[dict], onset_valid: dict, onset_
                                    "tails_5pct": float(((pit < 0.05) | (pit > 0.95)).mean())})
     cat = lambda xs: pd.concat(xs, ignore_index=True) if xs else pd.DataFrame()  # noqa: E731
     return cat(conf), cat(shifts), pd.DataFrame(rp)
+
+
+# --- 2b. reliability, coverage by Rayleigh number and per window, CRPS per field, variance by phase and Ra ---------
+
+def _scored_windows(e: dict, d: Path, onset_valid: dict, onset_test: dict):
+    """Validation and test cells (one step, and rollouts from developed flow) with their window tables."""
+    cal1, te1 = (ua.load_cells(d / s / "cells.npz", "one_step") for s in ("valid", "test"))
+    calr, ter = (ua.load_cells(d / s / "cells.npz", "rollout") for s in ("valid", "test"))
+    return cal1, te1, calr, ter, ua.window_table(te1, onset_test), ua.window_table(ter)
+
+
+def reliability_table(outputs: Path, specs: list[dict], onset_valid: dict, onset_test: dict) -> pd.DataFrame:
+    """RMSE of the ensemble mean in deciles of its predicted std, per field and pooled over the fields (normalised
+    units): one step (all test windows) and rollout steps 1, 10, 30 from frames 80 and 140."""
+    rows = []
+    for e in specs:
+        d = outputs / "uq" / e["name"]
+        if e["n_members"] < 2 or not (d / "test" / "cells.npz").exists():
+            continue
+        _, te1, _, ter, _, w_ter = _scored_windows(e, d, onset_valid, onset_test)
+        tag = {"ensemble": e["name"], "kind": e["kind"], "family": e["family"], "fraction": e["fraction"]}
+        dev = w_ter.start.isin(DEV_STARTS).to_numpy()
+        for window, cells, mask, step in [("one_step", te1, None, 1)] + [
+                ("rollout", ter, dev & (w_ter.step == k).to_numpy(), k) for k in STEPS_SHOWN]:
+            err = cells["err"].mean(0) if mask is None else cells["err"][:, mask].mean(0)
+            sub = cells if mask is None else {**cells, "err": cells["err"][:, mask],
+                                              "std": None if cells["std"] is None else cells["std"][:, mask]}
+            sig = ua.predicted_std(sub)
+            for fi, f in enumerate(FIELDS + ["pooled"]):
+                ee, ss = (err, sig) if f == "pooled" else (err[..., fi], sig[..., fi])
+                r = ua.reliability(ee, ss)
+                rows.append(r.assign(**tag, window=window, step=step, field=f))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def coverage_group_tables(outputs: Path, specs: list[dict], onset_valid: dict, onset_test: dict):
+    """Split-conformal 90% / 50% coverage (validation -> test) by Rayleigh number, and per window (conditional
+    coverage: the distribution of each window's own coverage), for one step and rollout steps 1, 10, 30 from
+    developed flow. The beta-NLL ensembles' Gaussian intervals come from the exact per-window summary."""
+    by_ra, per_win = [], []
+    for e in specs:
+        d = outputs / "uq" / e["name"]
+        if not (d / "valid" / "cells.npz").exists() or not (d / "test" / "cells.npz").exists():
+            continue
+        tag = {"ensemble": e["name"], "kind": e["kind"], "family": e["family"], "fraction": e["fraction"]}
+        cal1, te1, calr, ter, w_te1, w_ter = _scored_windows(e, d, onset_valid, onset_test)
+        dev_c = ua.window_table(calr).start.isin(DEV_STARTS).to_numpy()
+        dev_t = w_ter.start.isin(DEV_STARTS).to_numpy()
+        for scale in _scales(e):
+            floor1 = ua.spread_floor(cal1) if scale == "spread" else None
+            floorr = ua.spread_floor(calr) if scale == "spread" else None
+            q1 = ua.conformal_by_group(cal1, te1, scale, group="pooled").drop(columns="step").assign(step=None)
+            qr = ua.conformal_by_group(calr, ter, scale, cal_mask=dev_c, test_mask=dev_t)
+            for ra in sorted(w_te1.rayleigh.unique()):
+                c = ua.coverage_with(q1, te1, scale, floor1, test_mask=(w_te1.rayleigh == ra).to_numpy())
+                by_ra.append(c.assign(**tag, scale=scale, window="one_step", rayleigh=ra))
+                c = ua.coverage_with(qr, ter, scale, floorr, test_mask=dev_t & (w_ter.rayleigh == ra).to_numpy())
+                by_ra.append(c[c.step.isin(STEPS_SHOWN)].assign(**tag, scale=scale, window="rollout", rayleigh=ra))
+            s1, _ = ua.scores(te1, scale, floor1)
+            sr, _ = ua.scores(ter, scale, floorr)
+            for nominal in (0.9, 0.5):
+                q = q1[q1.nominal == nominal].set_index("field").q.reindex(FIELDS).to_numpy()
+                cov = ua.window_coverage(s1, q)
+                for group, m in (("all", np.ones(len(cov), bool)), ("onset", w_te1.onset.to_numpy()),
+                                 ("developed", ~w_te1.onset.to_numpy())):
+                    per_win.append(_win_stats(cov[m], **tag, scale=scale, window="one_step", step=1, group=group,
+                                              nominal=nominal))
+                for k in STEPS_SHOWN:
+                    m = dev_t & (w_ter.step == k).to_numpy()
+                    qk = qr[(qr.step == k) & (qr.nominal == nominal)].set_index("field").q.reindex(FIELDS).to_numpy()
+                    per_win.append(_win_stats(ua.window_coverage(sr[m], qk), **tag, scale=scale, window="rollout",
+                                              step=k, group="developed", nominal=nominal))
+        if "betanll" in e["name"]:                         # Gaussian intervals, exact over every grid point
+            s = pd.read_parquet(d / "test" / "summary.parquet")
+            s = s[s.sigma == 0]
+            one = s[s.kind == "one_step"].assign(onset=lambda x: _phase(x, onset_test))
+            roll = s[(s.kind == "rollout") & s.start.isin(DEV_STARTS)]
+            for nominal, col in ((0.9, "cov90"), (0.5, "cov50")):
+                for ra, g in one.groupby("rayleigh"):
+                    by_ra.append(pd.DataFrame([{"step": 1, "field": "mean", "nominal": nominal,
+                                                "coverage": _fm(g, col).mean(), **tag, "scale": "gaussian interval",
+                                                "window": "one_step", "rayleigh": ra}]))
+                for (ra, k), g in roll[roll.step.isin(STEPS_SHOWN)].groupby(["rayleigh", "step"]):
+                    by_ra.append(pd.DataFrame([{"step": k, "field": "mean", "nominal": nominal,
+                                                "coverage": _fm(g, col).mean(), **tag, "scale": "gaussian interval",
+                                                "window": "rollout", "rayleigh": ra}]))
+                for group, g in (("all", one), ("onset", one[one.onset]), ("developed", one[~one.onset])):
+                    per_win.append(_win_stats(_fm(g, col).to_numpy(), **tag, scale="gaussian interval",
+                                              window="one_step", step=1, group=group, nominal=nominal))
+                for k in STEPS_SHOWN:
+                    per_win.append(_win_stats(_fm(roll[roll.step == k], col).to_numpy(), **tag,
+                                              scale="gaussian interval", window="rollout", step=k, group="developed",
+                                              nominal=nominal))
+    ra_t = pd.concat(by_ra, ignore_index=True) if by_ra else pd.DataFrame()
+    if not ra_t.empty:                                     # add the field mean of the conformal rows
+        fm = (ra_t[ra_t.field != "mean"].groupby([c for c in ra_t.columns if c not in
+                                                  ("field", "q", "coverage", "width")], dropna=False)
+              [["coverage", "width"]].mean().reset_index().assign(field="mean"))
+        ra_t = pd.concat([ra_t, fm], ignore_index=True)
+    return ra_t, pd.DataFrame(per_win)
+
+
+def _win_stats(cov: np.ndarray, **tag) -> dict:
+    """Distribution of the per-window coverage of one interval: its mean (the marginal coverage), percentiles and the
+    share of windows covering less than nominal - 0.1."""
+    q = np.quantile(cov, [0.1, 0.25, 0.5, 0.75, 0.9]) if cov.size else [np.nan] * 5
+    return {**tag, "n_windows": int(cov.size), "mean": float(cov.mean()) if cov.size else np.nan,
+            "p10": q[0], "p25": q[1], "p50": q[2], "p75": q[3], "p90": q[4],
+            "share_below_nominal_minus_0.1": float((cov < tag["nominal"] - 0.1).mean()) if cov.size else np.nan}
+
+
+def crps_field_table(outputs: Path, specs: list[dict], onset_test: dict) -> pd.DataFrame:
+    """Per field: the beta-NLL ensembles' CRPS against the absolute error of the MSE point forecast (the MSE 1 h
+    pair's members, same fraction), normalised units; one step (all, onset, developed) and rollout steps 1, 10, 30."""
+    summ = {}
+    for e in specs:
+        p = outputs / "uq" / e["name"] / "test" / "summary.parquet"
+        if p.exists() and e["family"] == "cnext_unet" and e["kind"] in ("beta-NLL ensemble", "MSE 1 h pair"):
+            s = pd.read_parquet(p)
+            summ[(e["kind"], e["fraction"])] = s[s.sigma == 0]
+    rows = []
+    for frac in sorted({f for _, f in summ}):
+        b, m = summ.get(("beta-NLL ensemble", frac)), summ.get(("MSE 1 h pair", frac))
+        if b is None or m is None:
+            continue
+
+        def groups(s):
+            one = s[s.kind == "one_step"]
+            ph = _phase(one, onset_test)
+            roll = s[(s.kind == "rollout") & s.start.isin(DEV_STARTS)]
+            return ([("one_step", "all", one), ("one_step", "onset", one[ph]), ("one_step", "developed", one[~ph])]
+                    + [("rollout", str(k), roll[roll.step == k]) for k in STEPS_SHOWN])
+        for (window, group, gb), (_, _, gm) in zip(groups(b), groups(m)):
+            for f in FIELDS + ["mean"]:
+                crps = _fm(gb, "crps").mean() if f == "mean" else gb[f"crps_{f}"].mean()
+                mae_ens = _fm(gb, "mae").mean() if f == "mean" else gb[f"mae_{f}"].mean()
+                mae_pt = _fm(gm, "mae_member").mean() if f == "mean" else gm[f"mae_member_{f}"].mean()
+                rows.append({"fraction": frac, "window": window, "group": group, "field": f, "crps": crps,
+                             "mae_ensemble_mean": mae_ens, "mae_mse_point": mae_pt, "crps_over_mae_point": crps / mae_pt})
+    return pd.DataFrame(rows)
+
+
+def variance_group_table(outputs: Path, specs: list[dict], onset_test: dict) -> pd.DataFrame:
+    """Aleatoric and epistemic variance (field mean and per field) against the squared error, one step, by phase and
+    Rayleigh number: where each part of the beta-NLL ensembles' uncertainty is large, and the seed pairs' spread."""
+    rows = []
+    for e in specs:
+        p = outputs / "uq" / e["name"] / "test" / "summary.parquet"
+        if not p.exists() or e["kind"] not in ("beta-NLL ensemble", "seed pair (4 h)"):
+            continue
+        s = pd.read_parquet(p)
+        one = s[(s.sigma == 0) & (s.kind == "one_step")]
+        one = one.assign(phase=np.where(_phase(one, onset_test), "onset", "developed"))
+        for (phase, ra), g in list(one.groupby(["phase", "rayleigh"])) + [((ph, np.nan), g) for ph, g in
+                                                                          one.groupby("phase")]:
+            for f in FIELDS + ["mean"]:
+                col = (lambda c: _fm(g, c).mean()) if f == "mean" else (lambda c: g[f"{c}_{f}"].mean())
+                al, ep, mse = col("var_al"), col("var_ep"), col("mse")
+                rows.append({"ensemble": e["name"], "kind": e["kind"], "family": e["family"],
+                             "fraction": e["fraction"], "phase": phase, "rayleigh": ra, "field": f, "var_al": al,
+                             "var_ep": ep, "mse": mse, "aleatoric_share": al / (al + ep) if al + ep > 0 else np.nan,
+                             "ssr": ua.spread_skill(g, e["n_members"], FIELDS if f == "mean" else [f])})
+    return pd.DataFrame(rows)
 
 
 # --- 3. noise robustness (WP8) and boundary layers ---------------------------------------------------------------
@@ -384,9 +553,15 @@ def main(outputs: Path | None = None, out: Path | None = None) -> list[str]:
     conf, shifts, rp = conformal_tables(outputs, specs, onset_valid, onset_test)
     noise = noise_table(outputs, specs, onset_test)
     yprof = yprofile_table(outputs, specs, onset_test)
+    rel = reliability_table(outputs, specs, onset_valid, onset_test)
+    cov_ra, cov_win = coverage_group_tables(outputs, specs, onset_valid, onset_test)
+    crps_f = crps_field_table(outputs, specs, onset_test)
+    var_g = variance_group_table(outputs, specs, onset_test)
     written = []
     for name, df in (("uq_summary", summ), ("uq_conformal", conf), ("uq_shifts", shifts), ("uq_rank_pit", rp),
-                     ("noise_robustness", noise), ("uq_yprofile", yprof)):
+                     ("noise_robustness", noise), ("uq_yprofile", yprof), ("uq_reliability", rel),
+                     ("uq_coverage_by_rayleigh", cov_ra), ("uq_coverage_per_window", cov_win),
+                     ("uq_crps_fields", crps_f), ("uq_variance_by_group", var_g)):
         df.to_csv(out / f"{name}.csv", index=False)
         written.append(str(out / f"{name}.csv"))
     written += figures(out, summ, conf, shifts, rp, noise, yprof)

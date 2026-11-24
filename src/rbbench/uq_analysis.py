@@ -167,3 +167,42 @@ def coverage_with(q_table: pd.DataFrame, test: dict, scale: str, floor=None, tes
                              "coverage": float((s_te[g][..., fi] <= q).mean()),
                              "width": float(2 * q * sig_te[g][..., fi].mean())})
     return pd.DataFrame(rows)
+
+
+# --- reliability and conditional coverage (WP9 measures: binned error, coverage per window) ---------------------
+
+def predicted_std(cells: dict) -> np.ndarray:
+    """Predicted std of the ensemble mean's error per sample [N, K, F]: sqrt(c var_ep + var_al) with
+    c = (M+1)/(M-1), the spread-skill ratio's definition (a consistent finite ensemble then has RMSE = std)."""
+    err, std = cells["err"].astype(np.float64), cells["std"]
+    m = err.shape[0]
+    if m < 2 and std is None:
+        raise ValueError("a predicted std needs two members or predicted variances")
+    var = (m + 1) / (m - 1) * err.var(0) if m > 1 else 0.0
+    if std is not None:
+        var = var + (std.astype(np.float64) ** 2).mean(0)
+    return np.sqrt(var)
+
+
+def reliability(err: np.ndarray, sigma: np.ndarray, n_bins: int = 10) -> pd.DataFrame:
+    """RMSE of `err` in quantile bins of the predicted std `sigma` (same shape, flattened): per bin the RMS
+    predicted std, the RMSE and the count. A reliable forecast has rmse = sigma_rms in every bin; a forecast whose std
+    carries information has rmse rising from the first bin to the last."""
+    e, s = np.asarray(err, np.float64).ravel(), np.asarray(sigma, np.float64).ravel()
+    ok = np.isfinite(e) & np.isfinite(s)
+    e, s = e[ok], s[ok]
+    edges = np.quantile(s, np.linspace(0, 1, n_bins + 1))
+    b = np.clip(np.searchsorted(edges, s, side="right") - 1, 0, n_bins - 1)
+    n = np.bincount(b, minlength=n_bins)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sig = np.sqrt(np.bincount(b, s ** 2, n_bins) / n)
+        rmse = np.sqrt(np.bincount(b, e ** 2, n_bins) / n)
+    return pd.DataFrame({"bin": np.arange(n_bins), "sigma_rms": sig, "rmse": rmse, "n": n})
+
+
+def window_coverage(s: np.ndarray, q) -> np.ndarray:
+    """Per window, the share of its samples (all cells and fields) whose conformal score is at most the field's
+    q-hat: s [N, K, F] scores, q [F] (or a scalar). The marginal coverage is their mean; their spread shows how far
+    coverage holds window by window (conditional coverage)."""
+    q = np.broadcast_to(np.asarray(q, np.float64), (s.shape[-1],))
+    return (s <= q).reshape(s.shape[0], -1).mean(1)

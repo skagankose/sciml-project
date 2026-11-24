@@ -99,3 +99,37 @@ def test_window_table_phase_and_rayleigh():
     w = ua.window_table(cells, onset={t: 100 for t in cells["traj_ids"]})
     assert w.onset.all()                            # start 80 < t_on 100
     assert set(w.rayleigh) == {1e8, 1e10}
+
+
+def test_predicted_std_matches_the_error_of_a_perfect_finite_ensemble():
+    rng = np.random.default_rng(6)
+    err, cells = _calibrated(rng, 2, n_traj=400, k=32)
+    sig = ua.predicted_std(cells)
+    assert sig.shape == err.shape[1:]
+    rmse = np.sqrt((err.mean(0) ** 2).mean())
+    assert np.sqrt((sig ** 2).mean()) == pytest.approx(rmse, rel=0.03)    # c = 3 for two members
+    # predicted variances add to the spread: one member with its own Gaussian std
+    sd = np.full((1,) + err.shape[1:], 0.5)
+    one = _cells(err[:1], std=sd, n_traj=400)
+    np.testing.assert_allclose(ua.predicted_std(one), 0.5)
+
+
+def test_reliability_bins_follow_a_calibrated_std_and_flatten_an_uninformative_one():
+    rng = np.random.default_rng(7)
+    sigma = rng.uniform(0.1, 3.0, size=200_000)
+    err = rng.normal(size=sigma.size) * sigma                  # calibrated: error drawn with the predicted std
+    r = ua.reliability(err, sigma, n_bins=10)
+    assert r.n.sum() == sigma.size and (r.n > 0).all()
+    np.testing.assert_allclose(r.rmse, r.sigma_rms, rtol=0.03)
+    assert r.rmse.iloc[-1] / r.rmse.iloc[0] > 5                # the std separates small from large errors
+    flat = ua.reliability(rng.normal(size=sigma.size), sigma)  # error independent of the std
+    assert flat.rmse.max() / flat.rmse.min() < 1.05
+
+
+def test_window_coverage_averages_to_the_marginal_and_shows_its_spread():
+    s = np.zeros((4, 10, 2))
+    s[0] = 2.0                                                 # one window entirely outside the interval
+    s[1, :5] = 2.0                                             # one half outside
+    cov = ua.window_coverage(s, [1.0, 1.0])
+    np.testing.assert_allclose(cov, [0.0, 0.5, 1.0, 1.0])
+    assert cov.mean() == pytest.approx((s <= 1.0).mean())

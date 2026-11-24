@@ -1550,6 +1550,9 @@ figure helpers reproduce `fraction_comparison.csv` exactly (checked for all 24 e
 | `fig_training_f010`, `fig_training_f100` | training loss and validation VRMSE against active training time | run metrics |
 | `fig_snapshots_fractions_buoyancy_step30_<rollout>` | true buoyancy at step 30 above each model at 10% (left) and 100% (right); Ra 1e8 and 1e10 | `outputs/visuals/` |
 | `fig_snapshots_buoyancy_<rollout>__f{010,100}_4h_s0` | true flow and each model at steps 1, 12, 30, per fraction | `outputs/visuals/` |
+| `fig_onset_aligned` | one-step error against window start − t_on (4 h, both fractions, released, persistence); CNextU-Net 100% per Ra from frame 0 and from t_on | evaluations, `tasks/onset_test.json` (section 16) |
+| `fig_nusselt` | predicted against true rollout-averaged Nu per Ra at 1 h and 4 h, medians with the middle 50% of rollouts; truth as a band | `nusselt_by_rayleigh.csv` (sections 12, 16) |
+| `fig_uq_reliability` | RMSE in deciles of the predicted std (one step, rollout step 10); conformal 90% coverage per Ra, constant against spread-scaled | `uq/uq_reliability.csv`, `uq/uq_coverage_by_rayleigh.csv` (section 16) |
 
 Accuracy tables (one step all / onset / developed, rollouts, field-wise, both checkpoints, both fractions, released
 and persistence) are in section 11; Nusselt per Ra in section 12; the solver in section 13; uncertainty and noise
@@ -1620,3 +1623,119 @@ Inference is the same at both fractions (same architecture); batched, AViT is ch
 
 Caveats for the whole table: two seeds per configuration; one 10% subset draw shared by the seeds; one-step training
 only; fp32 for all (bf16 would speed up CNextU-Net 1.7× and AViT 2.2×); learning rate at the top of the searched grid.
+
+### Final report draft (`reports/final.tex`, 2026-11-23)
+
+* Mid-project template (owner): title page with the goal, seven one-line findings and the compact contents; no page
+  limit; every extension (solver, Nusselt, noise, uncertainty) in the main text for now.
+* Sections: 1 Data and methods (onset per trajectory); 2 pipeline check; 3 training setup and budgets; 4 accuracy
+  (training, one step, data scaling, rollouts, field-wise, spectra, snapshots, Rayleigh number, heat transport);
+  5 accuracy against cost (with billed compute); 6 numerical solver; 7 input noise; 8 uncertainty; 9 findings ("which
+  model when", negative results, limitations); 10 conclusion. Appendices A–F: physical system, released TFNO, metric
+  details, recipe (with reproducibility), resource accounting, issues.
+* Every number comes from sections 11–15 or from `outputs/` (checked while drafting); new references (deep
+  ensembles, β-NLL, conformal prediction, CRPS, rank histograms) checked online.
+* Compiles with `tectonic --keep-logs final.tex` in `reports/`: 27 pages, no undefined references, one 0.6 pt overfull
+  line. After the plan audit (section 16): 30 pages, no overfull lines.
+
+
+## 16. Plan audit: the remaining WP4, WP5, WP6 and WP9 items (2026-11-23; no GPU time)
+
+An audit against `docs/final_plan.md` and the professors' answers (D28) found every GPU job and the main deliverables
+done, and these smaller analysis items missing; all are computed on the Mac from existing outputs and are now in
+`reports/final.tex`. Code: `scripts/final_figures.py` (`onset_aligned`, `nusselt`, `uq_reliability`; helpers
+`frames_from_onset`, `common_offsets`, `onset_end`), `rbbench.uq_analysis` (`predicted_std`, `reliability`,
+`window_coverage`) and `scripts/uq_findings.py` (five new tables). Tests in `tests/test_final_figures.py` and
+`tests/test_uq_analysis.py`; 211 pass, smoke passes.
+
+### Error aligned at each trajectory's onset (WP4 step 4; `fig_onset_aligned`)
+
+* Measure: per Ra, the first window start at which the mean one-step VRMSE over the regime's 35 trajectories falls
+  below 2 × its median in developed convection, counted from frame 0 and from t_on (`onset_end`).
+* CNextU-Net 100% / 4 h: from frame 0 at 59 / 44 / 34 / 30 / 26 (Ra 1e6 … 1e10); from t_on at −9 / −10 / −14 / −19 /
+  −22. 10%: 59…25 and −9…−22. TFNO −12 … −31, AViT −9 … −28. Released CNextU-Net: 63…27 from frame 0, −6 … −19
+  from t_on. Alignment cuts the spread over Ra from ~33–36 frames to ~13; a residual trend remains (the error ends
+  earlier relative to t_on at high Ra: ~20 low-error onset windows per trajectory at 1e10, ~10 at 1e6).
+* Every model beats persistence from 17–23 frames before t_on (CNextU-Net −21, TFNO −18, AViT −22/−23, released
+  −17), so persistence's onset win comes from the earliest, nearly still frames.
+* Second rise after t_on, while convection grows: minimum at d ≈ −3 … −9, peak 9–16 frames after t_on. Rise:
+  CNextU-Net +40% / +36% (10% / 100%), TFNO +32%, AViT +90% / +70%, released +36%. Persistence peaks 14 frames after
+  t_on (0.314); per trajectory its peak is a median 16 frames after t_on (IQR 10–23).
+* Test t_on per Ra: median 60 / 54 / 48 / 49 / 49 (ranges 51–78, 46–64, 43–63, 42–61, 41–58).
+* Rollout relabelling (WP4 step 4): none needed; test t_on is 41–78, so starts 20 / 80 / 140 are onset / developed /
+  developed for every trajectory.
+
+### Heat transport: predicted against true, 1 h, and the truth's spread (WP5; `fig_nusselt`, Table 7)
+
+* One-hour medians per Ra (signed): CNextU-Net 10% +204 / +363 / +673 / +926 / +1026% (all +545%, |err| 548%);
+  100% +38 / +83 / +163 / +214 / +292% (+133%, 153%). TFNO 10% +9 / +38 / +35 / −5 / −43% (+21%, 91%); 100% −2 / +28
+  / +60 / +34 / +43% (+29%, 48%). AViT 10% −2 / +18 / +30 / +34 / +20% (+14%, 35%); 100% −14 / −10 / −27 / −55 / −62%
+  (−28%, 44%).
+* Correction: the draft said TFNO and AViT "stay within about ±30%" after one hour. That holds only for the all-Ra
+  median bias; per Ra they reach +60% and −62%, and their median |error| is 35–91%.
+* Negative heat transport: the lower quartile of the predicted rollout-averaged Nu is negative for AViT 100% / 1 h at
+  Ra 1e9 (−6.7) and 1e10 (−73) and TFNO 10% / 1 h at 1e10 (−16): over a quarter of those rollouts carry heat
+  downwards.
+* Spread of the truth: the middle 50% of the 70 true rollout averages per Ra is 7.2–8.4, 11.9–14.8, 20.3–26.5,
+  40.9–50.7, 88.2–115.9 (−12% to +21% of the median; mostly the Pr dependence). Within one trajectory, the true
+  average from frame 140 differs from that from frame 80 by a median of +3% (median |change| 15%, IQR −14% to +15%;
+  at Ra 1e10 up to −629% / +422%, where the instantaneous flux swings widely). Errors of ~15% are within the truth's
+  own variation.
+
+### Solver: the released CNextU-Net's matches (WP6; Section 6 text)
+
+* Matching grids against the released CNextU-Net: 128 × 32 (Ra 1e6), 192 × 48 (1e8), none (1e10), the same as against
+  our 10% model. On the 30 solver rollouts the released model is better than ours one step ahead at 1e8 and 1e10
+  (0.0205 vs 0.0290; 0.0771 vs 0.0990) but not at 1e6 (0.0121 vs 0.0107), and worse at steps 10 and 30 in every
+  regime. Break-even of our 10% CNextU-Net at Ra 1e8 (192 × 48): ~12,900 forecasts.
+
+### Uncertainty: reliability, coverage per window and by Ra, CRPS per field, variance by regime (WP9)
+
+* Reliability (`uq_reliability.csv`; predicted std = sqrt(c var_ep + var_al), the spread-skill definition; deciles,
+  four fields pooled, normalised):
+  * β-NLL ensembles, one step: RMSE rises 46× (10%) and 54× (100%) from the lowest to the highest decile; RMSE / std
+    0.45–0.54 in the lowest decile (too wide where the flow is easy), 0.93–0.94 in the highest.
+  * Step 10: RMSE / std 1.3–1.7 in every decile (too narrow), resolution 12–13×; step 30: 1.9–2.1 at the bottom, 0.91–0.96
+    at the top.
+  * Seed pairs, one step: RMSE rises 7.8–8.9× (CNextU-Net), 9.4–11.9× (AViT), 5.3–5.6× (TFNO); with two members the
+    spread is often ~0 by chance, so RMSE / std is 43–58 in the lowest decile and 1.2–2.1 in the highest. Rollout step
+    10: resolution 3–7×.
+* Coverage by Ra (`uq_coverage_by_rayleigh.csv`; 90%, one step, pooled q-hat from validation):
+  * constant width (4 h, 100%): Ra 1e6 0.989 / 0.989 / 0.992 (CNextU-Net / TFNO / AViT), Ra 1e10 0.755 / 0.805 /
+    0.780; persistence 0.968 → 0.848;
+  * scaled by the seed spread: 0.932 / 0.944 / 0.941 → 0.836 / 0.851 / 0.839; β-NLL predictive scale 0.924 → 0.868;
+    the β-NLL Gaussian intervals (no calibration) 0.971 → 0.946;
+  * rollout step 10 (per-step q-hat): constant 0.96 → 0.84–0.85 (CNextU-Net, TFNO), 0.93 → 0.89 (AViT); spread 0.91–0.93
+    → 0.87; persistence 0.90 at every Ra.
+* Coverage per window (`uq_coverage_per_window.csv`; each window's share of its 128 points × 4 fields inside the 90%
+  interval):
+  * one step, constant width: mean 0.90 but 10th percentile 0.67–0.70, 18.6–20.9% of windows below 0.8 (developed
+    convection 25–29%, onset 1–2%);
+  * spread-scaled: 10th percentile 0.82–0.84, 1.7–4.3% below 0.8; β-NLL predictive scale 0.83, 1.3%;
+  * rollout step 10 from developed flow: constant 11–15% of windows below 0.8, spread 0–0.9%, β-NLL predictive 2.6%;
+    the uncalibrated Gaussian mixture 84% (its coverage is 0.73).
+  * 10% runs: the same picture (e.g. CNextU-Net 10% constant 18.6% / spread 4.3% below 0.8).
+* CRPS per field against the MSE point forecast's absolute error (`uq_crps_fields.csv`; β-NLL / MSE pair, same
+  fraction):
+  * 100%: one step developed b 0.723, p 0.759, u 0.712, w 0.718 (24–29% lower; pressure least); onset 0.79–0.84;
+    step 10 0.68–0.76; step 30 b 0.603, p 0.707, u 0.685, w 0.686 (29–40% lower; buoyancy most).
+  * 10%: one step developed 0.72–0.76; step 30 0.67–0.72.
+* Variance parts by phase and Ra (`uq_variance_by_group.csv`; β-NLL, one step, field mean):
+  * aleatoric share in developed convection 0.86 / 0.86 / 0.89 / 0.91 / 0.93 (Ra 1e6 … 1e10, 100%), during onset
+    0.91–0.95; buoyancy the most aleatoric field (94%).
+  * from Ra 1e6 to 1e10 (developed, 100%): var_al ×17 (0.00135 → 0.0229), var_ep ×8 (0.00022 → 0.0018), MSE ×21
+    (0.00099 → 0.0212); spread-skill 1.31 → 1.10 (developed), 1.47 → 1.04 (onset). Onset horizontal velocity is the
+    widest (spread-skill 1.53).
+  * Seed pairs, developed: epistemic variance grows 4–37× from Ra 1e6 to 1e10; spread-skill 0.69–1.16 at 1e6,
+    0.34–0.67 at 1e10 (most under-dispersed at high Ra); more data lowers the seed variance at every Ra (AViT −57% to
+    −74%).
+
+### Reading
+
+* The per-trajectory onset cut aligns the regimes about 2.5× better than a fixed frame, and confirms the validation
+  choice (D29): the onset error ends before t_on(0.1) in every regime.
+* A spread-based scale is what makes conformal intervals useful beyond their average: with constant width a fifth of
+  the windows are badly covered and coverage tracks the Rayleigh number; scaling by two seeds or the ensemble fixes
+  most of both without retraining.
+* The ensemble's predicted std is informative (deciles span ~50× in error) but mis-scaled: too wide in calm regions,
+  too narrow along rollouts.

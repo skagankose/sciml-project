@@ -139,6 +139,35 @@ def reference(fc: pd.DataFrame, name: str, metric: str) -> float | None:
     return None if r.empty else float(r[metric].iloc[0])
 
 
+def frames_from_onset(t: pd.DataFrame, t_on: dict) -> pd.DataFrame:
+    """Adds `d` = window start - the trajectory's t_on (negative: onset); trajectories without t_on are dropped."""
+    t = rf._clean(t)
+    on = t.traj_id.map(t_on)
+    t = t[on.notna()].assign(d=lambda x: x.start - x.traj_id.map(t_on).astype(int))
+    return t
+
+
+def common_offsets(t_on: dict, last_start: int = 195) -> tuple[int, int]:
+    """The range of d = start - t_on that every trajectory reaches (starts 0..last_start)."""
+    vals = [v for v in t_on.values() if v is not None]
+    return -min(vals), last_start - max(vals)
+
+
+def onset_end(t: pd.DataFrame, t_on: dict, factor: float = 2.0) -> pd.DataFrame:
+    """Per Rayleigh number: the first window start (counted from frame 0, and from t_on) whose mean error over the
+    regime's trajectories falls below `factor` times its median in developed convection: where the onset error ends."""
+    t = frames_from_onset(t, t_on)
+    lo, hi = common_offsets({k: v for k, v in t_on.items() if k in set(t.traj_id)})
+    rows = []
+    for ra, g in t.groupby("rayleigh"):
+        level = factor * g[g.d >= 0].vrmse_mean.median()
+        a = g.groupby("start").vrmse_mean.mean()
+        r = g[(g.d >= lo) & (g.d <= hi)].groupby("d").vrmse_mean.mean()
+        rows.append({"rayleigh": ra, "from_frame0": int(a[a < level].index.min()),
+                     "from_onset": int(r[r < level].index.min())})
+    return pd.DataFrame(rows)
+
+
 # --- 1. data scaling: 10% against 100% at 1 h and 4 h ---------------------------------------------------------------
 
 def data_scaling(fc: pd.DataFrame, out: Path) -> list[str]:
@@ -296,6 +325,64 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, t_on: dict, lab
     return rf.save(fig, out, "fig_test_by_window")
 
 
+def onset_aligned(outputs: Path, runs: pd.DataFrame, out: Path, t_on: dict, label: str = "4h") -> list[str]:
+    """(a) One-step error against frames from each trajectory's onset frame; (b, c) our 100% CNextU-Net per Rayleigh
+    number counted from frame 0 and from t_on: aligned at t_on the regimes' curves line up."""
+    tables = {f: ff._load(ff.evaluated_runs(runs, outputs, fraction=f), "one_step", label) for f in FRACS}
+    if not tables[1.0].get("cnext_unet"):
+        return []
+    lo, hi = common_offsets(t_on)
+    released, persist = released_study(outputs, "one_step"), ff._persistence(outputs, "one_step")
+
+    def curve(ts, by="d"):
+        return pd.concat([frames_from_onset(t, t_on).groupby(by).vrmse_mean.mean() for t in ts], axis=1).mean(axis=1)
+
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(FULL, 2.45), gridspec_kw={"width_ratios": [1.35, 1, 1]})
+    drawn = []
+    for frac in FRACS:
+        for m in [m for m in MODEL_NAMES if m in tables[frac]]:
+            g = curve(tables[frac][m]).loc[lo:hi]
+            a.plot(g.index, g.values, color=STYLE[m]["color"], ls=FRAC_LS[frac], lw=1.2 if frac == 1.0 else 1.0)
+            if m not in drawn:
+                drawn.append(m)
+    for t, kw in ((released, RELEASED), (persist, PERSIST_LINE)):
+        if t is not None:
+            g = curve([t]).loc[lo:hi]
+            a.plot(g.index, g.values, **kw)
+    a.axvline(0, color=INK, lw=0.7)
+    a.set_xlim(lo, hi)
+    a.set_xlabel(r"Window start $-$ onset frame $t_{\mathrm{on}}$")
+    a.set_ylabel("One-step VRMSE")
+    a.set_title(f"(a) Aligned at each trajectory's onset, {label[:-1]} h")
+    log_ticks(a, [0.03, 0.05, 0.1, 0.2, 0.5, 1, 2])
+    cn = STYLE["cnext_unet"]["color"]
+    ras = sorted(pd.concat(tables[1.0]["cnext_unet"]).rayleigh.unique())
+    shades = dict(zip(ras, [matplotlib.colors.to_rgba(cn, 1.0)[:3] + (al,) for al in np.linspace(0.3, 1.0, len(ras))]))
+    ts = tables[1.0]["cnext_unet"]
+    for ra in ras:
+        sub = [t[t.rayleigh == ra] for t in ts]
+        g0 = curve(sub, by="start")
+        b.plot(g0.index, g0.values, color=shades[ra], lw=1.1)
+        g1 = curve(sub).loc[lo:hi]
+        c.plot(g1.index, g1.values, color=shades[ra], lw=1.1, label=f"1e{int(round(np.log10(ra)))}")
+    b.set_xlim(-2, 150)
+    b.set_xlabel("Window start frame")
+    b.set_title("(b) CNextU-Net 100%, by Ra:\nfrom frame 0", fontsize=7.5)
+    c.axvline(0, color=INK, lw=0.7)
+    c.set_xlim(lo, 100)
+    c.set_xlabel(r"Window start $-$ $t_{\mathrm{on}}$")
+    c.set_title(r"(c) the same, from $t_{\mathrm{on}}$", fontsize=7.5)
+    c.legend(title="Ra", loc="upper right", fontsize=6.5, title_fontsize=6.5, handlelength=1.2)
+    for ax in (b, c):
+        log_ticks(ax, [0.01, 0.03, 0.1, 0.3, 1, 3])
+        ax.set_ylim(0.008, 6)
+    b.set_ylabel("One-step VRMSE")
+    c.tick_params(labelleft=False)
+    legend(fig, model_handles(drawn) + fraction_handles() + reference_handles(), ncol=7)
+    fig.tight_layout()
+    return rf.save(fig, out, "fig_onset_aligned")
+
+
 # --- 4. rollouts: error by step and survival below VRMSE 1, at 1 h and 4 h ----------------------------------------
 
 def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, threshold: float = 1.0) -> list[str]:
@@ -404,6 +491,49 @@ def by_rayleigh(outputs: Path, runs: pd.DataFrame, nu: pd.DataFrame, out: Path, 
            ncol=7)
     fig.tight_layout()
     return rf.save(fig, out, "fig_by_rayleigh")
+
+
+def nusselt(nu: pd.DataFrame, out: Path) -> list[str]:
+    """Predicted against true rollout-averaged Nusselt number per Rayleigh number, after one hour (a) and four (b):
+    medians over the 70 rollouts per Ra (seed mean) with the middle 50% of the rollouts; truth as a band."""
+    s = nu[nu.rayleigh.notna()].assign(fraction=lambda d: d.fraction.map(lambda x: x if pd.isna(x) else _frac(x)))
+    if s.empty:
+        return []
+    truth = s[s.model == "persistence"].sort_values("rayleigh")
+    models = [m for m in MODEL_NAMES if m in set(s.model)]
+    series = [(m, f) for m in models for f in FRACS] + [("released_cnext_unet", None)]
+    shift = dict(zip(series, 10 ** (0.045 * (np.arange(len(series)) - (len(series) - 1) / 2))))
+    fig, axes = plt.subplots(1, 2, figsize=(FULL, 2.6), sharey=True)
+    for ax, label, tag in zip(axes, ("1h", "4h"), ("(a)", "(b)")):
+        ax.fill_between(truth.rayleigh, truth.nu_true_q25, truth.nu_true_q75, color=MUTED, alpha=0.22, lw=0)
+        ax.plot(truth.rayleigh, truth.nu_true, color=INK, lw=1.6)
+        for (m, frac) in series:
+            if m == "released_cnext_unet":
+                g = s[s.model == m].sort_values("rayleigh")
+                kw = dict(color=INK, marker="D", ms=3.2, mfc="white", mec=INK, ls="--", lw=0.9)
+            else:
+                g = s[(s.model == m) & (s.fraction == frac) & (s.budget == label)].sort_values("rayleigh")
+                kw = dict(ls=FRAC_LS[frac], lw=1.0, **marker_kw(m, frac, 3.4))
+            if g.empty:
+                continue
+            x = g.rayleigh * shift[(m, frac)]
+            ax.errorbar(x, g.nu_pred, yerr=[g.nu_pred - g.nu_pred_q25, g.nu_pred_q75 - g.nu_pred], capsize=1.2,
+                        elinewidth=0.7, **kw)
+        ax.set_xscale("log")
+        ax.set_xticks([1e6, 1e7, 1e8, 1e9, 1e10])
+        ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+        ax.set_xlim(5e5, 2e10)
+        ax.set_xlabel("Rayleigh number")
+        ax.set_title(f"{tag} after {label[:-1]} {'hour' if label == '1h' else 'hours'} of training")
+        log_ticks(ax, [5, 10, 20, 50, 100, 200, 500, 1000])
+    axes[0].set_ylabel("Nusselt number, 30-step average")
+    handles = [Line2D([], [], color=INK, lw=1.6, label="true (band: middle 50%)")] + model_handles(models)
+    handles += fraction_handles()
+    handles += [Line2D([], [], color=INK, marker="D", ms=3.2, mfc="white", ls="--", lw=0.9,
+                       label="released CNextU-Net")]
+    legend(fig, handles, ncol=7)
+    fig.tight_layout()
+    return rf.save(fig, out, "fig_nusselt")
 
 
 # --- 6. the numerical solver against CNextU-Net ----------------------------------------------------------------------
@@ -542,6 +672,66 @@ def uq(summ: pd.DataFrame, shifts: pd.DataFrame, out: Path) -> list[str]:
     legend(fig, handles, ncol=5)
     fig.tight_layout()
     return rf.save(fig, out, "fig_uq")
+
+
+def uq_reliability(rel: pd.DataFrame, cov_ra: pd.DataFrame, out: Path) -> list[str]:
+    """(a, b) RMSE of the ensemble mean against its predicted std in deciles of the predicted std (all four fields
+    pooled, normalised units), one step and rollout step 10; (c) coverage of split-conformal 90% intervals per Rayleigh
+    number, one step. All at 100% data: four-hour seed pairs and the one-hour beta-NLL ensemble."""
+    if rel.empty or cov_ra.empty:
+        return []
+    cn = STYLE["cnext_unet"]["color"]
+    rel = rel[(rel.field == "pooled")].assign(fraction=lambda d: d.fraction.map(_frac))
+    beta = dict(color=cn, lw=2.6, alpha=0.4)
+    fig, (a, b, c) = plt.subplots(1, 3, figsize=(FULL, 2.45))
+    for ax, (window, step, title) in zip((a, b), (("one_step", 1, "(a) One step"),
+                                                  ("rollout", 10, "(b) Rollout step 10, from 80, 140"))):
+        g = rel[(rel.window == window) & (rel.step == step) & (rel.fraction == 1.0)]
+        for family in ("cnext_unet", "tfno", "avit"):
+            gg = g[(g.kind == "seed pair (4 h)") & (g.family == family)].sort_values("bin")
+            ax.plot(gg.sigma_rms, gg.rmse, color=STYLE[family]["color"], marker=STYLE[family]["marker"], ms=2.8, lw=1.1)
+        gg = g[g.kind == "beta-NLL ensemble"].sort_values("bin")
+        ax.plot(gg.sigma_rms, gg.rmse, marker="o", ms=3, **beta)
+        lim = (3e-4, 3) if window == "one_step" else (1e-3, 3)
+        ax.plot(lim, lim, color=INK, lw=0.7)
+        ax.text(lim[1] / 1.6, lim[1] / 1.6 * 1.25, "reliable", rotation=0, ha="right", va="bottom", fontsize=6.5,
+                color=MUTED)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlim(*lim)
+        ax.set_ylim(lim[0] if window == "rollout" else 2e-3, lim[1])
+        for axis in (ax.xaxis, ax.yaxis):
+            axis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%g"))
+        ax.set_xlabel("Predicted std (decile, RMS)")
+        ax.set_ylabel("RMSE of the ensemble mean")
+        ax.set_title(title)
+    g = cov_ra[(cov_ra.window == "one_step") & (cov_ra.field == "mean") & (cov_ra.nominal == 0.9)]
+    g = g.assign(fraction=g.fraction.map(lambda x: x if pd.isna(x) else _frac(x)))
+    for family in ("cnext_unet", "tfno", "avit"):
+        for scale, ls in (("spread", "-"), ("constant", "--")):
+            gg = g[(g.kind == "seed pair (4 h)") & (g.family == family) & (g.fraction == 1.0)
+                   & (g.scale == scale)].sort_values("rayleigh")
+            c.plot(gg.rayleigh, gg.coverage, color=STYLE[family]["color"], ls=ls, lw=1.3 if ls == "-" else 1.0)
+    gg = g[(g.kind == "beta-NLL ensemble") & (g.fraction == 1.0) & (g.scale == "gaussian")].sort_values("rayleigh")
+    c.plot(gg.rayleigh, gg.coverage, **beta)
+    gg = g[g.kind == "persistence"].sort_values("rayleigh")
+    c.plot(gg.rayleigh, gg.coverage, **PERSIST_LINE)
+    c.axhline(0.9, color=INK, lw=0.7)
+    c.set_xscale("log")
+    c.set_xticks([1e6, 1e7, 1e8, 1e9, 1e10])
+    c.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+    c.set_ylim(0.7, 1.0)
+    c.set_xlabel("Rayleigh number")
+    c.set_ylabel("Coverage of 90% intervals")
+    c.set_title("(c) Conformal, one step")
+    handles = model_handles(("cnext_unet", "tfno", "avit"))
+    handles += [Line2D([], [], marker="o", ms=3, label="β-NLL ensemble", **beta),
+                Line2D([], [], color=MUTED, ls="-", lw=1.3, label="(c) spread-scaled"),
+                Line2D([], [], color=MUTED, ls="--", lw=1.0, label="(c) constant width"),
+                Line2D([], [], label="persistence", **PERSIST_LINE)]
+    legend(fig, handles, ncol=7)
+    fig.tight_layout()
+    return rf.save(fig, out, "fig_uq_reliability")
 
 
 # --- 8. input-noise robustness ------------------------------------------------------------------------------------
@@ -690,10 +880,13 @@ def main() -> int:
     resource, nu = csv(outputs / "tables" / "resource_use.csv"), csv(find / "nusselt_by_rayleigh.csv")
     comp, match = csv(find / "solver_comparison.csv"), csv(find / "solver_matching.csv")
     summ, shifts, noise_t = (csv(find / "uq" / f"{n}.csv") for n in ("uq_summary", "uq_shifts", "noise_robustness"))
+    rel, cov_ra = (csv(find / "uq" / f"{n}.csv") for n in ("uq_reliability", "uq_coverage_by_rayleigh"))
     t_on = onset_frames()
-    written = data_scaling(fc, out) + uq(summ, shifts, out) + noise(noise_t, out)
+    written = (data_scaling(fc, out) + uq(summ, shifts, out) + uq_reliability(rel, cov_ra, out) + noise(noise_t, out)
+               + nusselt(nu, out))
     if not runs.empty:
         written += (accuracy_cost(fc, runs, resource, out) + test_by_window(outputs, runs, out, t_on)
+                    + onset_aligned(outputs, runs, out, t_on)
                     + rollouts(outputs, runs, out) + by_rayleigh(outputs, runs, nu, out, t_on)
                     + solver(outputs, runs, comp, match, out) + time_breakdown(runs, out)
                     + rf.spectra(outputs, runs, out, fraction=1.0, tag="100%, 4 h")

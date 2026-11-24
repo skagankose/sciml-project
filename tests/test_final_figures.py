@@ -43,3 +43,23 @@ def test_legend_reads_row_by_row():
     # matplotlib fills legend columns first: with 3 columns, row-major [a b c / d e] must be passed as a d b e c
     assert F.row_major(list("abcde"), 3) == list("adbec")
     assert F.row_major(list("abc"), 3) == list("abc")
+
+
+def test_frames_from_onset_and_the_offsets_every_trajectory_reaches():
+    t = pd.DataFrame({"traj_id": ["a", "a", "b", "c"], "start": [0, 60, 60, 10], "sigma": [0.0, 0.0, 0.0, 0.0],
+                      "vrmse_mean": [1.0, 0.1, 0.2, 0.3]})
+    d = F.frames_from_onset(t, {"a": 50, "b": 41, "c": None})   # c never convects: dropped
+    assert d.d.tolist() == [-50, 10, 19]
+    assert F.common_offsets({"a": 50, "b": 41, "c": None}) == (-41, 195 - 50)
+
+
+def test_onset_end_counts_from_frame0_and_from_each_onset():
+    # two trajectories of one regime whose error drops 10 frames before their own onset (t_on 50 and 70)
+    rows = []
+    for traj, on in (("a", 50), ("b", 70)):
+        for s in range(196):
+            rows.append({"traj_id": traj, "rayleigh": 1e8, "start": s, "vrmse_mean": 1.0 if s < on - 10 else 0.05})
+    t = pd.DataFrame(rows)
+    r = F.onset_end(t, {"a": 50, "b": 70}).iloc[0]
+    assert r.from_onset == -10                  # aligned: both drop at t_on - 10
+    assert r.from_frame0 == 60                  # from frame 0 the mean stays above 2 x 0.05 until b has dropped too

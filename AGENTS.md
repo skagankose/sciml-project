@@ -801,3 +801,28 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
     table updated with the 100% runs, noise, UQ, Nu and the solver.
   * Final `sacct` pulled (owner): 146.4 GPU-hours (128.0 paid) and 5,111 SU for the whole project.
   * Tests: `tests/test_final_figures.py`. 206 pass and smoke passes.
+* 2026-11-23: final `sacct` (146.4 GPU-h, 5,111 SU) and push to GitHub (owner's OK; 5054808). Owner: the final report
+  follows the mid-project template, no page limit, all extensions in the main text for now. Draft
+  `reports/final.tex` written from `docs/report_notes.md` sections 11–15 and the figures in `reports/figures/final/`
+  (27 pages; `docs/report_notes.md` section 15).
+* 2026-11-23: plan audit against `docs/final_plan.md` and the professors' answers (owner: "go ahead" on the gaps).
+  Every GPU job and main deliverable was done; five analysis items were missing. All were completed on the Mac from
+  existing outputs (`docs/report_notes.md` section 16):
+  * WP4: error aligned at each trajectory's onset (`fig_onset_aligned`). The onset error ends 9–22 frames before
+    t_on at every Ra (frames 26–59 from frame 0). Every model beats persistence from 17–23 frames before t_on. A second
+    rise follows onset.
+  * WP5: predicted-vs-true Nu per Ra (`fig_nusselt`), the 1 h rows and the truth's spread in Table 7. The true
+    30-step average moves a median 15% between starts 80 and 140. The draft's "TFNO and AViT within ±30% after
+    one hour" was corrected: per Ra they reach +60% / −62%, |error| 35–91%.
+  * WP6: the released CNextU-Net's solver matches (128 × 32, 192 × 48, none) in the text.
+  * WP9 (`rbbench.uq_analysis` `predicted_std`, `reliability`, `window_coverage`; five new tables in
+    `scripts/uq_findings.py`; `fig_uq_reliability`, `tab:uqcond`):
+    * Reliability: the ensemble's predicted std spans ~50× in error, too wide in calm regions and too narrow along
+      rollouts.
+    * Coverage per window and by Ra: with constant width a fifth of the windows are covered below 0.8, and coverage
+      runs from 0.99 at Ra 1e6 to 0.76 at 1e10; spread scaling brings that to 1–4% and 0.93 → 0.84.
+    * CRPS per field: 24–29% below the point forecast one step ahead.
+    * Variance parts: 85–95% aleatoric at every Ra.
+  * Professors' answer 5: the mid-project Table 9 (`tab:headline`) is in the final report's Methods, with the
+    per-trajectory split at both fractions.
+  * Report: 30 pages, no overfull lines. 211 tests pass, smoke passes. Gate E's rerun-hash check is still open.

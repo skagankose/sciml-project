@@ -38,7 +38,7 @@ analysis items missing; they were completed on the Mac from existing outputs (`d
 the error aligned at each trajectory's onset (WP4), predicted-against-true Nu with the one-hour values and the
 truth's spread (WP5), the released CNextU-Net's solver matches in the report (WP6), reliability, coverage per window
 and by Ra, CRPS per field and the variance parts by regime (WP9), and the mid-project Table 9 carried into the final
-report with the per-trajectory split (professors' answer 5). The final report draft is `reports/final.tex`.
+report with the per-trajectory split (professors' answer 5). The final report is `reports/final_acl.tex` (two columns, ACL style; the one-column draft `reports/final.tex` moved to `reports/deprecated/` on 2026-11-24).
 
 * **Not done, by decision:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM (dropped); a
   solver rerun with the data's time step (owner chose option (a), D25); correlation is reported in an appendix (owner, 2026-11-23; D27).

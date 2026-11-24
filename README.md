@@ -6,7 +6,8 @@ are CNextU-Net (convolutional), TFNO (spectral) and AViT (attention), all traine
 implementations on its `rayleigh_benard` dataset (512 × 128, four fields).
 
 It is a graduate project for an ML-for-Science class (final report due 2026-12-11). The report is
-`reports/final.tex` / `reports/final.pdf`; every number in it is recorded, with its source, in
+`reports/final_acl.tex` / `reports/final_acl.pdf` (two columns, ACL conference style; the earlier one-column
+version is in `reports/deprecated/`); every number in it is recorded, with its source, in
 `docs/report_notes.md`.
 
 ## The study
@@ -90,7 +91,8 @@ The `smoke` command runs the real pipeline end to end on tiny models:
    ```
 
    `bash reports/sync_figures.sh` runs the last two, plus the mid-project figures.
-5. **Report:** `cd reports && tectonic --keep-logs final.tex`.
+5. **Report:** `cd reports && tectonic --keep-logs final_acl.tex` (`acl.sty`, `acl_natbib.bst` and
+   `final_acl.bib` are in `reports/`, and tectonic runs BibTeX).
 
 ## Commands
 
@@ -134,7 +136,8 @@ tests/     models, data layout, subsets, normalisation, rollout, VRMSE, physics,
 tasks/     frozen manifests (generated on HPC3 from the real data, then committed)
 docs/      report_notes (every result), final_plan, decisions, methodology, architectures, upstream audit,
            results schema, abstract alignment
-reports/   final.tex / final.pdf, the mid-project report and the abstract; figures/ (final/ for the final report)
+reports/   final_acl.tex / final_acl.pdf (final report, two columns, ACL style), the mid-project report and the
+           abstract; figures/ (final/ for the final report); deprecated/ (the one-column final report)
 ```
 
 Project status, the gates between phases and the full progress log are in `AGENTS.md`; design decisions in

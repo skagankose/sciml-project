@@ -27,3 +27,5 @@ reports/*.aux
 reports/*.out
 reports/*.toc
 reports/*.synctex.gz
+reports/*.blg
+reports/*.bbl

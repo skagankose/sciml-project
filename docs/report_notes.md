@@ -745,27 +745,24 @@ its evaluation is pulled.
 
 ## 7. Open items
 
-* Evaluate rows 1, 4, 5, 8, 9 (row 0 and persistence done 2026-11-11; the five were submitted 2026-11-11),
-  then `rbbench aggregate` for the tables (`paper_protocol.csv`, mean ± std over seeds) and add them to
-  section 3.
-* Rerun the `sacct` command (section 4) at the end of each phase so the billed totals stay current; the
-  findings script rebuilds the tables from it.
-* Decided by the owner (2026-11-11): all three failure thresholds (1, 2, 5) are reported (D16); the 1 h results
-  are reported as the 4 h run's checkpoint after 1 h (learning rate still 0.85e-3; dedicated 1 h runs only if
-  they do not make sense next to the 4 h results, not now; D6); one-step results are split into onset
-  (frames < 50) and developed convection (D26).
-* End of the project (not mid-project): the numerical-solver baseline (section 8): build `rb-dedalus`, pass the
-  self-test, run the rollouts at three resolutions, then `eval-solver`.
-* Candidate baselines that need no GPU training, named in the mid-project report (owner, 2026-11-12), not yet
-  implemented: linear extrapolation in time (2 y_t - y_{t-1}), climatology (the regime's mean training state, a
-  vertical profile per field) and dynamic mode decomposition (Schmid 2010). Note for interpretation: a field held
-  constant at the target's spatial mean scores VRMSE = sqrt((N-1)/N) ~ 1, so threshold 1 is the "mean only" level.
+**Status 2026-11-23: none open.** The mid-project items below were closed as follows; the remaining choices for the
+final report (what moves to appendices, whether correlation is reported) are the owner's, not open work.
+
+* Evaluations of rows 1, 4, 5, 8, 9 and `aggregate`: done 2026-11-11 (section 3); all 24 core evaluations done
+  2026-11-22 (section 10).
+* `sacct`: final pull 2026-11-23, 146.4 GPU-hours and 5,111 SU for the project (section 15).
+* Failure thresholds, 1 h checkpoints, onset split: decided 2026-11-11 (D16, D6, D26); the onset split became
+  per trajectory (D28, D29; section 9).
+* Numerical-solver baseline: done in its bounded design (D28, D29; sections 8 and 13).
+* Candidate baselines without GPU training (linear extrapolation, climatology, DMD): dropped by the owner on
+  2026-11-14, when the mid-project question became solver-only; the professors then asked for the bounded solver
+  baseline (D28). Note kept for interpretation: a field held constant at
+  the target's spatial mean scores VRMSE = sqrt((N-1)/N) ~ 1, so threshold 1 is the "mean only" level.
 * Dataset size: 367 GB in decimal units (train 293.6, valid 36.7, test 36.7 GB; 10% subset ~29 GB). The dataset
   card's "342 GB" is 341.8 GiB. The report gives both.
-* The revised plan for milestone 3 is not written yet (points so far in `docs/checkin_2026-11-12.md`
-  section 3).
-* The 100% runs need separate owner approval. At 40 SU/h they pay for the same data waits, likely more
-  (the full training set cannot stay in a node's page cache), unless the data moves to node-local disk.
+* Revised plan: written in the check-in report and, after the professors' answers, in `docs/final_plan.md`.
+* 100% runs: approved and run on the paid partition with node-local data (sections 10 and 11).
+* Gate E rerun-hash check: passed 2026-11-23 (`tests/test_committed_subsets.py`).
 
 ## 8. Numerical-solver baseline (extension, owner request 2026-11-11; D25; end of the project)
 

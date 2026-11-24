@@ -42,7 +42,7 @@ report with the per-trajectory split (professors' answer 5). The final report dr
 
 * **Not done, by decision:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM (dropped); a
   solver rerun with the data's time step (owner chose option (a), D25); correlation is computed but not reported.
-* **Open formality:** Gate E's rerun-hash check of the subset manifests (`AGENTS.md`).
+* **Gate E** (rerun-hash check of the subset manifests): passed 2026-11-23 (`tests/test_committed_subsets.py`).
 
 ## 4. Work packages
 

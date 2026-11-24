@@ -167,7 +167,8 @@ only where it beats persistence; it is hard to beat where the flow changes slowl
 released \emph{CNextU-Net}, trained on all the training data for 12 hours on an H100, shows what this architecture
 reaches with a longer schedule; it is a reference point, not a baseline to beat, and it also validated our pipeline
 (Section~\ref{sec:m1}). The released TFNO is not used as a reference, since it was trained without its Fourier
-layers (Appendix~\ref{app:tfno}). (c) A \emph{numerical solver} (Dedalus~\cite{burns2020dedalus}) restarted from the
+layers (Appendix~\ref{app:tfno}); as agreed after the mid-project review, we did not retrain a full-length TFNO, so our
+100\% four-hour TFNO is the only full-data TFNO with working Fourier layers in this study. (c) A \emph{numerical solver} (Dedalus~\cite{burns2020dedalus}) restarted from the
 last input frame on coarser grids, as a check against weak baselines~\cite{mcgreivy2024weak}
 (Section~\ref{sec:solver}).
 
@@ -872,7 +873,9 @@ ensemble-mean VRMSE is 0.0773 at one step at both fractions.}
 ensemble mean is as accurate as two MSE runs averaged, and its forecast distribution is 26--32\% better in CRPS than the
 absolute error of an MSE point forecast at every horizon, and on every field (one step in developed convection 24--29\%,
 least for pressure; during onset 16--21\%; at step 30 28--40\%, most for buoyancy). One step ahead its intervals are slightly too wide (96\% of
-points inside the 90\% interval, spread-skill 1.13). Along a rollout they become too narrow (73\% by step 10): the
+points inside the 90\% interval, spread-skill 1.13; the PIT histogram is hump-shaped, with 4\% of the values in its
+outer 5\% tails on either side together, against 10\% for a calibrated forecast). Along a rollout they become too
+narrow (73\% by step 10, and a U-shaped PIT histogram with 29--30\% in those tails): the
 predicted variance shrinks on the model's own smoother inputs, while the members drift apart, so the epistemic part
 grows thirtyfold and dominates from step 4. The ensemble predicts each step's uncertainty but does not propagate it.
 After one hour the 10\% and 100\% ensembles agree to 1--3\% on every measure, so more data does not shrink their

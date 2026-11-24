@@ -841,3 +841,7 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   * CNextU-Net stays above r = 0.8 through step 30. AViT drops below 0.8 at step 14–15 and ends below persistence.
   * In onset the models get the velocity pattern wrong from step 1.
   * One main-text pointer each in Rollouts and Additional measures. Report 31 pages; appendices now A–G.
+* 2026-11-23: final check against the plan and the professors' answers. Two report gaps were closed: the PIT result is
+  now stated in Section 8 (hump-shaped one step ahead, 4% in the outer 5% tails; U-shaped by step 10, 29–30%), and
+  Section 1 now says no full-length TFNO was retrained (professors' answer 3). Every planned item and every answer is
+  in `reports/final.tex` (31 pages).

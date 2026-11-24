@@ -734,6 +734,42 @@ def uq_reliability(rel: pd.DataFrame, cov_ra: pd.DataFrame, out: Path) -> list[s
     return rf.save(fig, out, "fig_uq_reliability")
 
 
+def correlation(corr: pd.DataFrame, out: Path) -> list[str]:
+    """Spatial correlation between prediction and truth (field mean) along rollouts, four-hour checkpoints: (a) from
+    frames 80 and 140, (b) from frame 20 (onset). Seed mean; the high-correlation thresholds 0.8 / 0.9 / 0.95 (D27)."""
+    if corr.empty:
+        return []
+    corr = corr.assign(fraction=corr.fraction.map(lambda x: x if pd.isna(x) else _frac(x)))
+    fig, axes = plt.subplots(1, 2, figsize=(FULL, 2.4), sharey=True)
+    drawn = []
+    for ax, (group, title) in zip(axes, (("developed", "(a) From frames 80 and 140 (developed)"),
+                                         ("onset", "(b) From frame 20 (onset)"))):
+        for thr in (0.8, 0.9, 0.95):
+            ax.axhline(thr, color=MUTED, lw=0.6, ls="-", alpha=0.6)
+        g = corr[corr.starts == group]
+        for (family, frac), gg in g.groupby(["family", "fraction"], dropna=False):
+            curve = gg.groupby("step").corr_mean.mean()
+            if family == "persistence":
+                ax.plot(curve.index, curve.values, **PERSIST_LINE)
+                continue
+            if family not in drawn:
+                drawn.append(family)
+            ax.plot(curve.index, curve.values, color=STYLE[family]["color"], ls=FRAC_LS[frac],
+                    lw=1.3 if frac == 1.0 else 1.1, marker=STYLE[family]["marker"], ms=2.8, markevery=5,
+                    mfc=STYLE[family]["color"] if frac == 1.0 else "white")
+        ax.set_xlim(0.5, 30.5)
+        ax.set_xlabel("Rollout step")
+        ax.set_title(title)
+    axes[0].set_ylim(0.3, 1.01)
+    axes[0].set_ylabel("Correlation with the truth\n(field mean)")
+    for thr in (0.8, 0.9, 0.95):
+        axes[1].text(30.3, thr, f"{thr:g}", ha="right", va="bottom", fontsize=6.5, color=MUTED)
+    legend(fig, model_handles([m for m in MODEL_NAMES if m in drawn]) + fraction_handles()
+           + [Line2D([], [], label="persistence", **PERSIST_LINE)])
+    fig.tight_layout()
+    return rf.save(fig, out, "fig_correlation")
+
+
 # --- 8. input-noise robustness ------------------------------------------------------------------------------------
 
 def noise(noise_t: pd.DataFrame, out: Path) -> list[str]:
@@ -881,9 +917,10 @@ def main() -> int:
     comp, match = csv(find / "solver_comparison.csv"), csv(find / "solver_matching.csv")
     summ, shifts, noise_t = (csv(find / "uq" / f"{n}.csv") for n in ("uq_summary", "uq_shifts", "noise_robustness"))
     rel, cov_ra = (csv(find / "uq" / f"{n}.csv") for n in ("uq_reliability", "uq_coverage_by_rayleigh"))
+    corr = csv(find / "uq" / "uq_correlation.csv")
     t_on = onset_frames()
     written = (data_scaling(fc, out) + uq(summ, shifts, out) + uq_reliability(rel, cov_ra, out) + noise(noise_t, out)
-               + nusselt(nu, out))
+               + nusselt(nu, out) + correlation(corr, out))
     if not runs.empty:
         written += (accuracy_cost(fc, runs, resource, out) + test_by_window(outputs, runs, out, t_on)
                     + onset_aligned(outputs, runs, out, t_on)

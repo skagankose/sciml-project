@@ -41,7 +41,7 @@ and by Ra, CRPS per field and the variance parts by regime (WP9), and the mid-pr
 report with the per-trajectory split (professors' answer 5). The final report draft is `reports/final.tex`.
 
 * **Not done, by decision:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM (dropped); a
-  solver rerun with the data's time step (owner chose option (a), D25); correlation is computed but not reported.
+  solver rerun with the data's time step (owner chose option (a), D25); correlation is reported in an appendix (owner, 2026-11-23; D27).
 * **Gate E** (rerun-hash check of the subset manifests): passed 2026-11-23 (`tests/test_committed_subsets.py`).
 
 ## 4. Work packages

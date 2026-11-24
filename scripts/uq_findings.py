@@ -20,6 +20,9 @@ Tables (CSV):
   uq_coverage_per_window.csv   distribution of each window's own coverage (conditional coverage), by phase
   uq_crps_fields.csv    per field: the beta-NLL ensembles' CRPS against the MSE point forecast's absolute error
   uq_variance_by_group.csv     aleatoric and epistemic variance against the squared error, by phase and Ra
+  uq_correlation.csv    spatial correlation with the truth per field along rollouts (four-hour seed pairs, both
+                        fractions, and persistence; from frames 80/140 and from 20), per member and step
+  uq_correlation_time.csv      high-correlation time: first step below 0.8 / 0.9 / 0.95 (D27)
 Figures: uq_calibration, uq_variance_parts, uq_rank_pit, uq_conformal_width, noise_robustness.
 """
 
@@ -330,6 +333,54 @@ def variance_group_table(outputs: Path, specs: list[dict], onset_test: dict) -> 
     return pd.DataFrame(rows)
 
 
+# --- 2c. pattern correlation along rollouts (D27; computed in this pass for every four-hour run) ------------------
+
+CORR_GROUPS = (("developed", (80, 140)), ("onset", (20,)))
+
+
+def correlation_table(outputs: Path, specs: list[dict]) -> pd.DataFrame:
+    """Per seed pair (four-hour checkpoints, both fractions) and persistence, per member, start group and rollout
+    step: the mean spatial correlation with the truth per field and its field mean, the mean VRMSE, and the share of
+    rollouts whose field-mean correlation exceeds 0.8 (clean inputs). The core evaluation computed the correlation
+    only for the 100% runs; this pass has it for every run, and its means agree with the core evaluation's within
+    0.001 where both exist."""
+    rows = []
+    for e in specs:
+        p = outputs / "uq" / e["name"] / "test" / "members.parquet"
+        if e["kind"] not in ("seed pair (4 h)", "persistence") or not p.exists():
+            continue
+        m = pd.read_parquet(p)
+        r = m[(m.kind == "rollout") & (m.sigma == 0)]
+        if "corr_mean" not in r:
+            continue
+        cols = [f"corr_{f}" for f in FIELDS] + ["corr_mean", "vrmse_mean"]
+        for group, starts in CORR_GROUPS:
+            for member, g in r[r.start.isin(starts)].groupby("member"):
+                per = g.groupby("step")[cols].mean()
+                share = g.groupby("step").corr_mean.apply(lambda c: float((c > 0.8).mean()))
+                for step, row in per.iterrows():
+                    rows.append({"ensemble": e["name"], "family": e["family"], "fraction": e["fraction"],
+                                 "member": member, "starts": group, "step": int(step), **row.to_dict(),
+                                 "share_corr_above_0.8": share[step]})
+    return pd.DataFrame(rows)
+
+
+def correlation_time_table(corr: pd.DataFrame) -> pd.DataFrame:
+    """High-correlation time (D27, `rbbench.evaluate.high_correlation_steps`): the first rollout step at which the
+    correlation averaged over the rollouts falls below 0.8, 0.9 or 0.95; NaN if it stays above through step 30."""
+    from rbbench.evaluate import high_correlation_steps
+
+    rows = []
+    for (ens, fam, frac, member, group), g in corr.groupby(["ensemble", "family", "fraction", "member", "starts"],
+                                                           dropna=False):
+        for col in ("corr_mean", "corr_buoyancy"):
+            steps = high_correlation_steps(g.set_index("step")[col].sort_index())
+            rows.append({"ensemble": ens, "family": fam, "fraction": frac, "member": member, "starts": group,
+                         "field": col.removeprefix("corr_"),
+                         **{f"below_{t}": (np.nan if v is None else v) for t, v in steps.items()}})
+    return pd.DataFrame(rows)
+
+
 # --- 3. noise robustness (WP8) and boundary layers ---------------------------------------------------------------
 
 def noise_table(outputs: Path, specs: list[dict], onset_test: dict) -> pd.DataFrame:
@@ -557,11 +608,14 @@ def main(outputs: Path | None = None, out: Path | None = None) -> list[str]:
     cov_ra, cov_win = coverage_group_tables(outputs, specs, onset_valid, onset_test)
     crps_f = crps_field_table(outputs, specs, onset_test)
     var_g = variance_group_table(outputs, specs, onset_test)
+    corr = correlation_table(outputs, specs)
+    corr_t = correlation_time_table(corr) if not corr.empty else pd.DataFrame()
     written = []
     for name, df in (("uq_summary", summ), ("uq_conformal", conf), ("uq_shifts", shifts), ("uq_rank_pit", rp),
                      ("noise_robustness", noise), ("uq_yprofile", yprof), ("uq_reliability", rel),
                      ("uq_coverage_by_rayleigh", cov_ra), ("uq_coverage_per_window", cov_win),
-                     ("uq_crps_fields", crps_f), ("uq_variance_by_group", var_g)):
+                     ("uq_crps_fields", crps_f), ("uq_variance_by_group", var_g), ("uq_correlation", corr),
+                     ("uq_correlation_time", corr_t)):
         df.to_csv(out / f"{name}.csv", index=False)
         written.append(str(out / f"{name}.csv"))
     written += figures(out, summ, conf, shifts, rp, noise, yprof)

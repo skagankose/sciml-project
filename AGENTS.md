@@ -830,3 +830,14 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   subset selection from the committed split manifest (no data needed). It reproduces S10, S30 and S100 exactly (ids and
   `ids_sha256`), checks nesting, 4/12/40 per regime and no overlap with valid/test, and that all 41 task-manifest rows
   point at the committed subset files by hash. Gates R (dropped, D29), H, I and J updated.
+* 2026-11-23: README rewritten for the final state (study as run, findings, reproduction steps, commands, layout).
+  Consistency pass of `reports/final.tex`: every table recomputed from `outputs/` matches. Conclusion and title-page
+  finding 2 corrected where they overclaimed. The seed pairs' width cost of spread-scaled conformal intervals
+  (1.4–2.5×) was added. 30 pages, no overfull lines or undefined references (`docs/report_notes.md` section 15).
+* 2026-11-23: correlation (D27) reported in a new Appendix D of `reports/final.tex` (owner). It covers both fractions at
+  4 h and persistence, from the uncertainty pass; no GPU time. `scripts/uq_findings.py` writes
+  `uq_correlation{,_time}.csv` and `final_figures.correlation` draws `fig_correlation`.
+  * Same ranking as VRMSE, since every model keeps about the true variance (VRMSE² ≈ 2(1 − r)).
+  * CNextU-Net stays above r = 0.8 through step 30. AViT drops below 0.8 at step 14–15 and ends below persistence.
+  * In onset the models get the velocity pattern wrong from step 1.
+  * One main-text pointer each in Rollouts and Additional measures. Report 31 pages; appendices now A–G.

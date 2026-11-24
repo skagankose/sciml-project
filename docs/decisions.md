@@ -530,6 +530,11 @@ a chaotic flow pointwise error eventually measures the chaos rather than the mod
   realistic flow with displaced plumes lands; thresholds 2 and 5 mark a breakdown. Persistence's 30-step VRMSE
   from developed flow (0.86 / 0.54 from frames 80 / 140) corresponds to r of roughly 0.6–0.85, so over 30 steps
   the flow has not fully decorrelated.
+* *Reported (owner, 2026-11-23):* in an appendix of the final report ("Pattern Correlation Along Rollouts"). The
+  source is the uncertainty evaluation pass (`eval-uq`, D30), which ran every four-hour checkpoint of both fractions
+  and persistence on the same cohort. Its means agree with the core evaluation's within 0.001 for the 100% runs.
+  The 10% core evaluations were not re-run, and the released CNextU-Net has no correlation. Tables:
+  `outputs/findings/uq/uq_correlation{,_time}.csv` (`scripts/uq_findings.py`); figure `fig_correlation`.
 
 **D28 — Feedback on the mid-project report (professors, received 2026-11-21).** Answers to the report's five
 questions (Section 6). The work they create is planned in `docs/final_plan.md`. Its design details (WP4, WP6)

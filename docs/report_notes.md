@@ -1628,12 +1628,27 @@ only; fp32 for all (bf16 would speed up CNextU-Net 1.7× and AViT 2.2×); learni
 * Sections: 1 Data and methods (onset per trajectory); 2 pipeline check; 3 training setup and budgets; 4 accuracy
   (training, one step, data scaling, rollouts, field-wise, spectra, snapshots, Rayleigh number, heat transport);
   5 accuracy against cost (with billed compute); 6 numerical solver; 7 input noise; 8 uncertainty; 9 findings ("which
-  model when", negative results, limitations); 10 conclusion. Appendices A–F: physical system, released TFNO, metric
-  details, recipe (with reproducibility), resource accounting, issues.
+  model when", negative results, limitations); 10 conclusion. Appendices A–G: physical system, released TFNO, metric
+  details, pattern correlation (added 2026-11-23), recipe (with reproducibility), resource accounting, issues.
 * Every number comes from sections 11–15 or from `outputs/` (checked while drafting); new references (deep
   ensembles, β-NLL, conformal prediction, CRPS, rank histograms) checked online.
 * Compiles with `tectonic --keep-logs final.tex` in `reports/`: 27 pages, no undefined references, one 0.6 pt overfull
   line. After the plan audit (section 16): 30 pages, no overfull lines.
+* Consistency pass (2026-11-23, after section 16):
+  * Every table recomputed from `outputs/`; all match:
+    * one step, rollouts and field-wise (from `fraction_comparison.csv` and the evaluations);
+    * Nusselt, solver, noise, the β-NLL ensemble and conformal widths (from their CSVs).
+  * Text corrected where it claimed more than the results:
+    * conclusion: TFNO is "fastest for single forecasts" (not "fastest to run") and "closest in heat transport"
+      (not "the right heat transport");
+    * conclusion: persistence wins only in "the nearly still first part of onset";
+    * conclusion: the solver break-even is given as about 6,000 to 86,000 forecasts;
+    * title-page finding 2: CNextU-Net is best "in developed convection" (over all windows AViT is lower).
+  * Added: the width cost of spread-scaled conformal intervals for seed pairs, 1.4–1.6× the constant width one
+    step ahead and 2.1–2.5× at step 30 (CNextU-Net 0.168 vs 0.112; 3.6 vs 1.7). The β-NLL predictive scale has no
+    such cost (30% narrower than the MSE model's constant width). Added in Section 8 and the choice table.
+  * README rewritten for the final state: the study as run, main findings, and how to reproduce from the HPC3 runbook
+    to the compiled report.
 
 
 ## 16. Plan audit: the remaining WP4, WP5, WP6 and WP9 items (2026-11-23; no GPU time)
@@ -1736,3 +1751,39 @@ done, and these smaller analysis items missing; all are computed on the Mac from
   most of both without retraining.
 * The ensemble's predicted std is informative (deciles span ~50× in error) but mis-scaled: too wide in calm regions,
   too narrow along rollouts.
+
+### Pattern correlation (D27; owner 2026-11-23: in an appendix of the final report)
+
+Source: the uncertainty evaluation pass (`outputs/uq/<ensemble>/test/members.parquet`), every four-hour checkpoint of
+both fractions and persistence, clean inputs, the 525 cohort rollouts. Tables `uq_correlation.csv` (per member,
+start group, step) and `uq_correlation_time.csv` (D27 high-correlation time), figure `fig_correlation`, report
+Appendix D (`tab:corr`).
+
+* Agreement with the core evaluation (100% runs, which computed it with `CORRELATION=1`): the step means of correlation
+  and VRMSE from frames 80/140 agree within 0.001. Single rollouts differ, by up to 0.17 in VRMSE: different batching
+  gives floating-point differences that chaotic rollouts amplify.
+* Developed flow (from 80, 140), seed mean, field-mean r at steps 1 / 10 / 30 and first step below 0.95 / 0.9 / 0.8:
+
+  | Model | Data | r at steps 1 / 10 / 30 | First step below 0.95 / 0.9 / 0.8 |
+  |---|---|---|---|
+  | CNextU-Net | 10% | 0.997 / 0.966 / 0.866 | 13 / 22–23 / >30 |
+  | CNextU-Net | 100% | 0.997 / 0.969 / 0.871 | 14 / 24 / >30 |
+  | TFNO | 10% | 0.990 / 0.946 / 0.838 | 10 / 18 / >30 |
+  | TFNO | 100% | 0.990 / 0.949 / 0.846 | 10 / 19 / >30 |
+  | AViT | 10% | 0.994 / 0.861 / 0.686 | 5 / 8 / 15 |
+  | AViT | 100% | 0.996 / 0.857 / 0.656 | 5 / 8 / 14 |
+  | Persistence | – | 0.962 / 0.769 / 0.701 | 2 / 3 / 8 |
+
+  * At step 30, buoyancy r is 0.92 / 0.92 / 0.89 / 0.90 / 0.88 / 0.87, persistence 0.86.
+  * Horizontal velocity r is 0.80 / 0.80 / 0.76 / 0.77 / 0.43 / 0.38, persistence 0.52.
+  * Share of rollouts with r > 0.8 at step 30: 77 / 77 / 66 / 70 / 18 / 12%, persistence 29%.
+* The same ranking as VRMSE. Every model keeps about the true variance: per rollout and field, the median of
+  VRMSE² / (2(1 − r)) is 0.97–1.05 at steps 1, 10 and 30 (AViT's horizontal velocity 0.86–0.89 at step 30). So the two
+  measures carry nearly the same information, and the double penalty favours no family. Inferring an amplitude
+  ratio from VRMSE and r is ambiguous (two roots) and was not used.
+* Onset (from frame 20):
+  * field-mean r at step 1 is 0.78–0.83 for the models, against 0.98 for persistence;
+  * buoyancy and pressure ≥ 0.998, but horizontal velocity 0.45–0.60 and vertical 0.65–0.74 (persistence 0.97);
+  * the models get the pattern of the first motion wrong, not only its scale;
+  * at step 30, CNextU-Net 0.61 = persistence 0.61, TFNO 0.48–0.49, AViT 0.41.
+* More data changes r at step 30 by at most 0.03 (AViT −0.03).

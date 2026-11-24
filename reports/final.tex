@@ -75,7 +75,7 @@ a numerical solver, noisy inputs, and how far its forecasts can be trusted.
 \textbf{Main findings.}
 \begin{enumerate}\setlength{\itemsep}{0pt}\setlength{\parskip}{1pt}
     \item \textbf{The pipeline is validated:} released checkpoints reproduce the paper's test VRMSE (0.2\%, 1.0\%).
-    \item \textbf{CNextU-Net is the best after four hours} at both data fractions, one step ahead and over rollouts.
+    \item \textbf{CNextU-Net is the best after four hours} in developed convection, one step ahead and over rollouts.
     \item \textbf{Ten times more data helps little} ($-3$\% to $-16.5$\%); four hours instead of one helps more.
     \item \textbf{The ranking depends on the measure:} persistence wins in onset, TFNO on heat transport.
     \item \textbf{A coarse solver matches CNextU-Net at $\mathrm{Ra}\le10^8$;} training pays off after 6,200+ forecasts.
@@ -227,7 +227,8 @@ says less about the spatial pattern than that mean alone. We report the fraction
 trajectories $\times$ 3 starts) that stay below each threshold through step 30, and for threshold 1 its value at every
 step (Kaplan--Meier survival). (b) The kinetic-energy spectrum along $x$, to see at which scales the error lies.
 (c) The heat transport (Nusselt number), averaged over each 30-step rollout and compared with the truth per Rayleigh
-number. (d) Inference time and memory. Input-noise robustness and uncertainty have their own sections
+number. (d) Inference time and memory. (e) Pattern correlation along rollouts
+(Appendix~\ref{app:correlation}). Input-noise robustness and uncertainty have their own sections
 (\ref{sec:noise} and \ref{sec:uq}); definitions are in Appendix~\ref{app:metrics}.
 
 \section{Pipeline Validated Against the Released Checkpoints}
@@ -416,7 +417,8 @@ its mean error crosses persistence's after 21--25 steps, and only 61--63\% of it
 lies in between. After one hour the ranking depends on the data: at 10\% TFNO is the most stable (60\% of rollouts
 below VRMSE 1, against 34\%), at 100\% TFNO is the least stable (23\%, in both seeds) and CNextU-Net and AViT reach
 50--52\%. We have no explanation for TFNO's unstable one-hour rollouts at 100\%; after four hours they match the 10\%
-runs. From frame 20, in onset, persistence beats every model.
+runs. From frame 20, in onset, persistence beats every model. Pattern correlation, which does not penalise a displaced structure twice, ranks the models
+in the same order (Appendix~\ref{app:correlation}).
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -947,6 +949,10 @@ across windows (1--4\% of windows below 80\%) and across Rayleigh numbers (0.92-
 $10^{10}$). Recalibrating on two trajectories at the highest Rayleigh number (shift c) closes most of the remaining
 gap. Along rollouts the pattern holds:
 at step 10, 11--15\% of the windows fall below 80\% coverage with constant width, at most 3\% with a spread scale.
+With seed pairs this evenness costs width: the spread-scaled intervals are on average 1.4--1.6 times as wide one step
+ahead (CNextU-Net 0.168 against 0.112) and 2.1--2.5 times as wide at step 30 (CNextU-Net 3.6 against 1.7), because a two-member
+spread is a noisy scale. The ensemble's predictive scale has no such cost: its intervals are 30\% narrower than the
+constant-width intervals of the MSE model (Table~\ref{tab:conformal}).
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -1025,7 +1031,7 @@ Noisy inputs & CNextU-Net & Error $\times1.47$ at $\sigma=0.2$, against $\times1
 100\%) \\ \addlinespace[3pt]
 Calibrated uncertainty & CNextU-Net ensemble with conformal intervals & CRPS 26--32\% below a point forecast's error;
 intervals too narrow along rollouts unless scaled by the members' spread (87--94\% at step 30), which also evens
-coverage across windows and Rayleigh numbers; five training runs \\
+coverage across windows and Rayleigh numbers (seed pairs at 1.4--2.5 times the width); five training runs \\
 \addlinespace[3pt]
 Many forecasts at $\mathrm{Ra}\le10^8$ & CNextU-Net, above a break-even & A coarse solver grid is as accurate
 (more than 100 times more accurate at $10^6$); training pays off after $\sim$86,000 ($10^6$) and $\sim$6,200 ($10^8$)
@@ -1060,10 +1066,11 @@ Under limited data and compute, the choice of architecture matters more than ten
 recipe and four hours on one A100, CNextU-Net is the most accurate and most stable forecaster of developed
 Rayleigh--B\'enard convection at both data fractions, and the most robust to noisy inputs; more data barely helps it,
 while more training time does. AViT gains most from data but its rollouts degrade fastest and it is fragile to noise;
-TFNO is the fastest to run and carries the right heat transport, but is the least accurate pointwise. None beats
-copying the last frame during onset, and at low Rayleigh numbers a coarse numerical solver matches the networks for
-the cost of tens of thousands of forecasts. A small ensemble with conformal intervals scaled by its spread gives
-error bars that stay valid along a rollout.
+TFNO is the fastest for single forecasts and comes closest in heat transport, but is the least accurate pointwise.
+None beats copying the last frame in the nearly still first part of onset. At $\mathrm{Ra}\le10^8$ a coarse numerical
+solver is as accurate as CNextU-Net, and the network's training pays off only after about 6,000 to 86,000
+forecasts. A small ensemble with conformal intervals scaled by its spread gives error bars that stay valid along a
+rollout and hold much more evenly across windows and Rayleigh numbers.
 
 \clearpage
 
@@ -1112,6 +1119,12 @@ Lippe, P., Veeling, B. S., Perdikaris, P., Turner, R. E., and Brandstetter, J.
 ``PDE-Refiner: Achieving Accurate Long Rollouts with Neural PDE Solvers.''
 NeurIPS, 2023.\\
 \url{https://arxiv.org/abs/2308.05732}
+
+\bibitem{gilleland2009verification}
+Gilleland, E., Ahijevych, D., Brown, B. G., Casati, B., and Ebert, E. E.
+``Intercomparison of Spatial Forecast Verification Methods.''
+Weather and Forecasting 24(5), 1416--1430, 2009.\\
+\url{https://doi.org/10.1175/2009WAF2222269.1}
 
 \bibitem{brandstetter2022mp}
 Brandstetter, J., Worrall, D., and Welling, M.
@@ -1320,6 +1333,68 @@ the share of its 128 sampled points and four fields inside the interval.
 \textbf{End of the onset error.} Per Rayleigh number, the first window start, counted from frame 0 or from each
 trajectory's $t_{\mathrm{on}}$, at which the mean one-step VRMSE over the regime's trajectories falls below twice its
 median in developed convection.
+
+\section{Pattern Correlation Along Rollouts}
+\label{app:correlation}
+
+\textbf{Why and how.} VRMSE is pointwise: a plume predicted slightly in the wrong place is penalised twice, where it is
+missing and where it appears (the double penalty~\cite{gilleland2009verification}), and in a chaotic flow pointwise
+error eventually measures the chaos rather than the model. The spatial correlation $r$ between prediction and truth
+(Pearson's $r$ over the grid points for each field, then the four-field mean) asks only whether the pattern is right,
+whatever its amplitude and offset. The high-correlation time is the first rollout step at which the correlation,
+averaged over the rollouts, falls below 0.95, 0.9 or 0.8. For a prediction with the true variance,
+$\mathrm{VRMSE}^2\approx2(1-r)$, so VRMSE $\approx1.41$ corresponds to $r=0$. The values come from the
+uncertainty evaluation pass (Section~\ref{sec:uq}), which ran every four-hour checkpoint on the same 525 rollouts;
+where the core evaluation also computed the correlation (the 100\% runs), the means agree within 0.001. The released
+CNextU-Net was evaluated without it.
+
+\begin{table}[!htbp]
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+& & \multicolumn{4}{c}{Rollouts from frames 80 and 140 (developed)} & From frame 20 \\
+\cmidrule(lr){3-6}\cmidrule(l){7-7}
+& & $r$ at step & $r$ at step 30: & First step & Rollouts with & $r$ at step \\
+Model (4 h) & Data & 1 / 10 / 30 & $b$ / $u$ & below 0.95 / 0.9 / 0.8 & $r>0.8$ at step 30 & 1 / 30 \\
+\midrule
+CNextU-Net & 10\% & 0.997 / 0.966 / \textbf{0.866} & 0.92 / 0.80 & 13 / 22--23 / $>$30 & \textbf{77\%} & 0.78 / 0.61 \\
+           & 100\% & 0.997 / 0.969 / \textbf{0.871} & 0.92 / 0.80 & 14 / 24 / $>$30 & \textbf{77\%} & 0.79 / 0.61 \\
+TFNO & 10\% & 0.990 / 0.946 / 0.838 & 0.89 / 0.76 & 10 / 18 / $>$30 & 66\% & 0.78 / 0.48 \\
+     & 100\% & 0.990 / 0.949 / 0.846 & 0.90 / 0.77 & 10 / 19 / $>$30 & 70\% & 0.78 / 0.49 \\
+AViT & 10\% & 0.994 / 0.861 / 0.686 & 0.88 / 0.43 & 5 / 8 / 15 & 18\% & 0.81 / 0.41 \\
+     & 100\% & 0.996 / 0.857 / 0.656 & 0.87 / 0.38 & 5 / 8 / 14 & 12\% & 0.83 / 0.41 \\
+\midrule
+Persistence & -- & 0.962 / 0.769 / 0.701 & 0.86 / 0.52 & 2 / 3 / 8 & 29\% & 0.98 / 0.61 \\
+\bottomrule
+\end{tabular}
+\caption{Spatial correlation between prediction and truth on the test rollouts (field mean unless stated; $b$:
+buoyancy, $u$: horizontal velocity), mean over the two seeds. ``First step below'': high-correlation time; $>$30: the
+mean correlation stays above the threshold through step 30. Bold: best of our models.}
+\label{tab:corr}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\figureorpending{fig_correlation.pdf}{scale=1}
+\caption{Mean correlation between prediction and truth (four-field mean) at each rollout step, four-hour models
+(seed mean; solid: 100\% data, dashed: 10\%) and persistence: (a) from frames 80 and 140, (b) from frame 20.
+Horizontal lines: the thresholds of the high-correlation time.}
+\label{fig:corr}
+\end{figure}
+
+\textbf{Results} (Table~\ref{tab:corr}, Fig.~\ref{fig:corr}). In developed flow the correlation ranks the models as
+VRMSE does. CNextU-Net keeps its mean correlation above 0.8 through step 30 (0.87) and above 0.9 until step 22--24;
+TFNO ends at 0.84--0.85 and stays above 0.9 until step 18--19. AViT falls below 0.8 at step 14--15 and ends below
+persistence (0.66--0.69 against 0.70), mostly through horizontal velocity (0.38--0.43 against 0.52); buoyancy stays
+well correlated for every model (0.87--0.92). More data changes no model's correlation by more than 0.03. The ranking
+does not change because every model keeps about the true variance: per rollout and field, $\mathrm{VRMSE}^2$ is
+within a few percent of $2(1-r)$ (median ratio 0.97--1.05 at steps 1, 10 and 30; AViT's horizontal velocity 0.86--0.89
+at step 30), so the two measures carry nearly the same information and the double penalty favours no family here.
+During onset the models' correlation is only 0.78--0.83 already at step 1, against 0.98 for persistence: buoyancy and
+pressure correlate at 0.998 or more, but the faint velocity field only at 0.45--0.74. The models get the pattern of the
+first motion wrong, not only its scale, which confirms that their onset deficit is a velocity effect. After 30 steps
+from onset CNextU-Net ties persistence (0.61), while TFNO and AViT fall to 0.41--0.49.
 
 \section{Detailed Training Recipe}
 \label{app:recipe}

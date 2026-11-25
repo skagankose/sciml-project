@@ -50,7 +50,11 @@ def fraction_text(evals: pd.DataFrame) -> str:
     return (" / ".join(f"{f:.0%}" for f in fr) + " data") if fr else "data"
 
 
-def evaluated_runs(runs: pd.DataFrame, outputs: Path, manifest: str = "train",
+# The study's evaluated configurations: the 12 core runs and the corrected AViT's four (D32, same recipe and budgets).
+CORE_MANIFESTS = ("train", "train_avit_fixed")
+
+
+def evaluated_runs(runs: pd.DataFrame, outputs: Path, manifest: str | tuple[str, ...] = CORE_MANIFESTS,
                    fraction: float | None = None) -> pd.DataFrame:
     """One row per (run, checkpoint label) with an evaluation on disk; only runs at `fraction` when given.
 
@@ -58,7 +62,7 @@ def evaluated_runs(runs: pd.DataFrame, outputs: Path, manifest: str = "train",
     with the 100% runs evaluated, an unfiltered call mixes 10% and 100% runs into one seed mean.
     """
     rows = []
-    sel = runs[runs.manifest == manifest]
+    sel = runs[runs.manifest.isin([manifest] if isinstance(manifest, str) else list(manifest))]
     if fraction is not None:
         sel = sel[sel.fraction.round(3) == round(fraction, 3)]
     for _, r in sel.iterrows():
@@ -1034,7 +1038,8 @@ def _tres(alloc: str) -> dict:
     return out
 
 
-TRAINING_PURPOSES = ["learning-rate search", "10% runs", "100% runs", "dedicated 1 h runs", "UQ ensemble training"]
+TRAINING_PURPOSES = ["learning-rate search", "10% runs", "100% runs", "dedicated 1 h runs", "UQ ensemble training",
+                     "AViT (fixed) runs"]
 
 
 def training_purpose(manifest: str, fraction: float) -> str:
@@ -1042,7 +1047,8 @@ def training_purpose(manifest: str, fraction: float) -> str:
     if manifest == "train":
         return f"{round(float(fraction) * 100)}% runs"
     return {"lr_search": "learning-rate search", "train_1h": "dedicated 1 h runs",
-            "train_1h_f100": "dedicated 1 h runs", "uq": "UQ ensemble training"}.get(manifest, "training (other)")
+            "train_1h_f100": "dedicated 1 h runs", "uq": "UQ ensemble training",
+            "train_avit_fixed": "AViT (fixed) runs"}.get(manifest, "training (other)")
 
 
 def sacct_table(path: Path, attempts: pd.DataFrame, runs: pd.DataFrame) -> pd.DataFrame:
@@ -1106,7 +1112,7 @@ def compute_timeline_figure(jobs: pd.DataFrame, stem: Path) -> list[str]:
     from matplotlib.patches import Patch
 
     colors = {"learning-rate search": "#1baf7a", "10% runs": "#2a78d6", "100% runs": "#0b3f8a",
-              "dedicated 1 h runs": "#7fb2ea", "UQ ensemble training": "#c2185b", "UQ evaluation": "#f48fb1",
+              "dedicated 1 h runs": "#7fb2ea", "UQ ensemble training": "#c2185b", "AViT (fixed) runs": "#7d4fd6", "UQ evaluation": "#f48fb1",
               "numerical solver": "#5d4037", "flow snapshots": "#9e9d24", "evaluation": "#eda100",
               "pipeline check": "#eb6834", "profiling": "#8a6fd1", "environment": MUTED,
               "first replication try (stopped, I/O-bound; D23)": "#a8a7a2", "other training": "#a8a7a2"}

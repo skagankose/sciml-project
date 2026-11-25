@@ -29,6 +29,7 @@ Figures: uq_calibration, uq_variance_parts, uq_rank_pit, uq_conformal_width, noi
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -53,8 +54,8 @@ def ensembles() -> list[dict]:
     for i, e in enumerate(specs):
         e["index"] = i
         e["n_members"] = len(e["members"])
-        e["family"] = ("persistence" if e["name"] == "persistence" else e["name"].split("_f")[0])
-        e["fraction"] = (np.nan if e["name"] == "persistence" else int(e["name"].split("_f")[1][:3]) / 100)
+        e["family"] = ("persistence" if e["name"] == "persistence" else re.split(r"_f\d{3}_", e["name"])[0])
+        e["fraction"] = (np.nan if e["name"] == "persistence" else int(re.search(r"_f(\d{3})_", e["name"]).group(1)) / 100)
         e["kind"] = ("beta-NLL ensemble" if "betanll" in e["name"] else "MSE 1 h pair" if e["name"].endswith("_mse")
                      else "persistence" if e["name"] == "persistence" else "seed pair (4 h)")
     return specs

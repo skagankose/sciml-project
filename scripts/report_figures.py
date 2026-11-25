@@ -455,7 +455,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
         a.loglog(spec.index, spec.values, color=STYLE[name]["color"], ls=ls, lw=1.2)
     a.set_title(f"(a) step {last}, Ra = 1e{int(np.log10(ra))}, Pr = {pr:g}")
     a.set_ylabel(r"$E(k_x)$")
-    for ax, step, tag in ((b, 1, "(b)"), (c, last, "(c)")):
+    for ax, step, panel in ((b, 1, "(b)"), (c, last, "(c)")):
         for name, ts in sources.items():
             ls = ":" if name == "persistence" else "-"
             rs = [log_ratio(t, step) for t in ts]
@@ -467,7 +467,7 @@ def spectra(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", reg
         ax.axhline(1, color=INK, lw=0.8)
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_title(f"{tag} predicted / true, step {step}")
+        ax.set_title(f"{panel} predicted / true, step {step}")
         ax.set_ylim(0.05, 5e3)
     c.sharey(b)
     c.tick_params(labelleft=True)          # same scale as (b), but labelled: the gap between panels hides the link
@@ -656,6 +656,8 @@ def main() -> int:
     outputs, out = REPO / "outputs", REPO / "reports" / "figures"
     runs_csv = outputs / "findings" / "runs.csv"
     runs = pd.read_csv(runs_csv) if runs_csv.exists() else pd.DataFrame()
+    if not runs.empty:  # the mid-project figures: the 12 core runs only, not the corrected AViT (D32)
+        runs = runs[runs.manifest != "train_avit_fixed"]
     written = released_by_window(outputs, out) + loader(outputs, out) + system(outputs, out)
     if not runs.empty:
         written += (training(outputs, runs, out) + test_by_window(outputs, runs, out) + rollouts(outputs, runs, out)

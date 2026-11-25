@@ -630,5 +630,12 @@ pending approval).** Full design in `docs/final_plan.md` WP9.
   seeds 0, 1; 4 h; 1 h checkpoint), the test evaluation, the seed pairs' noise and uncertainty evaluation
   (`tasks/uq_ensembles.json` entries 11, 12) and the flow snapshots. Paid partition, class account (D31); approved
   by the owner at an estimate of ~26 GPU-hours, ~1,000–1,100 SU.
-* *Upstream:* the owner reports the bug as a GitHub issue on PolymathicAI/the_well (draft:
-  `docs/upstream_issue_avit_axial.md`).
+* *Upstream:* the owner reported the bug on GitHub, PolymathicAI/the_well issue #111 (2026-11-24; draft:
+  `docs/upstream_issue_avit_axial.md`). The final report describes it in Appendix C and cites the issue.
+* *Outcome (2026-11-25):* all four runs and their evaluations completed (array 60009171 after three launch
+  failures of 59995682). With the fix AViT is the best model at both fractions and budgets (4 h developed one-step
+  0.0447 / 0.0425 against CNextU-Net 0.0505 / 0.0489; 92–96% of rollouts below VRMSE 1; Nusselt median error 5–7%).
+  Owner (2026-11-25): the corrected AViT is the report's AViT in the main text, tables and figures; AViT as released
+  moves to Appendix C (`tab:avitfix`, `fig_avit_fix`). `findings_figures.CORE_MANIFESTS` adds
+  `train_avit_fixed` to every core evaluation; `final_figures.main_runs` / `use_main_style` draw it as "AViT".
+  Cost 26.1 GPU-hours, 1,045 SU.

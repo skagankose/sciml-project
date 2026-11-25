@@ -15,6 +15,9 @@ version is in `reports/deprecated/`); every number in it is recorded, with its s
 * **Core study:** 3 models × 2 data fractions (nested 10% and 100% of the training trajectories) × 2 seeds = 12 runs.
   Each trains for 4 hours of active GPU time on one A100 with one shared recipe. Each run is evaluated at its 1 h and
   4 h checkpoints, the two compute budgets.
+* **AViT corrected (D32):** The Well's 2-D AViT attends only along y (reported upstream, PolymathicAI/the_well
+  issue #111). The report's AViT is `avit_fixed` (`tasks/train_avit_fixed.jsonl`: same recipe, attention along both
+  axes); The Well's AViT as released (the AViT rows of `tasks/train.jsonl`) is compared in the report's Appendix C.
 * **Pipeline check:** The Well's released CNextU-Net and TFNO checkpoints, scored by our pipeline, reproduce the
   paper's test VRMSE (0.6688 and 0.6634 against 0.6699 and 0.6566).
 * **References:** persistence (the last input frame), the released CNextU-Net, and a numerical solver (Dedalus)
@@ -26,16 +29,19 @@ version is in `reports/deprecated/`); every number in it is recorded, with its s
   β-NLL deep ensemble, seed pairs, split conformal intervals).
 * **Not run:** a third seed, a 30% fraction and the ConvLSTM family (implemented and tested, but dropped for lack of
   compute); a 24-hour replication and a full-length TFNO.
-* **Compute used:** 146.4 GPU-hours (128.0 on the paid partition), 5,111 service units for the whole project, from
-  Slurm accounting.
+* **Compute used:** 172.5 GPU-hours (154.1 on the paid partition), 6,156 service units for the whole project, from
+  Slurm accounting; 26.1 GPU-hours (1,045 SU) of it for the corrected AViT.
 
 Main findings (details and caveats in the report):
 
-* After four hours CNextU-Net is the most accurate and stable forecaster of developed convection at both fractions.
-* Ten times more data helps little at these budgets (−2.8% to −16.5% one-step error in developed convection); four hours instead of one helps
-  more.
-* The ranking depends on the measure: persistence wins during onset, TFNO on heat transport.
-* A coarse solver grid matches CNextU-Net at Ra ≤ 1e8; training pays off only after thousands of forecasts.
+* With its attention corrected, AViT is the most accurate and stable forecaster at both fractions and both budgets,
+  and the closest in heat transport (median Nusselt error 5–7%); CNextU-Net is second and the most robust to noisy
+  inputs. The Well's AViT as released was the least stable model.
+* Ten times more data helps little at these budgets (−2.8% to −4.9% one-step error in developed convection); four
+  hours instead of one helps more (up to −35%).
+* Persistence still wins during onset.
+* A coarse solver grid matches CNextU-Net at Ra ≤ 1e8, but matching AViT at Ra = 1e8 takes the full grid; training
+  pays off after about 1,500 to 86,000 forecasts.
 * Conformal intervals scaled by an ensemble's spread stay calibrated along 30-step rollouts, and their coverage is
   much more even across windows and Rayleigh numbers than that of constant-width intervals.
 
@@ -84,7 +90,8 @@ The `smoke` command runs the real pipeline end to end on tiny models:
 4. **Tables and figures (Mac, no data, no GPU):**
 
    ```bash
-   python -m rbbench aggregate --tables outputs/tables --figures outputs/figures   # accuracy and resource tables
+   python -m rbbench aggregate --tasks tasks/train.jsonl tasks/train_avit_fixed.jsonl \
+       --tables outputs/tables --figures outputs/figures                           # accuracy and resource tables
    python scripts/findings.py          # outputs/findings/ and outputs/findings/uq/: comparison, Nusselt, solver,
                                        # uncertainty, noise and cost tables, exploratory figures
    python scripts/final_figures.py     # reports/figures/final/fig_*.pdf at printed size

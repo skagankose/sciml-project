@@ -28,6 +28,7 @@ for arg in "$@"; do
 done
 if [ "$PULL_OUTPUTS" -eq 1 ]; then
     mkdir -p outputs
-    rsync -rlt "${SKIP[@]}" ${CKPT[@]+"${CKPT[@]}"} "hpc3-xfer:$SRC/outputs/" outputs/
+    # --update: never replace a newer local file (e.g. a fresh sacct export) with an older HPC3 copy
+    rsync -rlt --update "${SKIP[@]}" ${CKPT[@]+"${CKPT[@]}"} "hpc3-xfer:$SRC/outputs/" outputs/
     echo "pulled outputs from hpc3:$SRC"
 fi

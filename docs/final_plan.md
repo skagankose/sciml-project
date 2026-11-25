@@ -40,6 +40,7 @@ truth's spread (WP5), the released CNextU-Net's solver matches in the report (WP
 and by Ra, CRPS per field and the variance parts by regime (WP9), and the mid-project Table 9 carried into the final
 report with the per-trajectory split (professors' answer 5). The final report is `reports/final_acl.tex` (two columns, ACL style; the one-column draft `reports/final.tex` moved to `reports/deprecated/` on 2026-11-24).
 
+* **Added after the plan (2026-11-24/25, D32):** AViT retrained with The Well's 2-D axial attention corrected (four runs, their evaluations and two UQ seed pairs; 26.1 GPU-hours, 1,045 SU). It is the AViT of the final report's main text; AViT as released is in its Appendix C. Final `sacct` (2026-11-25): 172.5 GPU-hours (154.1 paid), 6,156 SU for the whole project.
 * **Not done, by decision:** full-length TFNO, the 24 h replication, third seed, 30% data, ConvLSTM (dropped); a
   solver rerun with the data's time step (owner chose option (a), D25); correlation is reported in an appendix (owner, 2026-11-23; D27).
 * **Gate E** (rerun-hash check of the subset manifests): passed 2026-11-23 (`tests/test_committed_subsets.py`).

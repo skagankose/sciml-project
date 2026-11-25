@@ -62,12 +62,14 @@ This project compares how accurately and efficiently three neural-network famili
 forecast Rayleigh--B\'enard convection when training data and compute are limited: 10\% or 100\% of the training
 trajectories, and one or four hours on one A100 GPU. Each model is also measured against its cost, a numerical
 solver, noisy inputs, and how far its forecasts can be trusted. Main findings: (1) the pipeline is validated:
-released checkpoints reproduce the paper's test VRMSE (0.2\%, 1.0\%); (2) CNextU-Net is the best after four hours in
-developed convection, one step ahead and over rollouts; (3) ten times more data helps little ($-3$\% to $-16.5$\%);
-four hours instead of one helps more; (4) the ranking depends on the measure: persistence wins in onset, TFNO on
-heat transport; (5) a coarse solver matches CNextU-Net at $\mathrm{Ra}\le10^8$, and training pays off after 6,200+
-forecasts; (6) conformal intervals scaled by an ensemble's spread stay calibrated through 30-step rollouts;
-(7) cost: 146.4 GPU-hours (5,111 SU); the 12 core runs held 83, below the 100 estimated.
+released checkpoints reproduce the paper's test VRMSE (0.2\%, 1.0\%); (2) The Well's 2-D AViT code attends along only
+one axis; we reported it on GitHub, and with the attention corrected AViT is the most accurate and most stable model
+at both budgets and data fractions and the closest in heat transport (median error 5--7\%), with CNextU-Net second
+and the most robust to noisy inputs; (3) ten times more data helps little ($-3$\% to $-5$\%), four hours instead of
+one helps more (up to $-35$\%); (4) persistence still wins during onset; (5) a coarse solver matches CNextU-Net at
+$\mathrm{Ra}\le10^8$, but matching AViT at $10^8$ takes the full grid; (6) conformal intervals scaled by an
+ensemble's spread stay calibrated through 30-step rollouts; (7) cost: 172.5 GPU-hours (6,156 SU), 26.1 of them for
+the corrected AViT.
 \end{abstract}
 
 \section{Data and Methods}
@@ -117,7 +119,12 @@ gives 196 one-step windows.
 \textbf{Models.} The Well's own implementations, trained from random initialisation, with matched parameter
 counts (Table~\ref{tab:models}). All three use GELU activations. The paper-era code skipped TFNO's Fourier layers, an
 error fixed upstream in November 2025; we scored the released TFNO weights with the forward pass they were trained
-with, and our own TFNO, trained with the fixed code, uses its Fourier layers (Appendix~\ref{app:tfno}).
+with, and our own TFNO, trained with the fixed code, uses its Fourier layers (Appendix~\ref{app:tfno}). We found an
+error in The Well's AViT during this study: in two dimensions its attention mixes the patches only along $y$, never
+along $x$, so each 16-pixel strip of the field is predicted from itself (Appendix~\ref{app:avit}); we reported it
+upstream on GitHub (\href{https://github.com/PolymathicAI/the_well/issues/111}{issue~\#111}). Our AViT runs its second attention pass along $x$, as intended, which changes
+no parameter; ``AViT'' in this report is this corrected model. The Well's AViT as released, trained with the same
+recipe, is compared with it in Appendix~\ref{app:avit}.
 
 \begin{table*}[tp]
 \centering\footnotesize
@@ -130,7 +137,8 @@ TFNO~\cite{li2021fno,kossaifi2024tfno} & Fourier operator & 19.28M & same config
 AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & none released; width 384 $\to$ 432 \\
 \bottomrule
 \end{tabular*}
-\caption{The three model families compared in this study.}
+\caption{The three model families compared in this study. AViT is The Well's code with its 2-D attention corrected
+to mix along both axes (Appendix~\ref{app:avit}).}
 \label{tab:models}
 \end{table*}
 
@@ -139,7 +147,8 @@ AViT~\cite{mccabe2024mpp} & axial-attention ViT & 18.57M & none released; width 
 of active GPU training. The core study is $3\times2\times2=12$ runs: three models, two data fractions (10\% and
 100\%) and two seeds (initial weights and data order). Each run is evaluated after one and four hours, the two
 budgets of the study's compute axis; the one-hour result is the same run's checkpoint, when the learning rate is
-still about 85\% of its peak (Appendix~\ref{app:recipe}).
+still about 85\% of its peak (Appendix~\ref{app:recipe}). The Well's AViT as released was trained the same way in
+four further runs (Appendix~\ref{app:avit}).
 
 \textbf{References and baselines.} The method is a controlled comparison: the three families are trained from
 scratch with one recipe on the same data and budgets, and compared on accuracy and on cost to train and to use.
@@ -185,8 +194,10 @@ between all windows and developed convection, at both data fractions.
 \toprule
 Comparison (4 h) & Data & All windows & Developed convection \\
 \midrule
-AViT against CNextU-Net & 10\% & 0.134 against 0.136: level & 0.0761 against 0.0505: CNextU-Net 1.5 times better \\
-                        & 100\% & 0.112 against 0.130: AViT looks better & 0.0636 against 0.0489: CNextU-Net 1.3 times better \\
+Our AViT against the released CNextU-Net & 10\% & 0.097 against 0.224: ours looks better & 0.0447 against 0.0382:
+the released one 1.17 times better \\
+                        & 100\% & 0.091 against 0.224: ours looks better & 0.0425 against 0.0382: the released one 1.11
+times better \\
 \addlinespace[2pt]
 Our CNextU-Net against the released one & 10\% & 0.136 against 0.224: ours looks better & 0.0505 against 0.0382:
 the released one 1.3 times better \\
@@ -200,7 +211,7 @@ better \\
 \end{tabularx}
 \caption{How the all-window mean can reverse comparisons: physical-field one-step test VRMSE (Table~\ref{tab:test}),
 onset and developed convection split at each trajectory's onset frame. The paper protocol, whose all-window mean is
-even more dominated by onset, ranks AViT ahead of CNextU-Net at both fractions (Appendix~\ref{app:metrics}).}
+even more dominated by onset, magnifies these reversals (Appendix~\ref{app:metrics}).}
 \label{tab:headline}
 \end{table*}
 
@@ -269,19 +280,19 @@ lines: the 1-hour and 4-hour checkpoints.}
 \cmidrule(lr){3-5}
 Model, checkpoint & Data & all windows & onset & developed & (all windows) \\
 \midrule
-CNextU-Net, 4 h & 10\% & 0.136 $\pm$ 0.006 & 0.370 $\pm$ 0.024 & \textbf{0.0505} $\pm$ 0.0002 & 0.349 $\pm$ 0.022 \\
-                & 100\% & 0.130 $\pm$ 0.001 & 0.353 $\pm$ 0.003 & \textbf{0.0489} $\pm$ 0.0004 & 0.333 $\pm$ 0.002 \\
+CNextU-Net, 4 h & 10\% & 0.136 $\pm$ 0.006 & 0.370 $\pm$ 0.024 & 0.0505 $\pm$ 0.0002 & 0.349 $\pm$ 0.022 \\
+                & 100\% & 0.130 $\pm$ 0.001 & 0.353 $\pm$ 0.003 & 0.0489 $\pm$ 0.0004 & 0.333 $\pm$ 0.002 \\
 TFNO, 4 h & 10\% & 0.209 $\pm$ 0.001 & 0.480 $\pm$ 0.002 & 0.1105 $\pm$ 0.0001 & 0.488 $\pm$ 0.001 \\
           & 100\% & 0.199 $\pm$ 0.003 & 0.452 $\pm$ 0.014 & 0.1074 $\pm$ 0.0003 & 0.459 $\pm$ 0.015 \\
-AViT, 4 h & 10\% & \textbf{0.134} $\pm$ 0.001 & \textbf{0.294} $\pm$ 0.003 & 0.0761 $\pm$ 0.0002 & \textbf{0.298} $\pm$ 0.002 \\
-          & 100\% & \textbf{0.112} $\pm$ 0.000 & \textbf{0.245} $\pm$ 0.000 & 0.0636 $\pm$ 0.0001 & \textbf{0.245} $\pm$ 0.000 \\
+AViT, 4 h & 10\% & \textbf{0.097} $\pm$ 0.008 & \textbf{0.241} $\pm$ 0.022 & \textbf{0.0447} $\pm$ 0.0022 & \textbf{0.227} $\pm$ 0.021 \\
+          & 100\% & \textbf{0.091} $\pm$ 0.000 & \textbf{0.223} $\pm$ 0.001 & \textbf{0.0425} $\pm$ 0.0003 & \textbf{0.209} $\pm$ 0.002 \\
 \midrule
-CNextU-Net, 1 h & 10\% & 0.728 $\pm$ 0.176 & 2.510 $\pm$ 0.653 & \textbf{0.0783} $\pm$ 0.0022 & 2.345 $\pm$ 0.599 \\
-                & 100\% & \textbf{0.456} $\pm$ 0.035 & 1.503 $\pm$ 0.131 & \textbf{0.0751} $\pm$ 0.0001 & 1.393 $\pm$ 0.106 \\
+CNextU-Net, 1 h & 10\% & 0.728 $\pm$ 0.176 & 2.510 $\pm$ 0.653 & 0.0783 $\pm$ 0.0022 & 2.345 $\pm$ 0.599 \\
+                & 100\% & 0.456 $\pm$ 0.035 & 1.503 $\pm$ 0.131 & 0.0751 $\pm$ 0.0001 & 1.393 $\pm$ 0.106 \\
 TFNO, 1 h & 10\% & 0.473 $\pm$ 0.078 & 1.442 $\pm$ 0.292 & 0.1203 $\pm$ 0.0001 & 1.362 $\pm$ 0.249 \\
           & 100\% & 0.491 $\pm$ 0.047 & 1.494 $\pm$ 0.183 & 0.1262 $\pm$ 0.0023 & 1.417 $\pm$ 0.161 \\
-AViT, 1 h & 10\% & \textbf{0.394} $\pm$ 0.036 & \textbf{1.244} $\pm$ 0.135 & 0.0846 $\pm$ 0.0001 & \textbf{1.171} $\pm$ 0.125 \\
-          & 100\% & \textbf{0.456} $\pm$ 0.062 & \textbf{1.485} $\pm$ 0.234 & 0.0804 $\pm$ 0.0001 & \textbf{1.389} $\pm$ 0.209 \\
+AViT, 1 h & 10\% & \textbf{0.384} $\pm$ 0.027 & \textbf{1.266} $\pm$ 0.092 & \textbf{0.0623} $\pm$ 0.0035 & \textbf{1.166} $\pm$ 0.088 \\
+          & 100\% & \textbf{0.378} $\pm$ 0.075 & \textbf{1.233} $\pm$ 0.271 & \textbf{0.0658} $\pm$ 0.0030 & \textbf{1.146} $\pm$ 0.248 \\
 \midrule
 Released CNextU-Net & 100\% & 0.224 & 0.733 & 0.0382 & 0.669 \\
 Persistence & -- & 0.199 & 0.116 & 0.2292 & 0.202 \\
@@ -299,7 +310,9 @@ developed split at each trajectory's onset frame. Bold: best of our models at ea
 12-hour runs. With one to four hours a model takes far fewer optimizer steps, so we tested whether a higher rate
 suits our budgets. An equal-budget search (20 minutes of GPU training per run, 10\% data, validation only) chose
 $10^{-3}$ for all three models (Appendix~\ref{app:recipe}): 0.408 against 0.469 for CNextU-Net at
-$5\cdot10^{-4}$, and 0.302 against 0.603 for TFNO at $10^{-4}$. It is the largest rate tested.
+$5\cdot10^{-4}$, and 0.302 against 0.603 for TFNO at $10^{-4}$. It is the largest rate tested. AViT's rate was
+searched before we found its attention error and was kept for the corrected model, so that only the attention
+differs between the two.
 
 \textbf{Batch size and precision.} Batch 64 (The Well's) fits every model in fp32 on an A100 80\,GB; CNextU-Net
 peaks at 64.8\,GB of memory reserved by PyTorch (60.9\,GB allocated, Table~\ref{tab:resources}). TFNO's Fourier
@@ -310,9 +323,10 @@ CNextU-Net and 2.2 times for AViT.
 computes training steps (forward pass, backward pass and weight update) and stops otherwise. Elapsed time would partly
 measure the cluster's shared storage, which cannot feed TFNO and AViT fast enough (Appendix~\ref{app:accounting}).
 So every run takes the same number of optimizer steps at either data fraction (about 12,100 for CNextU-Net, 26,300
-for TFNO and 74,900 for AViT in four hours), and \emph{allocated GPU time}, the time the job held the GPU, is
-reported as a cost. The 10\% runs read their data from the shared file system; the 100\% runs first copied the
-training split to the GPU node's own disk (4--8 minutes), which removed almost all of their data waits.
+for TFNO and 73,200 for AViT in four hours), and \emph{allocated GPU time}, the time the job held the GPU, is
+reported as a cost. The 10\% CNextU-Net and TFNO runs read their data from the shared file system; the 100\% runs and
+all AViT runs first copied the training split to the GPU node's own disk (3--10 minutes), which removed most of their
+data waits.
 
 \section{Accuracy Under Limited Data and Compute}
 \label{sec:results}
@@ -321,10 +335,10 @@ This section answers the project's question for accuracy: how accurate each fami
 the training data after one and four hours of training. Section~\ref{sec:cost} sets these results against cost.
 
 \textbf{Training} (Fig.~\ref{fig:curves}). All twelve runs completed their 4-hour budgets. On a fixed validation
-sample of 64 windows, AViT and CNextU-Net reach similar errors after four hours (0.14--0.17), TFNO a higher one
-(0.27--0.32), and TFNO's loss levels off after about 1.5 hours at both fractions. With all the data each model makes
-a tenth as many passes over the training windows (CNextU-Net 2.8 against 28, TFNO 6.1 against 61, AViT 17.5 against
-175), yet its training loss follows almost the same curve.
+sample of 64 windows, AViT reaches the lowest error after four hours (0.115--0.129), CNextU-Net 0.17--0.18 and TFNO
+0.27--0.32, and TFNO's loss levels off after about 1.5 hours at both fractions. With all the data each model makes
+a tenth as many passes over the training windows (CNextU-Net 2.8 against 28, TFNO 6.1 against 61, AViT 17 against
+172), yet its training loss follows almost the same curve.
 
 \begin{figure*}[tp]
 \centering
@@ -346,22 +360,23 @@ four hours (filled, solid), seed mean with the seed range. (a) One step, develop
 \end{figure*}
 
 \textbf{One-step test error} (all 175 test trajectories, both seeds; Table~\ref{tab:test}, Fig.~\ref{fig:testwindow}).
-After four hours the two phases separate the models. In developed convection CNextU-Net is the most accurate at both
-fractions (0.0505 and 0.0489), ahead of AViT (0.0761 and 0.0636) and TFNO (0.1105 and 0.1074); during onset AViT is
-the most accurate. The seed-to-seed standard deviation is at most 0.006 over all windows and 0.0004 in developed
-convection. The released CNextU-Net remains better in developed convection (0.0382), but ours is better during onset
-(0.353 against 0.733). Persistence is better than every model during onset (0.116) and 2--4.7 times worse in
-developed convection (0.229). After one hour the picture differs: AViT has the lowest all-window error at 10\% data
-and ties CNextU-Net at 100\%, and CNextU-Net varies most between seeds.
+After four hours AViT is the most accurate at both fractions, in both phases: in developed convection 0.0447 and
+0.0425, ahead of CNextU-Net (0.0505 and 0.0489, 13--15\% higher) and TFNO (0.1105 and 0.1074). The seed-to-seed
+standard deviation is at most 0.008 over all windows and 0.0022 in developed convection (AViT at 10\%; at most 0.0004
+for the others). The released CNextU-Net remains better in developed convection (0.0382, 1.11 times below our AViT at
+100\%), but ours are all better during onset (0.22--0.48 against 0.733). Persistence is better than every model during
+onset (0.116) and 2--5.4 times worse in developed convection (0.229). After one hour AViT is also the most accurate at
+both fractions (developed 0.062--0.066, against 0.075--0.078 for CNextU-Net), and CNextU-Net varies most between
+seeds.
 
 \textbf{Error around each trajectory's onset} (Appendix Fig.~\ref{fig:onset}). Counted from each trajectory's own onset frame
 $t_{\mathrm{on}}$, the error curves of the five Rayleigh numbers line up. Our CNextU-Net's onset error (above twice
 its level in developed convection) ends 9--22 frames before $t_{\mathrm{on}}$ at every Rayleigh number, against frames
 26--59 counted from frame 0; for the released CNextU-Net, 6--19 frames before $t_{\mathrm{on}}$ against frames 27--63.
-The large errors therefore lie in the first part of the onset windows: every model beats persistence from 17--23
-frames before $t_{\mathrm{on}}$, so persistence wins the onset mean on the earliest, nearly still frames alone.
-Just after $t_{\mathrm{on}}$, while convection grows, the error rises a second time and peaks 9--16 frames later
-(CNextU-Net and TFNO by 32--40\%, AViT by 70--90\%, the released model by 36\%); persistence's error peaks there too
+The large errors therefore lie in the first part of the onset windows: every model beats persistence from 17--24
+frames before $t_{\mathrm{on}}$ (AViT from 23--24), so persistence wins the onset mean on the earliest, nearly still
+frames alone. Just after $t_{\mathrm{on}}$, while convection grows, the error rises a second time and peaks 9--16
+frames later (our three models by 32--42\%, the released model by 36\%); persistence's error peaks there too
 (14 frames after $t_{\mathrm{on}}$), because the flow changes fastest. The residual trend in Fig.~\ref{fig:onset}c,
 an earlier drop at higher Rayleigh number, means that the kinetic-energy fraction at which the error ends depends
 somewhat on the regime: at $\mathrm{Ra}=10^{10}$ about 20 low-error windows per trajectory count as onset, at $10^6$
@@ -379,15 +394,15 @@ CNextU-Net, 1 h & 10\% & 3.60 / 1.09 / 1.04 & 0.34 / 0.74 / 0.79 & 202 / 148 \\
                 & 100\% & 2.78 / 1.00 / 0.86 & 0.50 / 0.76 / 0.82 & 114 / 103 \\
 TFNO, 1 h & 10\% & 2.67 / 0.90 / 0.78 & 0.60 / 0.77 / 0.86 & 81 / 116 \\
           & 100\% & 3.58 / 1.23 / 1.09 & 0.23 / 0.76 / 0.83 & 100 / 150 \\
-AViT, 1 h & 10\% & 4.67 / 1.11 / 0.98 & 0.34 / 0.74 / 0.83 & 129 / 184 \\
-          & 100\% & 5.26 / 0.97 / 0.85 & 0.52 / 0.75 / 0.82 & 157 / 217 \\
+AViT, 1 h & 10\% & 1.63 / 0.61 / 0.49 & 0.76 / 0.81 / 0.91 & 48 / 46 \\
+          & 100\% & 1.31 / 0.64 / 0.55 & 0.74 / 0.80 / 0.90 & 46 / 32 \\
 \midrule
-CNextU-Net, 4 h & 10\% & 1.78 / \textbf{0.53} / \textbf{0.40} & \textbf{0.89} / \textbf{0.94} / \textbf{0.98} & \textbf{15} / \textbf{30} \\
-                & 100\% & 1.78 / \textbf{0.52} / \textbf{0.40} & \textbf{0.88} / \textbf{0.92} / \textbf{0.98} & \textbf{19} / \textbf{34} \\
+CNextU-Net, 4 h & 10\% & 1.78 / 0.53 / 0.40 & 0.89 / 0.94 / 0.98 & 15 / 30 \\
+                & 100\% & 1.78 / 0.52 / 0.40 & 0.88 / 0.92 / 0.98 & 19 / 34 \\
 TFNO, 4 h & 10\% & 1.79 / 0.59 / 0.45 & 0.75 / 0.85 / 0.91 & 51 / 77 \\
           & 100\% & 1.89 / 0.57 / 0.44 & 0.77 / 0.86 / 0.92 & 44 / 63 \\
-AViT, 4 h & 10\% & 5.42 / 0.80 / 0.65 & 0.63 / 0.80 / 0.87 & 75 / 167 \\
-          & 100\% & 5.64 / 0.83 / 0.69 & 0.61 / 0.81 / 0.89 & 61 / 148 \\
+AViT, 4 h & 10\% & \textbf{1.52} / \textbf{0.36} / \textbf{0.28} & \textbf{0.92} / \textbf{0.98} / \textbf{0.99} & \textbf{8} / \textbf{19} \\
+          & 100\% & \textbf{1.32} / \textbf{0.34} / \textbf{0.26} & \textbf{0.96} / \textbf{0.98} / \textbf{0.99} & \textbf{6} / \textbf{13} \\
 \midrule
 Released CNextU-Net & 100\% & 1.65 / 0.63 / 0.51 & 0.77 / 0.82 / 0.90 & 36 / 35 \\
 Persistence & -- & 0.68 / 0.86 / 0.54 & 0.94 / 1.00 / 1.00 & 0.27 / 0.50 \\
@@ -411,39 +426,41 @@ each step (Kaplan--Meier survival).}
 \end{figure*}
 
 \textbf{Ten times more data} (Fig.~\ref{fig:scaling}). After four hours, going from 10\% to 100\% of the data lowers
-the developed-convection error by 3.1\% for CNextU-Net, 2.8\% for TFNO and 16.5\% for AViT; AViT improves on every
-field (buoyancy $-10$\%, velocity $-19$ to $-21$\%, pressure $-21$\%) and during onset ($-17$\%). The ranking in
-developed convection is unchanged, but AViT's gap to CNextU-Net narrows from 1.51 to 1.30 times. Training time matters
-more than data at these budgets: from one to four hours CNextU-Net's developed error falls by 35\% at both fractions,
-and with all the data AViT and TFNO gain about twice as much from the extra hours as at 10\% ($-21$\% against $-10$\%,
-$-15$\% against $-8$\%). A reading consistent with this, not tested: at 10\% AViT and TFNO have seen their subset many
-times and are limited by data, while CNextU-Net, with few passes, is limited by compute at both fractions. The
-one-step gain does not reach the rollouts: after 30 steps from developed flow no model is better with more data
-(Fig.~\ref{fig:scaling}c). Ten times more data also does not close our CNextU-Net's gap to the released one in
-developed convection (1.32 to 1.28 times); the released model trained for about 12 hours on an H100.
+the developed-convection error by 4.9\% for AViT, 3.1\% for CNextU-Net and 2.8\% for TFNO. AViT gains mostly on
+pressure ($-15$\%) and velocity ($-6$ to $-7$\%), hardly on buoyancy ($-1$\%), and during onset by 7.5\%. The ranking
+is unchanged. Training time matters more than data at these budgets: from one to four hours the developed error falls
+by 35\% for CNextU-Net at both fractions, by 28\% (10\%) and 35\% (100\%) for AViT, and by 8\% and 15\% for TFNO.
+Although AViT passes over the 10\% subset 172 times in four hours, ten times more data improves it by only 5\%, so
+none of the three appears limited by data in developed convection at these budgets. Over 30-step rollouts from
+developed flow more data helps a little: $-6$\% for AViT, $-3.5$\% for TFNO and $-1.7$\% for CNextU-Net
+(Fig.~\ref{fig:scaling}c). Ten times more data does not close the gap to the released CNextU-Net in developed
+convection either (our CNextU-Net 1.32 to 1.28 times its error, our AViT 1.17 to 1.11 times); the released model
+trained for about 12 hours on an H100.
 
 \textbf{Rollouts} (Table~\ref{tab:rollout}, Fig.~\ref{fig:rollouts}). Our models were trained to predict one step
 ahead from true frames; in a rollout they receive their own slightly wrong outputs~\cite{brandstetter2022mp}, so
 errors can grow from step to step~\cite{mccabe2023stability} and the best one-step model need not be the best over a
-rollout. After four hours CNextU-Net is the most stable at both fractions: after 30 steps from developed flow its
-error is 0.52--0.53 and 0.40 (from frames 80 and 140), below persistence's 0.86 and 0.54, and 88--89\% of its rollouts
-stay below VRMSE 1 throughout. It is also more stable than the released CNextU-Net (0.63 and 0.51; 77\%), although
-the released model is better one step ahead. AViT, nearly as accurate as CNextU-Net one step ahead, degrades fastest:
-its mean error crosses persistence's after 21--25 steps, and only 61--63\% of its rollouts stay below VRMSE 1. TFNO
-lies in between. After one hour the ranking depends on the data: at 10\% TFNO is the most stable (60\% of rollouts
-below VRMSE 1, against 34\%), at 100\% TFNO is the least stable (23\%, in both seeds) and CNextU-Net and AViT reach
-50--52\%. We have no explanation for TFNO's unstable one-hour rollouts at 100\%; after four hours they match the 10\%
-runs. From frame 20, in onset, persistence beats every model. Pattern correlation, which does not penalise a displaced structure twice, ranks the models
-in the same order (Appendix~\ref{app:correlation}).
+rollout. After four hours AViT is the most stable at both fractions: after 30 steps from developed flow its error is
+0.34--0.36 and 0.26--0.28 (from frames 80 and 140), against 0.52--0.53 and 0.40 for CNextU-Net and persistence's 0.86
+and 0.54, and 92--96\% of its rollouts stay below VRMSE 1 throughout (CNextU-Net 88--89\%, TFNO 75--77\%). Both are
+more stable than the released CNextU-Net (0.63 and 0.51; 77\%), although the released model is better one step
+ahead. Under the paper's protocol (rollouts from frame 0), AViT averages 6--8 over steps 6--12, the only model here
+below the ``$>10$'' published for every model. After one hour AViT is already the most stable (74--76\% of rollouts
+below VRMSE 1, against at most 60\%), with step-30 errors from developed flow (0.49--0.64) close to TFNO's after four
+hours. The other two depend on the data after one hour: at 10\% TFNO is more stable than CNextU-Net (60\% against
+34\%), at 100\% it is the least stable (23\%, in both seeds). We have no explanation for TFNO's unstable one-hour
+rollouts at 100\%; after four hours they match the 10\% runs. From frame 20, in onset, persistence beats every model
+(0.68 against 1.32--1.89 after 30 steps). Pattern correlation, which does not penalise a displaced structure twice,
+ranks the models in the same order (Appendix~\ref{app:correlation}).
 
 \textbf{Field-wise error} (Appendix Table~\ref{tab:fields}). In developed convection buoyancy is the hardest field for every
-model (CNextU-Net: 0.095, against 0.022--0.025 for pressure and about 0.04 for each velocity component), consistent
-with the sharp gradients of its thin plumes and boundary layers; CNextU-Net's buoyancy error does not change with
-data, while its velocity and pressure errors improve by 4--11\%. During onset the error comes almost entirely from
-velocity, whose near-zero spatial variance magnifies relative error; on buoyancy all three models beat persistence
-even then (0.026--0.039 against 0.058), so their onset deficit against persistence is a velocity effect. After 30
-steps from developed flow, CNextU-Net and TFNO stay below persistence on every field, while AViT is worse than
-persistence on horizontal velocity (1.06--1.12 against 0.93).
+model (AViT: 0.087--0.088, against 0.017--0.020 for pressure and 0.031--0.037 for each velocity component;
+CNextU-Net: 0.095), consistent with the sharp gradients of its thin plumes and boundary layers; neither model's
+buoyancy error changes with data, while their velocity and pressure errors improve by 4--15\%. During onset the error
+comes almost entirely from velocity, whose near-zero spatial variance magnifies relative error; on buoyancy all three
+models beat persistence even then (0.025--0.039 against 0.058), so their onset deficit against persistence is a
+velocity effect. After 30 steps from developed flow every model stays below persistence on every field, and AViT is
+the most accurate on every field (velocity 0.35--0.39 against 0.57--0.60 for CNextU-Net).
 
 \textbf{Physical fidelity} (Appendix Fig.~\ref{fig:spectra}). The kinetic-energy spectrum shows how much energy a prediction
 has at each scale, from large plumes (small wavenumber $k_x$) to fine detail (large $k_x$); we report predicted over
@@ -452,49 +469,53 @@ typical of networks trained with MSE, which barely constrains the weak small
 scales~\cite{rahaman2019spectral,lippe2023pderefiner}. At larger scales they differ. CNextU-Net is close to the true
 spectrum. TFNO is too smooth: it loses energy from $k_x\approx25$ after one step and from $k_x\approx10$ after 30
 steps, down to a tenth of the true energy near $k_x=80$, consistent with its Fourier layers keeping only the coarsest
-modes ($|k_x|\le12.6$; \citealp{li2021fno}). AViT is accurate after one step but drifts over the rollout. These spectra do
-not change with data: the log spectral error after 30 steps is 1.32 / 1.30 / 2.40 at 10\% and 1.32 / 1.29 / 2.44 at
-100\% for CNextU-Net / TFNO / AViT.
+modes ($|k_x|\le12.6$; \citealp{li2021fno}). AViT stays closest to the true spectrum up to $k_x\approx100$ after one
+and 30 steps, with less excess energy at the finest scales than CNextU-Net. These spectra do not change with data:
+the log spectral error after 30 steps is 1.32 / 1.30 / 0.94 at 10\% and 1.32 / 1.29 / 0.91 at 100\% for CNextU-Net /
+TFNO / AViT.
 
 \textbf{What the predictions look like} (Fig.~\ref{fig:snapshots}). After 30 steps at $\mathrm{Ra}=10^8$ every model
-keeps the behaviour it had with 10\% of the data. CNextU-Net follows the true plumes, though not their exact
-positions. TFNO blurs them and builds a spurious warm layer along the bottom wall. AViT shows rectangular artifacts at
-the size of its $16\times16$-pixel patches. At $\mathrm{Ra}=10^{10}$ the true
-flow is far finer than any of the three reproduces (Appendix Fig.~\ref{fig:snapshots10}).
+keeps the behaviour it had with 10\% of the data. AViT follows the true plumes most closely, including their
+positions; CNextU-Net follows them, though not their exact positions. TFNO blurs them and builds a spurious warm layer
+along the bottom wall. The Well's AViT as released breaks instead into vertical strips 16 pixels wide
+(Appendix~\ref{app:avit}). At $\mathrm{Ra}=10^{10}$ the true flow is far finer than any of the three reproduces
+(Appendix Fig.~\ref{fig:snapshots10}).
 
 \begin{figure*}[tp]
 \centering
 \figureorpending{fig_snapshots_fractions_buoyancy_step30_rayleigh_benard_Rayleigh_1e8_Prandtl_1__0__s080.pdf}{width=\textwidth}
 \caption{Buoyancy on a test trajectory at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$, after 30 rollout steps from frame 80:
-the true flow (top) and our four-hour models (seed 0) trained on 10\% (left) and 100\% (right) of the data. Bright:
+the true flow (top) and our four-hour models (seed 0) trained on 10\% (left) and 100\% (right) of the data; AViT with
+its attention corrected. Bright:
 warm; dark: cold. One colour range for all panels: the 1st to 99th percentile of the true field away from the walls,
 so the hot bottom wall saturates.}
 \label{fig:snapshots}
 \end{figure*}
 
 \textbf{Error by Rayleigh number} (Fig.~\ref{fig:rayleigh}a, b). The one-step error in developed convection grows
-four- to tenfold from $\mathrm{Ra}=10^6$ to $10^{10}$ for every model as the flow becomes more turbulent (CNextU-Net
-0.016 to 0.11); persistence's grows too (0.098 to 0.35). The ranking is the same at every Rayleigh number, and more
-data helps AViT at every Rayleigh number. The released CNextU-Net matches ours at $10^6$ and $10^7$ and is better only
-at higher Rayleigh numbers. After 30 steps from developed flow, CNextU-Net and TFNO stay below persistence at every
-Rayleigh number, while AViT is worse than persistence up to $10^8$ at both fractions.
+five- to thirteenfold from $\mathrm{Ra}=10^6$ to $10^{10}$ for every model as the flow becomes more turbulent (AViT
+0.008--0.009 to 0.10--0.11, CNextU-Net 0.013--0.014 to 0.11); persistence's grows too (0.097 to 0.35). The ranking is
+the same at every Rayleigh number, but AViT's lead over CNextU-Net shrinks from 1.6 times at $10^6$ to 5--7\% at
+$10^{10}$. The released CNextU-Net matches our CNextU-Net at $10^6$ and $10^7$, where our AViT is better than both,
+and is the best model from $10^8$ on. After 30 steps from developed flow every model stays below persistence at every
+Rayleigh number, and AViT is the most accurate at every one (0.12--0.17 at $10^6$ to 0.50--0.51 at $10^{10}$).
 
 \textbf{Heat transport} (Table~\ref{tab:nusselt}, Fig.~\ref{fig:rayleigh}c). The Nusselt number is the heat carried
 across the layer relative to pure conduction (Appendix~\ref{app:metrics}). We average it over each 30-step rollout
 from developed flow, predicted and true alike, and report the median relative error per Rayleigh number. After four
-hours TFNO comes closest (median error 20--21\%), with a small bias at every Rayleigh number; below $10^{10}$ it is
-closer than persistence (9--29\% against 17--32\%), whose error measures how far one snapshot's heat transport lies
-from the 30-step mean. AViT carries too little heat at every Rayleigh number ($-17$\% overall, $-38$ to $-43$\% at
-$10^{10}$). Our CNextU-Net is nearly unbiased up to $10^9$ but scattered (median error 49\%), and overshoots by
-35--41\% at $10^{10}$. Ten times more data barely changes any of them. The released CNextU-Net carries about twice the
-true heat (+108\%, rising from +34\% at $10^6$ to +299\% at $10^{10}$): right at first ($-4$\% at step 1), it drifts to
-+100\% by step 12 and +201\% by step 30. A low one-step error therefore does not guarantee the right heat transport
-over a rollout, and heat transport ranks the models differently from VRMSE. After one hour
-(Appendix Fig.~\ref{fig:nusselt}a) our CNextU-Net carries far too much heat (+545\% at 10\%, +133\% at 100\%, growing with the
-Rayleigh number to +1026\% and +292\% at $10^{10}$). TFNO and AViT have overall biases within $\pm30$\%, but they
-scatter widely (median $|$error$|$ 35--91\%) and reach +60\% and $-62$\% at single Rayleigh numbers; in more than a
-quarter of the rollouts of AViT (100\%) at $\mathrm{Ra}\ge10^9$ and of TFNO (10\%) at $10^{10}$, the predicted
-Nusselt number is negative, heat carried downwards. The true 30-step average itself fluctuates: between the windows
+hours AViT comes closest (median error 5--7\%): it is nearly unbiased up to $10^9$ (within 6\%, 2--9\% median error)
+and carries 16--20\% too little heat at $10^{10}$. TFNO follows (20--21\%), with a small bias at every Rayleigh
+number. Below $10^{10}$ both are closer than persistence (AViT 2--9\%, TFNO 9--29\%, persistence 17--32\%), whose error
+measures how far one snapshot's heat transport lies from the 30-step mean. Our CNextU-Net is nearly unbiased up to
+$10^9$ but scattered (median error 49\%), and overshoots by 35--41\% at $10^{10}$. Ten times more data barely changes
+any of them. The released CNextU-Net carries about twice the true heat (+108\%, rising from +34\% at $10^6$ to +299\%
+at $10^{10}$): right at first ($-4$\% at step 1), it drifts to +100\% by step 12 and +201\% by step 30. A low
+one-step error therefore does not guarantee the right heat transport over a rollout: CNextU-Net is second in VRMSE but
+last of our three in heat transport. After one hour (Appendix Fig.~\ref{fig:nusselt}a) our CNextU-Net carries far too
+much heat (+545\% at 10\%, +133\% at 100\%, growing with the Rayleigh number to +1026\% and +292\% at $10^{10}$). TFNO
+and AViT have overall biases within $\pm30$\%, but they scatter widely (median $|$error$|$ 30--91\%) and reach +60\%
+and $-52$\% at single Rayleigh numbers; in more than a quarter of the rollouts of both (10\% data) at $10^{10}$ the
+predicted Nusselt number is negative, heat carried downwards. The true 30-step average itself fluctuates: between the windows
 from frames 80 and 140 of the same trajectory it changes by a median of 15\% (middle 50\%: $-14$\% to $+15$\%), so
 errors of that size are within the truth's own variation; across a regime's seven Prandtl numbers and five
 trajectories the middle 50\% of the true values spans $-12$\% to $+21$\% of the median (Table~\ref{tab:nusselt}).
@@ -519,17 +540,17 @@ Model, checkpoint & Data & $10^6$ & $10^7$ & $10^8$ & $10^9$ & $10^{10}$ & signe
 \midrule
 CNextU-Net, 4 h & 10\% & $-3$\% & $-3$\% & $-9$\% & $-15$\% & $+35$\% & $-1$\% / 49\% \\
                 & 100\% & $-8$\% & $+6$\% & $-5$\% & $+9$\% & $+41$\% & $+2$\% / 49\% \\
-TFNO, 4 h & 10\% & $-2$\% & $+16$\% & $+19$\% & $-3$\% & $-14$\% & $+6$\% / \textbf{20}\% \\
-          & 100\% & $-3$\% & $+15$\% & $+17$\% & $+5$\% & $-13$\% & $+8$\% / \textbf{21}\% \\
-AViT, 4 h & 10\% & $-11$\% & $-8$\% & $-13$\% & $-18$\% & $-43$\% & $-17$\% / 27\% \\
-          & 100\% & $-5$\% & $-17$\% & $-19$\% & $-14$\% & $-38$\% & $-17$\% / 25\% \\
+TFNO, 4 h & 10\% & $-2$\% & $+16$\% & $+19$\% & $-3$\% & $-14$\% & $+6$\% / 20\% \\
+          & 100\% & $-3$\% & $+15$\% & $+17$\% & $+5$\% & $-13$\% & $+8$\% / 21\% \\
+AViT, 4 h & 10\% & $-1$\% & $0$\% & $-2$\% & $-6$\% & $-16$\% & $-4$\% / \textbf{7}\% \\
+          & 100\% & $+1$\% & $-1$\% & $0$\% & $-5$\% & $-20$\% & $-2$\% / \textbf{5}\% \\
 \midrule
 CNextU-Net, 1 h & 10\% & $+204$\% & $+363$\% & $+673$\% & $+926$\% & $+1026$\% & $+545$\% / 548\% \\
                 & 100\% & $+38$\% & $+83$\% & $+163$\% & $+214$\% & $+292$\% & $+133$\% / 153\% \\
 TFNO, 1 h & 10\% & $+9$\% & $+38$\% & $+35$\% & $-5$\% & $-43$\% & $+21$\% / 91\% \\
           & 100\% & $-2$\% & $+28$\% & $+60$\% & $+34$\% & $+43$\% & $+29$\% / 48\% \\
-AViT, 1 h & 10\% & $-2$\% & $+18$\% & $+30$\% & $+34$\% & $+20$\% & $+14$\% / \textbf{35}\% \\
-          & 100\% & $-14$\% & $-10$\% & $-27$\% & $-55$\% & $-62$\% & $-28$\% / 44\% \\
+AViT, 1 h & 10\% & $-12$\% & $-11$\% & $-29$\% & $-40$\% & $-52$\% & $-25$\% / \textbf{30}\% \\
+          & 100\% & $+3$\% & $+18$\% & $+22$\% & $+13$\% & $+4$\% & $+11$\% / \textbf{32}\% \\
 \midrule
 Released CNextU-Net & 100\% & $+34$\% & $+73$\% & $+121$\% & $+165$\% & $+299$\% & $+108$\% / 114\% \\
 Persistence & -- & $-2$\% & $-3$\% & $+6$\% & $+7$\% & $+6$\% & $+2$\% / 27\% \\
@@ -551,16 +572,18 @@ Because data and compute are the limiting resources, we set each model's accurac
 to use (Fig.~\ref{fig:cost}, Table~\ref{tab:resources}).
 \begin{itemize}
     \item \emph{Training time} (Fig.~\ref{fig:cost}a). From one to four hours the developed-convection error falls
-    by 35\% for CNextU-Net at both fractions, by 10\% (10\%) and 21\% (100\%) for AViT, and by 8\% and 15\% for TFNO.
+    by 35\% for CNextU-Net at both fractions, by 28\% (10\%) and 35\% (100\%) for AViT, and by 8\% and 15\% for TFNO.
     \item \emph{Cost to train} (Fig.~\ref{fig:cost}b, Fig.~\ref{fig:time}). Every run trained for the same four
-    hours, but the GPU time it held differs. Reading from the shared file system, the 10\% runs held 5.2--6.0 hours
-    (CNextU-Net), 6.9--7.1 (TFNO) and 11.1--12.2 (AViT), since AViT consumes 330 training samples per second and the
-    storage delivers about 98. With the data copied to the GPU node's disk, the 100\% runs held 4.4--4.6, 5.5--5.8 and
-    5.7--6.0 hours, although they read ten times more data. AViT needs a seventh of CNextU-Net's memory and takes six
-    times as many optimizer steps.
+    hours, but the GPU time it held differs. Reading from the shared file system, the 10\% runs of CNextU-Net and TFNO
+    held 5.2--6.0 and 6.9--7.1 hours; AViT, which consumes about 330 training samples per second where the storage
+    delivers about 98, copied the data to the node's disk at both fractions and held 6.4 hours at 10\% (it still waited
+    about 2 hours for data, a slowdown we did not examine). With the data copied, the 100\% runs held 4.4--4.6, 5.5--5.8
+    and 5.0--5.2 hours, although they read ten times more data. AViT needs a seventh of CNextU-Net's memory and takes
+    six times as many optimizer steps.
     \item \emph{Cost to use} (Fig.~\ref{fig:cost}c). All three are cheap to run: a 30-step forecast takes
     133--249\,ms with under 0.5\,GB of GPU memory. TFNO is the fastest for one forecast at a time, and AViT the
-    cheapest for many at once (0.89\,ms per sample in batches of 64, against 3.15 for TFNO and 6.74 for CNextU-Net).
+    cheapest for many at once (about 0.9\,ms per sample in batches of 64, against 3.15 for TFNO and 6.74 for
+    CNextU-Net). AViT, the most accurate model, is also the second fastest for single forecasts (168--170\,ms).
 \end{itemize}
 
 \begin{figure*}[tp]
@@ -585,14 +608,15 @@ Model & steps & 10\% / 100\% & alloc.\ (reserved) & 10\% & 100\% & batch 1 & bat
 \midrule
 CNextU-Net & $\approx$12,100 & 28 / 2.8 & 60.9 (64.8)\,GB & 5.2--6.0\,h & 4.4--4.6\,h & 248\,ms & 6.74\,ms & 0.31\,GB \\
 TFNO & $\approx$26,300 & 61 / 6.1 & 48.7 (57.1)\,GB & 6.9--7.1\,h & 5.5--5.8\,h & 133--135\,ms & 3.15\,ms & 0.44\,GB \\
-AViT & $\approx$75,000 & 175 / 17.5 & 8.8 (8.9)\,GB & 11.1--12.2\,h & 5.7--6.0\,h & 163--168\,ms & 0.89\,ms & 0.23\,GB \\
+AViT & $\approx$73,200 & 172 / 17 & 9.0 (9.1)\,GB & 6.4\,h$^{a}$ & 5.0--5.2\,h & 167--170\,ms & $\approx$0.9\,ms$^{b}$ & 0.23\,GB \\
 \bottomrule
 \end{tabular}
 \caption{Cost to train and to use, on one A100 80\,GB in fp32. Epochs: passes over the training windows. Peak memory:
 the larger of the two fractions. GPU time held: allocated time of the training job, including data waits, start-up,
 the data copy, validation and checkpoints (Appendix~\ref{app:accounting}). Per sample, batch 64: forward pass in the
 training profile (with gradient tracking, an upper bound for inference). Inference is the same at both fractions; one
-step at batch 1 takes 8.3, 4.4 and 5.4\,ms.}
+step at batch 1 takes 8.3, 4.4 and 5.6\,ms. $^{a}$With the data copied to the node's disk, as at 100\%.
+$^{b}$Profiled with the attention as released, which differs only in what its second pass attends over.}
 \label{tab:resources}
 \end{table*}
 
@@ -601,14 +625,16 @@ step at batch 1 takes 8.3, 4.4 and 5.4\,ms.}
 \figureorpending{fig_time.pdf}{width=\textwidth}
 \caption{Where each run's GPU time went: active training (the 4-hour budget), waiting for data, and other overhead
 (start-up, the copy of the data to the node's disk, validation, checkpoint writes, and steps replayed after a
-preemption or crash). SU: service units estimated from the run logs at 40 per hour.}
+preemption or crash). The 100\% runs and all AViT runs copied the data to the node's disk first. SU: service units
+estimated from the run logs at 40 per hour.}
 \label{fig:time}
 \end{figure*}
 
-\textbf{Compute for the whole project} (Table~\ref{tab:compute}). The project used 146.4 GPU-hours, 128.0 of them on
-the paid partition (5,111 service units). The twelve core runs held 81.1 paid GPU-hours plus 2.2 on the free
-partition, against the abstract's estimate of about 100 and the mid-project projection of 131--142; the copy of the
-data to the node's disk saved the difference.
+\textbf{Compute for the whole project} (Table~\ref{tab:compute}). The project used 172.5 GPU-hours, 154.1 of them on
+the paid partition (6,156 service units). The twelve core runs as first trained, with AViT as released, held 81.1
+paid GPU-hours plus 2.2 on the free partition, against the abstract's estimate of about 100 and the mid-project
+projection of 131--142; the copy of the data to the node's disk saved the difference. Retraining AViT with its
+attention corrected, and evaluating it, added 26.1 GPU-hours (1,045 SU).
 
 \begin{table}[!htbp]
 \centering\footnotesize
@@ -624,9 +650,10 @@ Uncertainty and noise evaluation & 16 & 10.6 & 425 \\
 Dedicated 1-hour MSE runs (point-forecast baseline for the ensemble) & 8 & 10.1 & 403 \\
 Pipeline check & 1 & 2.3 & 84 \\
 Numerical solver and flow snapshots (CPU work holding one GPU) & 4 & 0.2 & 7 \\
+AViT with corrected attention: four 4-hour runs, their evaluation, uncertainty pass and snapshots & 21 & 26.1 & 1,045 \\
 Free partitions (learning-rate search, profiling, first attempts, solver, data, setup) & 148 & 18.3 & 0 \\
 \midrule
-All & 228 & 146.4 & 5,111 \\
+All & 249 & 172.5 & 6,156 \\
 \bottomrule
 \end{tabularx}
 \caption{Compute billed for the whole project, from Slurm accounting. The paid partition bills 40 SU per hour for one
@@ -685,7 +712,10 @@ billed 32 times a core-hour, so per forecast the solver costs only 2--15 times a
 More data hardly moves the match: against our 10\% CNextU-Net the $\mathrm{Ra}=10^8$ match is $192\times48$ (break-even
 after about 12,900 forecasts). Against the released CNextU-Net, which on these rollouts is more accurate one step ahead
 at $10^8$ and $10^{10}$ but less accurate after 10 and 30 steps in every regime, the matches are $128\times32$,
-$192\times48$ and none, as for our 10\% model.
+$192\times48$ and none, as for our 10\% model. Our AViT (100\%, four hours) is more accurate than CNextU-Net on these
+rollouts (at $10^8$: 0.022 / 0.067 / 0.226 at steps 1 / 10 / 30). Against it the solver still matches at
+$128\times32$ at $10^6$, but at $10^8$ only the full $512\times128$ grid does (510\,s per rollout, 3,000 times the
+model's wall time; training pays off after about 1,500 forecasts), and no grid at $10^{10}$.
 
 \textbf{Limitation at $\mathrm{Ra}=10^{10}$.} No grid matches there (step 10: 0.37--0.64 against 0.33), and
 $64\times16$ diverges in 3 of 10 rollouts. This result is affected by our time step. We used the Dedalus example's CFL
@@ -715,13 +745,14 @@ CNextU-Net & 10\% & 1.00 & 1.04 & 1.14 & \textbf{1.46} & 0.0505 $\to$ \textbf{0.
            & 100\% & 1.00 & 1.04 & 1.15 & \textbf{1.47} & 0.0489 $\to$ \textbf{0.0719} \\
 TFNO & 10\% & 1.01 & 1.09 & 1.25 & 1.57 & 0.1106 $\to$ 0.1740 \\
      & 100\% & 1.01 & 1.10 & 1.27 & 1.62 & 0.1075 $\to$ 0.1746 \\
-AViT & 10\% & 1.02 & 1.33 & 1.89 & 2.94 & 0.0761 $\to$ 0.2238 \\
-     & 100\% & 1.07 & 1.88 & 2.87 & 4.27 & 0.0636 $\to$ 0.2716 \\
+AViT & 10\% & 1.00 & 1.08 & 1.24 & 1.68 & 0.0447 $\to$ 0.0752 \\
+     & 100\% & 1.00 & 1.08 & 1.26 & 1.74 & 0.0426 $\to$ 0.0741 \\
 \midrule
 Persistence & -- & 1.00 & 1.07 & 1.20 & 1.56 & 0.2295 $\to$ 0.3585 \\
 \bottomrule
 \end{tabular}
-\caption{One-step test VRMSE in developed convection with noisy inputs, seed mean. Bold: most robust.}
+\caption{One-step test VRMSE in developed convection with noisy inputs, seed mean. Bold: most robust and, at
+$\sigma=0.20$, most accurate.}
 \label{tab:noise}
 \end{table*}
 
@@ -733,14 +764,13 @@ and 140. Filled, solid: 100\% data; open, dashed: 10\%; dotted: persistence.}
 \label{fig:noise}
 \end{figure*}
 
-CNextU-Net is the most robust and stays the most accurate at every noise level; TFNO degrades about like
-persistence. AViT is the most fragile, and more data makes it more so: the 100\% model is better on clean inputs (0.064
-against 0.076) but worse from $\sigma=0.05$ (0.120 against 0.101), and from $\sigma=0.05$ on it falls behind TFNO. A
-reading consistent with this, not tested: its patch embedding maps noise within a patch to tokens it never saw in
-training, and more training tightens its fit to clean inputs. Over a rollout the input noise fades: at step 10 the
-error rises by at most 13\% at $\sigma=0.2$ for CNextU-Net, TFNO and persistence (AViT 39--53\%), because the
-rollout's own error dominates. Over all windows the ratios are much larger (up to 64 times for AViT and 39 for
-persistence at $\sigma=0.2$): in the nearly still onset windows any noise is large relative to the true field.
+CNextU-Net is the most robust; AViT degrades a little faster, so it is the most accurate up to $\sigma=0.10$ (0.054--0.055
+against 0.056--0.058) and level with CNextU-Net at $\sigma=0.20$ (0.074--0.075 against 0.072--0.074). TFNO degrades
+about like persistence. More data changes no model's robustness. Over a rollout the input noise fades: at step 10 the
+error rises by at most 13\% at $\sigma=0.2$ for CNextU-Net, TFNO and persistence (AViT 22--28\%), because the
+rollout's own error dominates. Over all windows the ratios are much larger (up to 35 times for TFNO, 39 for
+persistence and 20 for AViT at $\sigma=0.2$): in the nearly still onset windows any noise is large relative to the
+true field. The Well's AViT as released is far more fragile (Appendix~\ref{app:avit}).
 
 \section{Uncertainty Quantification}
 \label{sec:uq}
@@ -800,11 +830,11 @@ parts grow with it from $10^6$ to $10^{10}$ (aleatoric 17-fold, epistemic 8-fold
 1.45 during onset) and nearly consistent at $10^{10}$ (1.10).
 
 \textbf{Seed pairs and conformal intervals} (Table~\ref{tab:conformal}). The two seeds of a four-hour run agree far
-more closely than either agrees with the truth (spread-skill 0.41--0.70 one step ahead, rising to 0.84--0.89 by step
+more closely than either agrees with the truth (spread-skill 0.41--0.59 one step ahead, rising to 0.84--0.90 by step
 30), although their rank histograms are nearly flat; a flat rank histogram does not imply
 calibration~\cite{hamill2001rank}. They are most under-dispersed at high Rayleigh number (spread-skill in developed
-convection 0.69--1.16 at $10^6$, 0.34--0.67 at $10^{10}$). More data makes the seeds agree more: their one-step epistemic variance falls by
-71\% for AViT, 35\% for CNextU-Net and 15\% for TFNO, the data effect the one-hour ensembles do not show. Split-conformal
+convection 0.69--1.25 at $10^6$, 0.34--0.52 at $10^{10}$). More data makes the seeds agree more: their one-step epistemic variance falls by
+41\% for AViT, 35\% for CNextU-Net and 15\% for TFNO, the data effect the one-hour ensembles do not show. Split-conformal
 90\% intervals hold their coverage on test for every model and scale (0.899--0.904), so validation and test behave as
 exchangeable; the coverage is an average over phases (onset 0.94--0.99, developed 0.87--0.88). Their widths rank the
 models as their errors do, and the ensemble's predictive scale gives intervals 30\% narrower than its MSE counterpart
@@ -818,7 +848,7 @@ Width of the 90\% conformal interval (normalised) & One step, 10\% / 100\% & Rol
 \midrule
 CNextU-Net, 4 h & 0.116 / 0.112 & 1.74 / 1.71 \\
 TFNO, 4 h & 0.293 / 0.284 & 1.73 / 1.67 \\
-AViT, 4 h & 0.185 / 0.153 & 2.39 / 2.49 \\
+AViT, 4 h & 0.102 / 0.101 & 1.28 / 1.20 \\
 Persistence & 0.654 & 2.49 \\
 \midrule
 CNextU-Net $\beta$-NLL ensemble, 1 h (predictive scale) & 0.140 / 0.136 & 1.64 / 1.61 \\
@@ -831,13 +861,13 @@ covers 0.899--0.904 on test. Constant scale unless stated.}
 \end{table*}
 
 \textbf{Shifts} (Fig.~\ref{fig:uq}b). (a) \emph{Longer rollouts}: an interval of constant width calibrated at step 1
-collapses along the rollout (coverage at step 30: CNextU-Net 0.31, TFNO 0.43, AViT 0.24), while an interval scaled by
-the members' spread stays valid at every step (seed pairs 0.87--0.91, the five-member ensemble 0.92--0.94). The
-members' disagreement tracks how the rollout error grows; the predicted variance does not. (b) \emph{Noisy inputs}:
-at $\sigma=0.2$ coverage falls to 0.76--0.78 for CNextU-Net and 0.70--0.73 for TFNO, and to 0.42--0.56 for AViT, which
-the spread scale lifts to 0.81--0.86. (c) \emph{Rayleigh number}: calibrated on $\mathrm{Ra}\le10^9$, coverage at
-$10^{10}$ is 0.66 for CNextU-Net, 0.70 for AViT and 0.76 for TFNO, 0.85 with the ensemble's predictive scale;
-recalibrating on just two $\mathrm{Ra}=10^{10}$ validation trajectories restores 0.84--0.90.
+collapses along the rollout (coverage at step 30: CNextU-Net 0.31, AViT 0.40--0.42, TFNO 0.43), while an interval
+scaled by the members' spread stays valid at every step (seed pairs 0.88--0.90, the five-member ensemble 0.92--0.94).
+The members' disagreement tracks how the rollout error grows; the predicted variance does not. (b) \emph{Noisy inputs}:
+at $\sigma=0.2$ coverage falls to 0.70--0.78 for every model; the spread scale lifts CNextU-Net and AViT to 0.82--0.87
+but not TFNO (0.75--0.76). (c) \emph{Rayleigh number}: calibrated on $\mathrm{Ra}\le10^9$, coverage at $10^{10}$ is
+0.63--0.64 for AViT, 0.66 for CNextU-Net and 0.76 for TFNO, 0.85 with the ensemble's predictive scale; recalibrating
+on just two $\mathrm{Ra}=10^{10}$ validation trajectories restores 0.84--0.90.
 
 \begin{figure*}[tp]
 \centering
@@ -855,18 +885,18 @@ each window's own coverage. (a) \emph{Reliability.} The ensemble's predicted sta
 information: one step ahead the RMSE rises 46- to 54-fold from its lowest to its highest decile. In the top decile the
 RMSE is close to the predicted value (0.93--0.94 of it), in the lowest about half of it, so the intervals are too wide
 where the flow is easy. By step 10 the RMSE is 1.3--1.7 times the predicted value in every decile, the narrowness seen
-above. The seed pairs' spread also ranks the errors (one step ahead the RMSE rises 8- to 12-fold over the deciles for
+above. The seed pairs' spread also ranks the errors (one step ahead the RMSE rises 8- to 9-fold over the deciles for
 CNextU-Net and AViT, 5- to 6-fold for TFNO), but with two members it is often near zero by chance, so its lowest
 deciles lie far above the diagonal. (b) \emph{Coverage by window and Rayleigh number.} Constant-width conformal
 intervals reach their 90\% only on average: they over-cover low Rayleigh numbers (0.97--0.99 at $10^6$) and
-under-cover high ones (0.76--0.85 at $10^{10}$), and about a fifth of the windows are covered below 80\%. Scaling by
+under-cover high ones (0.74--0.85 at $10^{10}$), and about a fifth of the windows are covered below 80\%. Scaling by
 the seed spread or by the ensemble's predictive standard deviation, without new training, makes coverage much more even
-across windows (1--4\% of windows below 80\%) and across Rayleigh numbers (0.92--0.94 at $10^6$, 0.84--0.87 at
+across windows (1--6\% of windows below 80\%) and across Rayleigh numbers (0.92--0.94 at $10^6$, 0.83--0.87 at
 $10^{10}$). Recalibrating on two trajectories at the highest Rayleigh number (shift c) closes most of the remaining
 gap. Along rollouts the pattern holds:
-at step 10, 11--15\% of the windows fall below 80\% coverage with constant width, at most 3\% with a spread scale.
-With seed pairs this evenness costs width: the spread-scaled intervals are on average 1.4--1.6 times as wide one step
-ahead (CNextU-Net 0.168 against 0.112) and 2.1--2.5 times as wide at step 30 (CNextU-Net 3.6 against 1.7), because a two-member
+at step 10, 12--18\% of the windows fall below 80\% coverage with constant width, at most 3\% with a spread scale.
+With seed pairs this evenness costs width: the spread-scaled intervals are on average about 1.5 times as wide one step
+ahead (CNextU-Net 0.168 against 0.112) and 1.9--2.1 times as wide at step 30 (CNextU-Net 3.6 against 1.7), because a two-member
 spread is a noisy scale. The ensemble's predictive scale has no such cost: its intervals are 30\% narrower than the
 constant-width intervals of the MSE model (Table~\ref{tab:conformal}).
 
@@ -884,8 +914,8 @@ CNextU-Net, 4 h: constant width & 0.99 / 0.76 & 0.68 & 19\% & 0.96 / 0.84 & 15\%
 \quad scaled by the seed spread & 0.93 / 0.84 & 0.82 & 4\% & 0.91 / 0.87 & 1\% \\
 TFNO, 4 h: constant width & 0.99 / 0.81 & 0.69 & 20\% & 0.96 / 0.85 & 12\% \\
 \quad scaled by the seed spread & 0.94 / 0.85 & 0.82 & 4\% & 0.93 / 0.87 & 1\% \\
-AViT, 4 h: constant width & 0.99 / 0.78 & 0.67 & 20\% & 0.93 / 0.89 & 11\% \\
-\quad scaled by the seed spread & 0.94 / 0.84 & 0.82 & 4\% & 0.93 / 0.87 & 0\% \\
+AViT, 4 h: constant width & 0.99 / 0.74 & 0.66 & 19\% & 0.99 / 0.78 & 18\% \\
+\quad scaled by the seed spread & 0.94 / 0.83 & 0.82 & 6\% & 0.92 / 0.86 & 0\% \\
 Persistence: constant width & 0.97 / 0.85 & 0.70 & 21\% & 0.90 / 0.90 & 15\% \\
 \midrule
 $\beta$-NLL ensemble, 1 h: conformal, predictive scale & 0.92 / 0.87 & 0.83 & 1\% & 0.91 / 0.88 & 3\% \\
@@ -914,9 +944,10 @@ or the ensemble's predictive standard deviation (thick); persistence dotted.}
 \section{Findings Under Limited Data and Compute}
 \label{sec:findings}
 
-No family is best on every count (Table~\ref{tab:choice}). CNextU-Net is the most accurate and stable forecaster of
-developed convection and the most robust to noisy inputs, TFNO the fastest for single forecasts and the closest in heat
-transport, and AViT the cheapest on the GPU and the one that gains most from more data.
+One family leads on most counts (Table~\ref{tab:choice}). AViT, with The Well's attention error corrected, is the
+most accurate and most stable forecaster at both data fractions and both budgets, the closest in heat transport and
+the cheapest in GPU memory and for batched forecasts. CNextU-Net is second in accuracy and the most robust to noisy
+inputs, and TFNO is the fastest for single forecasts.
 
 \begin{table*}[tp]
 \centering\footnotesize
@@ -924,34 +955,37 @@ transport, and AViT the cheapest on the GPU and the one that gains most from mor
 \toprule
 If the priority is & Best of the three & Trade-off and evidence \\
 \midrule
-Accurate forecasts of developed convection that stay stable & CNextU-Net, at both fractions & One step 0.0505
-(10\%) / 0.0489 (100\%); 88--89\% of rollouts stay below VRMSE 1; slowest inference (248\,ms per 30 steps); 61\,GB
-training memory. 1.28 times the released model's one-step error, but more stable over rollouts \\ \addlinespace[3pt]
+Accurate forecasts of developed convection that stay stable & AViT, at both fractions & One step 0.0447 (10\%) /
+0.0425 (100\%), 13--15\% below CNextU-Net and 1.11--1.17 times the released model's; 92--96\% of rollouts stay below
+VRMSE 1; learning rate not re-searched for it; only with The Well's attention error corrected
+(Appendix~\ref{app:avit}) \\ \addlinespace[3pt]
+A convolutional alternative & CNextU-Net & Second in accuracy (0.0489--0.0505; 88--89\% of rollouts below VRMSE 1);
+slowest inference (248\,ms per 30 steps); 61\,GB training memory \\ \addlinespace[3pt]
 Fastest single forecast (batch 1) & TFNO (133--135\,ms per 30 steps) & Largest one-step error (0.107--0.111); too
 smooth from $k_x\approx25$; gains least from longer training; unstable rollouts after one hour at 100\% \\
 \addlinespace[3pt]
-Least training memory, cheapest batched forecasts & AViT (8.7\,GB; 0.89\,ms per sample at batch 64) & Rollouts
-degrade fastest (behind persistence after 21--25 steps); patch-shaped artifacts; most fragile to input noise \\
+Least training memory, cheapest batched forecasts & AViT (9.0\,GB; $\approx$0.9\,ms per sample at batch 64) & Six
+times as many optimizer steps; reads 330 samples per second, so the data must sit on the node's disk \\
 \addlinespace[3pt]
-More training data at the same budget & AViT & $-16.5$\% one-step error from 10\% to 100\% (CNextU-Net $-3.1$\%, TFNO
-$-2.8$\%); no model's rollouts improve; one to four hours matters more for CNextU-Net ($-35$\%) \\ \addlinespace[3pt]
-Only one hour of training & 10\%: AViT (one step), TFNO (rollouts). 100\%: CNextU-Net or AViT & 100\%: one step
-0.456 for both, developed 0.075 / 0.080; 50--52\% of rollouts below VRMSE 1, against 23\% for TFNO \\
+More training data at the same budget & None gains much & $-2.8$ to $-4.9$\% one-step error from 10\% to 100\%, $-2$
+to $-6$\% over 30 steps; one to four hours matters more ($-28$ to $-35$\% for AViT and CNextU-Net) \\
 \addlinespace[3pt]
-Convection onset & None: persistence & Persistence 0.116 against 0.245--0.452 at four hours; the deficit is a velocity
+Only one hour of training & AViT, at both fractions & Developed one step 0.062--0.066 (CNextU-Net 0.075--0.078);
+74--76\% of rollouts below VRMSE 1, against at most 60\% \\ \addlinespace[3pt]
+Convection onset & None: persistence & Persistence 0.116 against 0.223--0.452 at four hours; the deficit is a velocity
 effect, on buoyancy all three are more accurate; every model is better from about 20 frames before each
 trajectory's onset frame \\ \addlinespace[3pt]
-Heat transport over a rollout & TFNO & Median error 20--21\%; AViT carries too little heat ($-17$\%); CNextU-Net
-scattered (49\%); the released CNextU-Net twice the true value \\ \addlinespace[3pt]
-Noisy inputs & CNextU-Net & Error $\times1.47$ at $\sigma=0.2$, against $\times1.62$ (TFNO) and $\times4.27$ (AViT,
-100\%) \\ \addlinespace[3pt]
+Heat transport over a rollout & AViT & Median error 5--7\% (TFNO 20--21\%); CNextU-Net scattered (49\%); the released
+CNextU-Net twice the true value \\ \addlinespace[3pt]
+Noisy inputs & CNextU-Net & Error $\times1.47$ at $\sigma=0.2$, against $\times1.62$ (TFNO) and $\times1.68$--1.74
+(AViT); AViT remains as accurate in absolute terms \\ \addlinespace[3pt]
 Calibrated uncertainty & CNextU-Net ensemble with conformal intervals & CRPS 26--32\% below a point forecast's error;
-intervals too narrow along rollouts unless scaled by the members' spread (87--94\% at step 30), which also evens
-coverage across windows and Rayleigh numbers (seed pairs at 1.4--2.5 times the width); five training runs \\
+intervals too narrow along rollouts unless scaled by the members' spread (88--94\% at step 30), which also evens
+coverage across windows and Rayleigh numbers (seed pairs at 1.5--2.1 times the width); five training runs \\
 \addlinespace[3pt]
-Many forecasts at $\mathrm{Ra}\le10^8$ & CNextU-Net, above a break-even & A coarse solver grid is as accurate
-(more than 100 times more accurate at $10^6$); training pays off after $\sim$86,000 ($10^6$) and $\sim$6,200 ($10^8$)
-forecasts \\
+Many forecasts at $\mathrm{Ra}\le10^8$ & A network, above a break-even & A solver grid is as accurate (more than 100
+times more accurate at $10^6$); against CNextU-Net training pays off after $\sim$86,000 ($10^6$) and $\sim$6,200
+($10^8$) forecasts, against AViT after $\sim$1,500 at $10^8$ \\
 \bottomrule
 \end{tabularx}
 \caption{Which model to use under which constraint, after four hours of training unless the row says otherwise. These
@@ -959,40 +993,48 @@ hold for these configurations and budgets.}
 \label{tab:choice}
 \end{table*}
 
-\textbf{Negative results.} (a) Ten times more data does not improve any model's 30-step rollouts at these budgets,
-and it does not close the gap to the longer-trained released CNextU-Net. (b) A low one-step error does not guarantee
+\textbf{Negative results.} (a) Ten times more data improves no model by more than 5\% one step ahead or 6\% over 30
+steps at these budgets, and it does not close the gap to the longer-trained released CNextU-Net. (b) A low one-step
+error does not guarantee
 a stable rollout or the right heat transport: the released CNextU-Net has the lowest one-step error in developed
 convection and the least accurate heat transport. (c) No model beats persistence on average over onset, although every model is better from about 20
 frames before each trajectory's onset frame. (d) At
 $\mathrm{Ra}=10^6$ a coarse numerical solver is far more accurate than every model. (e) The ensemble's predicted
-variance does not track rollout error, and more data makes AViT more fragile to noise.
+variance does not track rollout error. (f) The Well's AViT as released, with the same recipe, is the least stable
+model and the most fragile to noise; these weaknesses came from the code, not the architecture
+(Appendix~\ref{app:avit}).
 
 \textbf{Limitations.} (a) Two seeds per configuration, both on one fixed 10\% subset, so the effect of which
 trajectories were drawn is not measured. (b) Training is one-step only; multi-step training might change the rollout
 results~\cite{brandstetter2022mp}. (c) Training in fp32 favours TFNO, since bf16 would speed up CNextU-Net 1.7 times
 and AViT 2.2 times but is not available for TFNO. (d) The learning rate is the best of a short search and lies at the
-top of the tested grid. (e) The solver comparison at $\mathrm{Ra}=10^{10}$ is limited by our time step
-(Section~\ref{sec:solver}). (f) The one-hour results are checkpoints of four-hour runs, not dedicated one-hour
-schedules, except for the uncertainty ensemble.
+top of the tested grid; AViT's was searched with the attention as released and not searched again. (e) The solver
+comparison at $\mathrm{Ra}=10^{10}$ is limited by our time step (Section~\ref{sec:solver}). (f) The one-hour results
+are checkpoints of four-hour runs, not dedicated one-hour schedules, except for the uncertainty ensemble. (g) AViT is
+The Well's code with one correction of ours (Appendix~\ref{app:avit}); the rest of its code is unchanged.
+(h) Of the abstract's extensions, only input-noise robustness was run (Section~\ref{sec:noise}); a third seed, a
+30\% data fraction and a fourth, recurrent family (ConvLSTM) were dropped at the mid-project check-in for lack of
+compute.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-Under limited data and compute, the choice of architecture matters more than ten times more training data. With one
-recipe and four hours on one A100, CNextU-Net is the most accurate and most stable forecaster of developed
-Rayleigh--B\'enard convection at both data fractions, and the most robust to noisy inputs; more data barely helps it,
-while more training time does. AViT gains most from data but its rollouts degrade fastest and it is fragile to noise;
-TFNO is the fastest for single forecasts and comes closest in heat transport, but is the least accurate pointwise.
-None beats copying the last frame in the nearly still first part of onset. At $\mathrm{Ra}\le10^8$ a coarse numerical
-solver is as accurate as CNextU-Net, and the network's training pays off only after about 6,000 to 86,000
-forecasts. A small ensemble with conformal intervals scaled by its spread gives error bars that stay valid along a
-rollout and hold much more evenly across windows and Rayleigh numbers.
+Under limited data and compute, the choice of architecture, and the correctness of its code, matter more than ten
+times more training data. With one recipe and one to four hours on one A100, AViT, once The Well's 2-D attention
+error is corrected (we reported it upstream), is the most accurate and most stable forecaster of
+Rayleigh--B\'enard convection at both data fractions and the closest in heat transport; as released, the same model
+was the least stable. CNextU-Net is second and the most robust to noisy inputs; TFNO is the fastest for single
+forecasts but the least accurate pointwise. More data barely helps any of them, while more training time does. None
+beats copying the last frame in the nearly still first part of onset. At $\mathrm{Ra}\le10^8$ a numerical solver
+matches the networks, on a coarse grid for CNextU-Net and on the full grid for AViT at $10^8$, and the networks'
+training pays off after about 1,500 to 86,000 forecasts. A small ensemble with conformal intervals scaled by its
+spread gives error bars that stay valid along a rollout and hold much more evenly across windows and Rayleigh
+numbers.
 
 \bibliography{final_acl}
 
 \appendix
 
-\newpage
 \section{Physical System Details}
 \label{app:rb_regimes}
 
@@ -1045,6 +1087,107 @@ learns little more than copying each pixel's last value (Fig.~\ref{fig:released}
 persistence in developed convection (0.193 against 0.229) and much worse during onset. Our TFNO, with its Fourier
 layers, is better everywhere at both data fractions.
 
+\section{AViT's Attention in The Well's Code}
+\label{app:avit}
+
+AViT splits the $512\times128$ field into $16\times16$-pixel patches, a grid of $32\times8$ tokens, and is meant to mix
+them with axial attention, once along each axis~\cite{mccabe2024mpp}. In The Well's 2-D code (commit
+\href{https://github.com/PolymathicAI/the_well/blob/e63dec8ded515be864755eaf595d39fea409e335/the_well/benchmark/models/avit/__init__.py\#L141-L144}{\texttt{e63dec8}},
+unchanged on the main branch on 2026-11-24), the second pass attends across the attention heads of each token instead
+of along $x$: the code rearranges queries, keys and values for the first pass and then maps that layout to one whose
+sequence axis is the heads. Every attention block therefore mixes a token only with the 8 tokens in its own column
+(the same $x$). The patch embedding and the decoder work on each patch separately, so the only link between columns
+is the global statistics of their GroupNorm layers. One block confirms it: perturbing one token changes the 7 other
+tokens of its column and none of its row; with the second pass along $x$, its row is reached as well. The
+three-dimensional code path is correct.
+
+This explains the strip-shaped predictions of the AViT as released (Fig.~\ref{fig:avitfix}b).
+Table~\ref{tab:avitseams} measures the seams: the mean jump between neighbouring pixels across patch boundaries,
+divided by the mean jump elsewhere (1 means no seam). One step ahead, its predictions jump 2.4--3.2 times more across
+the boundaries between strips in $x$, and 7.2--12.9 times after 30 steps; across the boundaries in $y$ they look like
+the true flow. CNextU-Net and TFNO show no seams. Its one-step error is 1.35--1.87 times larger at the edges of a
+strip than at its centre, where it would need its neighbours. The effect is small one step ahead and grows along a
+rollout, where the model receives its own seams as input. With the second pass along $x$ the seams fall to 1.2--1.4
+and no longer grow: a mild seam remains from the per-patch embedding and decoder.
+
+\begin{table*}[tp]
+\centering\footnotesize
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& \multicolumn{2}{c}{Seams between strips in $x$} & \multicolumn{2}{c}{Seams between patches in $y$} &
+\multicolumn{2}{c}{One-step error, strip edge / centre} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-7}
+& step 1 & step 30 & step 1 & step 30 & along $x$ & along $y$ \\
+\midrule
+True flow & 0.98--0.99 & 1.02--1.07 & 0.87--1.01 & 0.71--0.97 & -- & -- \\
+CNextU-Net & 0.98--1.08 & 0.98--1.10 & 0.83--1.00 & 0.78--0.91 & 1.03--1.11 & 1.00--1.02 \\
+TFNO & 1.02--1.04 & 0.99--1.08 & 0.75--0.97 & 0.62--0.82 & 0.97--1.00 & 0.98--1.00 \\
+AViT as released & \textbf{2.44--3.16} & \textbf{7.17--12.87} & 0.90--1.08 & 0.59--0.87 & \textbf{1.35--1.87} & 1.04--1.12 \\
+AViT, corrected & 1.27--1.40 & 1.16--1.39 & 0.90--1.07 & 0.84--1.02 & 1.06--1.24$^{a}$ & 1.07--1.25$^{a}$ \\
+\bottomrule
+\end{tabular}
+\caption{Patch seams in the predicted buoyancy: mean $|$jump$|$ between neighbouring pixels across 16-pixel patch
+boundaries over the mean jump elsewhere (1: no seam), and the one-step error at a strip's edge (pixels 0 and 15)
+over its centre (pixels 6--9). Ranges over four cases: $\mathrm{Ra}=10^8$ and $10^{10}$ ($\mathrm{Pr}=1$), 10\% and
+100\% data; four-hour models, seed 0, rollouts from frame 80; the 8 rows next to each wall are left out.
+$^{a}$Computed later from the same files with the normalised error of all four fields, which reproduces the other
+rows within 0.03.}
+\label{tab:avitseams}
+\end{table*}
+
+Running the second pass along $x$ fixes it without changing any parameter. We reported the error and this fix to The
+Well on GitHub (\href{https://github.com/PolymathicAI/the_well/issues/111}{issue~\#111}, opened 2026-11-24); it had not been reported before. The AViT of the main text is
+this corrected model. The Well's AViT as released was trained first, on the same four configurations (10\% and 100\%
+data, two seeds, four hours) with the same size, recipe and learning rate, so that only the attention differs between
+the two (Table~\ref{tab:avitfix}, Fig.~\ref{fig:avitfix}).
+
+\begin{table*}[tp]
+\centering\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Four hours unless stated; AViT as released $\to$ corrected & 10\% data & 100\% data \\
+\midrule
+One-step VRMSE, developed convection & 0.0761 $\to$ 0.0447 & 0.0636 $\to$ 0.0425 \\
+One-step VRMSE, onset & 0.294 $\to$ 0.241 & 0.245 $\to$ 0.223 \\
+VRMSE after 30 steps from frames 80 / 140 & 0.80 / 0.65 $\to$ 0.36 / 0.28 & 0.83 / 0.69 $\to$ 0.34 / 0.26 \\
+VRMSE after 30 steps from frame 20 & 5.42 $\to$ 1.52 & 5.64 $\to$ 1.32 \\
+Rollouts below VRMSE 1 through step 30 & 63\% $\to$ 92\% & 61\% $\to$ 96\% \\
+Step at which the error from frames 80, 140 passes persistence's & 24--25 $\to$ none & 21 $\to$ none \\
+Correlation at step 30, from frames 80, 140 & 0.69 $\to$ 0.93 & 0.66 $\to$ 0.93 \\
+Paper protocol, rollout from frame 0, steps 6--12 / 13--30 & 75 / 167 $\to$ 8 / 19 & 61 / 148 $\to$ 6 / 13 \\
+Nusselt number, median $|$error$|$ over 30 steps & 27\% $\to$ 7\% & 25\% $\to$ 5\% \\
+Input noise $\sigma=0.2$: error relative to clean inputs & 2.94 $\to$ 1.68 & 4.27 $\to$ 1.74 \\
+One hour: one-step VRMSE, developed & 0.0846 $\to$ 0.0623 & 0.0804 $\to$ 0.0658 \\
+One hour: rollouts below VRMSE 1 through step 30 & 34\% $\to$ 76\% & 52\% $\to$ 74\% \\
+GPU time held per four-hour run & 11.1--12.2\,h $\to$ 6.4\,h$^{a}$ & 5.7--6.0\,h $\to$ 5.0--5.2\,h \\
+\bottomrule
+\end{tabular}
+\caption{The Well's AViT as released against the corrected AViT, same recipe, test split, seed mean.
+$^{a}$The as-released 10\% runs read their data from the shared file system, the corrected ones from the node's disk.}
+\label{tab:avitfix}
+\end{table*}
+
+\begin{figure*}[tp]
+\centering
+\figureorpending{fig_avit_fix.pdf}{width=\textwidth}
+\caption{The Well's AViT as released against the corrected AViT. (a--c) Buoyancy after 30 rollout steps from frame
+80 at $\mathrm{Ra}=10^8$, $\mathrm{Pr}=1$ (100\% data, four hours, seed 0): the true flow, AViT as released and the
+corrected AViT. (d) VRMSE at each rollout step from frames 80 and 140 and (e) fraction of the 525 rollouts that stay
+below VRMSE 1, four-hour models (seed mean; solid: 100\% data, dashed: 10\%), with CNextU-Net and persistence.}
+\label{fig:avitfix}
+\end{figure*}
+
+\textbf{What the correction changes.} The correction turns the least stable model of the study into the most
+stable. One step ahead it lowers the developed-convection error by 33--41\%, from behind CNextU-Net to 13--15\% ahead
+of it; over rollouts the error after 30 steps falls by more than half, and from frame 20, where the model as released was by far
+the worst (5.4--5.6), it becomes the best (1.3--1.5). The model as released carried too little heat ($-17$\%); the
+corrected one is within 2--4\% overall. Two findings about AViT as released turn out to come from the error rather
+than from the architecture. Its large gain from ten times more data ($-16.5$\% in developed convection, against
+$-4.9$\% after the correction) suggests that more data partly made up for the missing exchange along $x$. Its
+fragility to input noise (error $\times4.27$ at $\sigma=0.2$ with all the data, $\times1.74$ after the correction)
+fits a model that predicts each strip from that strip alone, with no neighbours to average out noise in its inputs.
+
 \section{Metric Details}
 \label{app:metrics}
 
@@ -1055,8 +1198,9 @@ standard deviation $\sigma_f$ (0.249, 0.149, 0.208 and 0.180 for $b$, $p$, $u$ a
 stored. The rescaling cancels out except for $\varepsilon$, which becomes 16--45 times smaller relative to the
 fields and so barely holds the onset scores down. In developed convection $\varepsilon$ is negligible and the two
 agree. As a result onset, 27\% of the windows, gives 96\% of the released CNextU-Net's paper-protocol mean
-(Table~\ref{tab:units}), and that mean can reverse rankings: at four hours AViT looks better than CNextU-Net (0.298
-against 0.349 at 10\%; 0.245 against 0.333 at 100\%) but is 1.5 and 1.3 times less accurate in developed convection.
+(Table~\ref{tab:units}), and that mean can reverse comparisons: at four hours our CNextU-Net looks twice as good as
+the released one (0.349 at 10\% and 0.333 at 100\%, against 0.669) but is 1.3 times less accurate in developed
+convection.
 The physical-field VRMSE reduces this effect (87\%) without removing it, so we also report the two phases separately.
 
 \begin{table*}[tp]
@@ -1132,7 +1276,8 @@ whatever its amplitude and offset. The high-correlation time is the first rollou
 averaged over the rollouts, falls below 0.95, 0.9 or 0.8. For a prediction with the true variance,
 $\mathrm{VRMSE}^2\approx2(1-r)$, so VRMSE $\approx1.41$ corresponds to $r=0$. The values come from the
 uncertainty evaluation pass (Section~\ref{sec:uq}), which ran every four-hour checkpoint on the same 525 rollouts;
-where the core evaluation also computed the correlation (the 100\% runs), the means agree within 0.001. The released
+where the core evaluation also computed the correlation (the 100\% runs and AViT's), the means agree within 0.001. The
+released
 CNextU-Net was evaluated without it.
 
 \begin{table*}[tp]
@@ -1145,12 +1290,12 @@ CNextU-Net was evaluated without it.
 & & $r$ at step & $r$ at step 30: & First step & Rollouts with & $r$ at step \\
 Model (4 h) & Data & 1 / 10 / 30 & $b$ / $u$ & below 0.95 / 0.9 / 0.8 & $r>0.8$ at step 30 & 1 / 30 \\
 \midrule
-CNextU-Net & 10\% & 0.997 / 0.966 / \textbf{0.866} & 0.92 / 0.80 & 13 / 22--23 / $>$30 & \textbf{77\%} & 0.78 / 0.61 \\
-           & 100\% & 0.997 / 0.969 / \textbf{0.871} & 0.92 / 0.80 & 14 / 24 / $>$30 & \textbf{77\%} & 0.79 / 0.61 \\
+CNextU-Net & 10\% & 0.997 / 0.966 / 0.866 & 0.92 / 0.80 & 13 / 22--23 / $>$30 & 77\% & 0.78 / 0.61 \\
+           & 100\% & 0.997 / 0.969 / 0.871 & 0.92 / 0.80 & 14 / 24 / $>$30 & 77\% & 0.79 / 0.61 \\
 TFNO & 10\% & 0.990 / 0.946 / 0.838 & 0.89 / 0.76 & 10 / 18 / $>$30 & 66\% & 0.78 / 0.48 \\
      & 100\% & 0.990 / 0.949 / 0.846 & 0.90 / 0.77 & 10 / 19 / $>$30 & 70\% & 0.78 / 0.49 \\
-AViT & 10\% & 0.994 / 0.861 / 0.686 & 0.88 / 0.43 & 5 / 8 / 15 & 18\% & 0.81 / 0.41 \\
-     & 100\% & 0.996 / 0.857 / 0.656 & 0.87 / 0.38 & 5 / 8 / 14 & 12\% & 0.83 / 0.41 \\
+AViT & 10\% & 0.997 / 0.982 / \textbf{0.927} & 0.95 / 0.90 & 21--22 / $>$30 / $>$30 & \textbf{91\%} & 0.83 / 0.60 \\
+     & 100\% & 0.997 / 0.984 / \textbf{0.932} & 0.95 / 0.91 & 23--24 / $>$30 / $>$30 & \textbf{92\%} & 0.84 / 0.64 \\
 \midrule
 Persistence & -- & 0.962 / 0.769 / 0.701 & 0.86 / 0.52 & 2 / 3 / 8 & 29\% & 0.98 / 0.61 \\
 \bottomrule
@@ -1171,17 +1316,17 @@ Horizontal lines: the thresholds of the high-correlation time.}
 \end{figure*}
 
 \textbf{Results} (Table~\ref{tab:corr}, Fig.~\ref{fig:corr}). In developed flow the correlation ranks the models as
-VRMSE does. CNextU-Net keeps its mean correlation above 0.8 through step 30 (0.87) and above 0.9 until step 22--24;
-TFNO ends at 0.84--0.85 and stays above 0.9 until step 18--19. AViT falls below 0.8 at step 14--15 and ends below
-persistence (0.66--0.69 against 0.70), mostly through horizontal velocity (0.38--0.43 against 0.52); buoyancy stays
-well correlated for every model (0.87--0.92). More data changes no model's correlation by more than 0.03. The ranking
-does not change because every model keeps about the true variance: per rollout and field, $\mathrm{VRMSE}^2$ is
-within a few percent of $2(1-r)$ (median ratio 0.97--1.05 at steps 1, 10 and 30; AViT's horizontal velocity 0.86--0.89
-at step 30), so the two measures carry nearly the same information and the double penalty favours no family here.
-During onset the models' correlation is only 0.78--0.83 already at step 1, against 0.98 for persistence: buoyancy and
-pressure correlate at 0.998 or more, but the faint velocity field only at 0.45--0.74. The models get the pattern of the
-first motion wrong, not only its scale, which confirms that their onset deficit is a velocity effect. After 30 steps
-from onset CNextU-Net ties persistence (0.61), while TFNO and AViT fall to 0.41--0.49.
+VRMSE does. AViT keeps its mean correlation above 0.9 through step 30 (0.93) and above 0.95 until step 21--24, and
+92\% of its rollouts end above 0.8; CNextU-Net ends at 0.87 and stays above 0.9 until step 22--24; TFNO ends at
+0.84--0.85 and stays above 0.9 until step 18--19. Buoyancy stays well correlated for every model (0.89--0.95),
+horizontal velocity least (0.76--0.91). More data changes no model's correlation by more than 0.01. The ranking does
+not change because every model keeps about the true variance: per rollout and field, $\mathrm{VRMSE}^2$ is within a few
+percent of $2(1-r)$ (median ratio 0.97--1.05 at steps 1, 10 and 30), so the two measures carry nearly the same
+information and the double penalty favours no family here. During onset the models' correlation is only 0.78--0.84
+already at step 1, against 0.98 for persistence: buoyancy and pressure correlate at 0.998 or more, but the faint
+velocity field only at 0.45--0.75. The models get the pattern of the first motion wrong, not only its scale, which
+confirms that their onset deficit is a velocity effect. After 30 steps from onset AViT (0.60--0.64) and CNextU-Net
+(0.61) are level with persistence (0.61), while TFNO falls to 0.48--0.49.
 
 \section{Additional Results}
 \label{app:results}
@@ -1210,19 +1355,19 @@ trajectories each), (b) from frame 0 and (c) from $t_{\mathrm{on}}$.}
 \cmidrule(lr){3-6}\cmidrule(lr){7-10}\cmidrule(l){11-14}
 Model & Data & $b$ & $p$ & $u$ & $w$ & $b$ & $p$ & $u$ & $w$ & $b$ & $p$ & $u$ & $w$ \\
 \midrule
-CNextU-Net, 4 h & 10\% & \textbf{0.095} & \textbf{0.025} & \textbf{0.039} & \textbf{0.044} & 0.028 & 0.011 & 0.827 & 0.612 & \textbf{0.384} & \textbf{0.293} & \textbf{0.598} & \textbf{0.584} \\
-                & 100\% & \textbf{0.095} & \textbf{0.022} & \textbf{0.037} & \textbf{0.042} & 0.029 & 0.011 & 0.786 & 0.588 & \textbf{0.379} & \textbf{0.288} & \textbf{0.589} & \textbf{0.572} \\
+CNextU-Net, 4 h & 10\% & 0.095 & 0.025 & 0.039 & 0.044 & 0.028 & 0.011 & 0.827 & 0.612 & 0.384 & 0.293 & 0.598 & 0.584 \\
+                & 100\% & 0.095 & 0.022 & 0.037 & 0.042 & 0.029 & 0.011 & 0.786 & 0.588 & 0.379 & 0.288 & 0.589 & 0.572 \\
 TFNO, 4 h & 10\% & 0.174 & 0.055 & 0.096 & 0.117 & 0.039 & 0.015 & 1.117 & 0.750 & 0.466 & 0.307 & 0.665 & 0.646 \\
           & 100\% & 0.171 & 0.052 & 0.093 & 0.114 & 0.038 & 0.015 & 0.993 & 0.761 & 0.456 & 0.297 & 0.635 & 0.622 \\
-AViT, 4 h & 10\% & 0.122 & 0.040 & 0.061 & 0.081 & \textbf{0.027} & \textbf{0.007} & \textbf{0.623} & \textbf{0.518} & 0.497 & 0.419 & 1.059 & 0.922 \\
-          & 100\% & 0.109 & 0.031 & 0.050 & 0.064 & \textbf{0.026} & \textbf{0.007} & \textbf{0.519} & \textbf{0.430} & 0.507 & 0.440 & 1.117 & 0.984 \\
+AViT, 4 h & 10\% & \textbf{0.088} & \textbf{0.020} & \textbf{0.034} & \textbf{0.037} & \textbf{0.025} & \textbf{0.006} & \textbf{0.518} & \textbf{0.415} & \textbf{0.308} & \textbf{0.204} & \textbf{0.379} & \textbf{0.388} \\
+          & 100\% & \textbf{0.087} & \textbf{0.017} & \textbf{0.031} & \textbf{0.035} & \textbf{0.025} & \textbf{0.006} & \textbf{0.479} & \textbf{0.381} & \textbf{0.292} & \textbf{0.193} & \textbf{0.352} & \textbf{0.362} \\
 \midrule
-CNextU-Net, 1 h & 10\% & \textbf{0.129} & \textbf{0.046} & \textbf{0.069} & \textbf{0.069} & 0.046 & 0.033 & 6.553 & 3.409 & 1.017 & 0.729 & 1.280 & 1.249 \\
-                & 100\% & \textbf{0.127} & \textbf{0.043} & \textbf{0.063} & \textbf{0.068} & 0.045 & 0.033 & 4.041 & \textbf{1.892} & 0.762 & 0.623 & \textbf{1.211} & 1.117 \\
-TFNO, 1 h & 10\% & 0.184 & 0.063 & 0.105 & 0.129 & 0.051 & 0.028 & 3.592 & 2.095 & 0.925 & \textbf{0.603} & \textbf{0.930} & \textbf{0.908} \\
+CNextU-Net, 1 h & 10\% & 0.129 & 0.046 & 0.069 & 0.069 & 0.046 & 0.033 & 6.553 & 3.409 & 1.017 & 0.729 & 1.280 & 1.249 \\
+                & 100\% & 0.127 & 0.043 & 0.063 & 0.068 & 0.045 & 0.033 & 4.041 & 1.892 & 0.762 & 0.623 & 1.211 & 1.117 \\
+TFNO, 1 h & 10\% & 0.184 & 0.063 & 0.105 & 0.129 & 0.051 & 0.028 & 3.592 & 2.095 & 0.925 & 0.603 & 0.930 & 0.908 \\
           & 100\% & 0.194 & 0.071 & 0.110 & 0.130 & 0.055 & 0.033 & 3.518 & 2.368 & 1.301 & 0.846 & 1.320 & 1.171 \\
-AViT, 1 h & 10\% & 0.132 & 0.047 & 0.071 & 0.088 & \textbf{0.035} & \textbf{0.017} & \textbf{2.965} & \textbf{1.960} & \textbf{0.837} & 0.652 & 1.484 & 1.209 \\
-          & 100\% & 0.128 & 0.043 & 0.068 & 0.083 & \textbf{0.036} & \textbf{0.018} & \textbf{3.327} & 2.561 & \textbf{0.698} & \textbf{0.566} & 1.275 & \textbf{1.096} \\
+AViT, 1 h & 10\% & \textbf{0.111} & \textbf{0.032} & \textbf{0.052} & \textbf{0.054} & \textbf{0.035} & \textbf{0.020} & \textbf{2.947} & \textbf{2.061} & \textbf{0.534} & \textbf{0.353} & \textbf{0.687} & \textbf{0.622} \\
+          & 100\% & \textbf{0.117} & \textbf{0.033} & \textbf{0.055} & \textbf{0.059} & \textbf{0.038} & \textbf{0.016} & \textbf{3.353} & \textbf{1.527} & \textbf{0.600} & \textbf{0.392} & \textbf{0.708} & \textbf{0.685} \\
 \midrule
 Released CNextU-Net & 100\% & 0.071 & 0.020 & 0.029 & 0.033 & 0.021 & 0.011 & 1.404 & 1.497 & 0.505 & 0.366 & 0.713 & 0.697 \\
 Persistence & -- & 0.278 & 0.124 & 0.248 & 0.267 & 0.058 & 0.014 & 0.197 & 0.195 & 0.531 & 0.408 & 0.934 & 0.916 \\
@@ -1268,7 +1413,8 @@ training configuration.
 
 \textbf{Learning-rate search.} Each model was trained for 20 minutes at each rate (seed 0, 10\% data, nine runs),
 with 100 warmup steps and 512 validation windows, and takes the rate with the lowest validation VRMSE
-(Table~\ref{tab:lr}); the test split was not used. $10^{-3}$ won for all three.
+(Table~\ref{tab:lr}); the test split was not used. $10^{-3}$ won for all three. AViT was searched with its attention
+as released, and the corrected AViT keeps the same rate.
 
 \begin{table}[!htbp]
 \centering\small\setlength{\tabcolsep}{4pt}
@@ -1278,7 +1424,7 @@ Validation VRMSE after 20 min & $10^{-4}$ & $5\cdot10^{-4}$ & $10^{-3}$ \\
 \midrule
 CNextU-Net & 0.841 & 0.469 & \textbf{0.408} \\
 TFNO & 0.603 & 0.358 & \textbf{0.302} \\
-AViT & 0.646 & 0.332 & \textbf{0.257} \\
+AViT (as released) & 0.646 & 0.332 & \textbf{0.257} \\
 \bottomrule
 \end{tabular}
 \caption{Learning-rate search.}
@@ -1332,21 +1478,22 @@ production runs refuse to start from an uncommitted code tree. The pinned upstre
 \toprule
 Hours per run & CNextU-Net & TFNO & AViT \\
 \midrule
-\multicolumn{4}{@{}l}{\textit{10\% runs, data read from the shared file system}} \\
+\multicolumn{4}{@{}l}{\textit{10\% runs, data read from the shared file system (AViT: copied to the node's disk)}} \\
 GPU training (the budget) & 4.0 & 4.0 & 4.0 \\
-Waiting for data & 0.8--1.1 & 2.5--2.8 & 6.1--7.3 \\
-Other (start-up, validation, checkpoints, replayed steps) & 0.4--0.9 & 0.3 & 0.9--1.0 \\
-\textbf{Allocated time of training} & \textbf{5.2--6.0} & \textbf{6.9--7.1} & \textbf{11.1--12.2} \\
+Waiting for data & 0.8--1.1 & 2.5--2.8 & 1.8--2.2 \\
+Other (start-up, data copy, validation, checkpoints, replayed steps) & 0.4--0.9 & 0.3 & 0.2--0.6 \\
+\textbf{Allocated time of training} & \textbf{5.2--6.0} & \textbf{6.9--7.1} & \textbf{6.4} \\
 \midrule
 \multicolumn{4}{@{}l}{\textit{100\% runs, data copied to the GPU node's disk}} \\
 GPU training (the budget) & 4.0 & 4.0 & 4.0 \\
-Waiting for data & 0.0 & 0.0--0.1 & 0.2--0.9 \\
-Other (start-up, data copy, validation, checkpoints, replayed steps) & 0.4--0.6 & 1.5--1.7 & 0.8--1.8 \\
-\textbf{Allocated time of training} & \textbf{4.4--4.6} & \textbf{5.5--5.8} & \textbf{5.7--6.0} \\
+Waiting for data & 0.0 & 0.0--0.1 & 0.3--0.5 \\
+Other (start-up, data copy, validation, checkpoints, replayed steps) & 0.4--0.6 & 1.5--1.7 & 0.5--0.9 \\
+\textbf{Allocated time of training} & \textbf{4.4--4.6} & \textbf{5.5--5.8} & \textbf{5.0--5.2} \\
 \bottomrule
 \end{tabularx}
-\caption{Time per run (range over the two seeds). Queue waits before a job starts depend on the cluster's load and are
-not included (up to 12--15 hours on the paid partition).}
+\caption{Time per run (range over the two seeds); AViT with its attention corrected. The 10\% runs of AViT as released
+read from the shared file system and waited 6.1--7.3 hours for data, holding 11.1--12.2. Queue waits before a job
+starts depend on the cluster's load and are not included (up to 12--15 hours on the paid partition).}
 \label{tab:time}
 \end{table*}
 
@@ -1356,18 +1503,19 @@ Waiting for data (logged separately), logging, validation, checkpoint writes and
 the clock resumes from the last checkpoint.
 
 \textbf{Storage.} The shared file system delivers at most $\sim$98 samples per second into one node
-(Fig.~\ref{fig:loader}) and stalls for 5--22 minutes at a time on all nodes; TFNO and AViT consume 116 and 330 samples
-per second. For the 100\% runs, each job copied the training split (294\,GB) to the GPU node's local disk (1.83\,TB)
-and deleted it at exit. Write stalls of the shared file system still hit the checkpoint saves of the 100\% runs, up to
+(Fig.~\ref{fig:loader}) and stalls for 5--22 minutes at a time on all nodes; TFNO and AViT consume 116 and about 330
+samples per second. For the 100\% runs and the corrected AViT's runs, each job copied the training split (294\,GB) to
+the GPU node's local disk (1.83\,TB) and deleted it at exit. The corrected AViT's two 10\% runs, which shared one node,
+still waited about 2 hours each for data; we did not examine why. Write stalls of the shared file system still hit the checkpoint saves of the 100\% runs, up to
 22\% of their wall time, which explains their larger ``other'' time.
 
-\begin{figure}[!htbp]
+\begin{figure*}[tp]
 \centering
-\figureorpending{fig_loader.pdf}{width=\columnwidth}
+\figureorpending{fig_loader.pdf}{width=0.5\textwidth}
 \caption{Training samples per second read from the shared file system by one node, against the rate at which each
-model consumes them on the GPU (horizontal lines).}
+model consumes them on the GPU (horizontal lines; AViT as released).}
 \label{fig:loader}
-\end{figure}
+\end{figure*}
 
 \section{Encountered Issues}
 \label{app:issues}
@@ -1385,7 +1533,7 @@ for 5--22 minutes at a time & 10\% runs waited 0.8--7.3\,h for data per 4-hour r
 runs copied the data to the node's disk and read errors are retried \\ \addlinespace[3pt]
 \midrule
 Data on HPC3 & Input/output errors and launch failures of the shared file system & Two 10\% AViT runs crashed and
-resumed from their checkpoints; one 100\% run restarted inside its job; six jobs failed at launch and were
+resumed from their checkpoints; one 100\% run restarted inside its job; nine jobs failed at launch and were
 resubmitted \\ \addlinespace[3pt]
 \midrule
 Compute on HPC3 & Queue waits on the paid partition & Median 1--8\,h by purpose; up to 12--15\,h \\
@@ -1398,6 +1546,10 @@ Data & The files store an evenly spaced placeholder for $y$ & Identified the Che
 \midrule
 Upstream code & The released TFNO was trained without its Fourier layers & Scored with its paper-era forward pass;
 not used as a reference (Appendix~\ref{app:tfno}) \\ \addlinespace[3pt]
+\midrule
+Upstream code & The Well's 2-D AViT attends only along $y$, so each 16-pixel strip in $x$ is predicted from itself &
+Corrected and retrained (26 GPU-hours); the main text uses the corrected AViT, the version as released is compared in
+Appendix~\ref{app:avit}; reported upstream (\href{https://github.com/PolymathicAI/the_well/issues/111}{issue~\#111}) \\ \addlinespace[3pt]
 \midrule
 Solver & Our CFL safety factor (0.5) is far larger than the data generator's (0.0039) & The $\mathrm{Ra}=10^{10}$
 comparison is reported with this limitation (Section~\ref{sec:solver}) \\

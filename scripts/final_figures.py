@@ -29,7 +29,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.ticker  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
-from rbbench import MODEL_NAMES  # noqa: E402
 from rbbench.aggregate import INK, MUTED, STYLE  # noqa: E402
 from rbbench.visuals import snapshot_files  # noqa: E402
 
@@ -39,6 +38,10 @@ FRACS = (0.1, 1.0)
 FRAC_TEXT = {0.1: "10%", 1.0: "100%"}
 FRAC_LS = {0.1: "--", 1.0: "-"}
 DEV_STARTS = (80, 140)
+# The main figures compare CNextU-Net, TFNO and AViT with The Well's 2-D attention corrected (`avit_fixed`, D32),
+# drawn as "AViT" in AViT's usual colour; The Well's AViT as released appears only in the appendix figure
+# `fig_avit_fix` (main() sets the styles, `main_runs` selects the runs).
+MAIN = ("cnext_unet", "tfno", "avit_fixed")
 RELEASED = dict(color=INK, lw=1.0, ls="--")
 PERSIST_LINE = dict(color=PERSIST["color"], lw=1.3, ls=":")
 
@@ -92,6 +95,23 @@ def log_ticks(ax, ticks):
     ax.set_yticks(ticks)
     ax.yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%g"))
     ax.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+
+
+def use_main_style() -> None:
+    """The corrected AViT takes AViT's colour and the plain label; AViT as released becomes a grey reference."""
+    released_style = dict(STYLE["avit"])
+    STYLE["avit_fixed"] = {**released_style, "label": "AViT"}
+    STYLE["avit"] = {"color": "#8c8c8c", "marker": "x", "label": "AViT as released"}
+
+
+def main_runs(runs: pd.DataFrame) -> pd.DataFrame:
+    """The study's three families: the core CNextU-Net and TFNO runs and the corrected AViT's runs (labelled as core
+    runs, so the helpers that select `manifest == "train"` take them); AViT as released is left out."""
+    if runs.empty:
+        return runs
+    core = runs[(runs.manifest == "train") & runs.model.isin(MAIN)]
+    fixed = runs[runs.manifest == "train_avit_fixed"].assign(manifest="train")
+    return pd.concat([core, fixed], ignore_index=True)
 
 
 # --- data helpers (tested in tests/test_final_figures.py) ---------------------------------------------------------
@@ -174,7 +194,7 @@ def data_scaling(fc: pd.DataFrame, out: Path) -> list[str]:
     if fc.empty:
         return []
     fc = with_rollout_end(fc)
-    models = [m for m in MODEL_NAMES if m in set(fc.model)]
+    models = [m for m in MAIN if m in set(fc.model)]
     panels = (("one_step_developed", "One-step VRMSE,\ndeveloped convection", "(a) One step, developed",
                [0.03, 0.05, 0.1, 0.2, 0.3]),
               ("one_step_onset", "One-step VRMSE, onset", "(b) One step, onset", [0.1, 0.2, 0.5, 1, 2, 3]),
@@ -218,7 +238,7 @@ def accuracy_cost(fc: pd.DataFrame, runs: pd.DataFrame, resource: pd.DataFrame, 
     if fc.empty or runs.empty or resource.empty:
         return []
     fc = with_rollout_end(fc)
-    models = [m for m in MODEL_NAMES if m in set(fc.model)]
+    models = [m for m in MAIN if m in set(fc.model)]
     train = runs[runs.manifest == "train"].assign(fraction=lambda d: d.fraction.map(_frac))
     dev = seed_stats(fc, "one_step_developed")
     end = seed_stats(fc, "rollout_end_developed")
@@ -243,7 +263,7 @@ def accuracy_cost(fc: pd.DataFrame, runs: pd.DataFrame, resource: pd.DataFrame, 
                    va="center", fontsize=7, color=INK)
         ms = resource[(resource.model == m) & (resource.budget == "4h")].rollout_ms.mean()
         e = end[(end.model == m) & (end.budget == "4h")]["mean"].max()
-        above = m == "avit"                                  # the others sit just under the reference lines
+        above = False                                        # every label under its marker
         e = e if above else end[(end.model == m) & (end.budget == "4h")]["mean"].min()
         c.annotate(f"{STYLE[m]['label']}\n{ms:.0f} ms", (ms, e), xytext=(0, 6 if above else -6),
                    textcoords="offset points", ha="center", va="bottom" if above else "top", fontsize=7, color=INK)
@@ -265,11 +285,11 @@ def accuracy_cost(fc: pd.DataFrame, runs: pd.DataFrame, resource: pd.DataFrame, 
     a.set_title("(a) More training time")
     b.axvline(4, color=MUTED, lw=0.8)
     b.text(4.25, 0.15, "4 h of active\ntraining", fontsize=7, color=MUTED, va="center")
-    b.set_xlim(0, 14.5)
+    b.set_xlim(0, 8.5)
     b.set_xlabel("Allocated GPU-hours per 4-h run")
     b.set_title("(b) Cost to train")
     c.set_xlim(0, 300)
-    c.set_ylim(0.3, 1.0)
+    c.set_ylim(0.2, 1.0)
     c.set_xlabel("Inference time per 30-step rollout (ms)")
     c.set_ylabel("VRMSE after 30 steps, developed")
     c.set_title("(c) Cost to use (4-h models)")
@@ -304,7 +324,7 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, t_on: dict, lab
     fig, axes = plt.subplots(2, 1, figsize=(FULL, 3.9), sharex=True, sharey=True)
     for ax, frac, tag in zip(axes, FRACS, ("(a)", "(b)")):
         onset_zone(ax, t_on, label=frac == FRACS[0])
-        for m in [m for m in MODEL_NAMES if m in tables[frac]]:
+        for m in [m for m in MAIN if m in tables[frac]]:
             mean, lo, hi = ff._seed_mean(tables[frac][m], "start", "vrmse_mean")
             ax.fill_between(mean.index, lo, hi, color=STYLE[m]["color"], alpha=0.15, lw=0)
             ax.plot(mean.index, mean.values, color=STYLE[m]["color"])
@@ -320,7 +340,7 @@ def test_by_window(outputs: Path, runs: pd.DataFrame, out: Path, t_on: dict, lab
     axes[1].set_xlim(-2, 197)
     axes[1].set_xticks([0, 25, 50, 75, 100, 125, 150, 175, 195])
     axes[1].set_xlabel("Input-window start frame")
-    legend(fig, model_handles([m for m in MODEL_NAMES if m in tables[1.0]]) + reference_handles())
+    legend(fig, model_handles([m for m in MAIN if m in tables[1.0]]) + reference_handles())
     fig.tight_layout()
     return rf.save(fig, out, "fig_test_by_window")
 
@@ -340,7 +360,7 @@ def onset_aligned(outputs: Path, runs: pd.DataFrame, out: Path, t_on: dict, labe
     fig, (a, b, c) = plt.subplots(1, 3, figsize=(FULL, 2.45), gridspec_kw={"width_ratios": [1.35, 1, 1]})
     drawn = []
     for frac in FRACS:
-        for m in [m for m in MODEL_NAMES if m in tables[frac]]:
+        for m in [m for m in MAIN if m in tables[frac]]:
             g = curve(tables[frac][m]).loc[lo:hi]
             a.plot(g.index, g.values, color=STYLE[m]["color"], ls=FRAC_LS[frac], lw=1.2 if frac == 1.0 else 1.0)
             if m not in drawn:
@@ -408,7 +428,7 @@ def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, threshold: float = 1.
         a, b = axes[row]
         for frac in FRACS:
             tables = ff._load(ff.evaluated_runs(runs, outputs, fraction=frac), "rollout", label)
-            for m in [m for m in MODEL_NAMES if m in tables]:
+            for m in [m for m in MAIN if m in tables]:
                 drawn.add(m)
                 dev, km = curves(tables[m])
                 st = dict(color=STYLE[m]["color"], ls=FRAC_LS[frac], lw=1.3 if frac == 1.0 else 1.1)
@@ -430,7 +450,7 @@ def rollouts(outputs: Path, runs: pd.DataFrame, out: Path, threshold: float = 1.
     for ax in axes[1]:
         ax.set_xlabel("Rollout step")
         ax.set_xlim(0, 30.5)
-    legend(fig, model_handles([m for m in MODEL_NAMES if m in drawn]) + fraction_handles() + reference_handles())
+    legend(fig, model_handles([m for m in MAIN if m in drawn]) + fraction_handles() + reference_handles())
     fig.tight_layout()
     return rf.save(fig, out, "fig_rollouts")
 
@@ -446,7 +466,7 @@ def by_rayleigh(outputs: Path, runs: pd.DataFrame, nu: pd.DataFrame, out: Path, 
     for frac in FRACS:
         evals = ff.evaluated_runs(runs, outputs, fraction=frac)
         one, roll = ff._load(evals, "one_step", label), ff._load(evals, "rollout", label)
-        for m in [m for m in MODEL_NAMES if m in one]:
+        for m in [m for m in MAIN if m in one]:
             drawn.add(m)
             kw = dict(ls=FRAC_LS[frac], lw=1.2, **marker_kw(m, frac, 3.5))
             s = pd.concat([developed_mean(t, t_on, by="rayleigh") for t in one[m]], axis=1).mean(axis=1)
@@ -487,7 +507,7 @@ def by_rayleigh(outputs: Path, runs: pd.DataFrame, nu: pd.DataFrame, out: Path, 
         ax.set_ylabel(ylabel)
         ax.set_title(title)
     log_ticks(axes[0], [0.02, 0.05, 0.1, 0.2, 0.4])
-    legend(fig, model_handles([m for m in MODEL_NAMES if m in drawn]) + fraction_handles() + reference_handles(),
+    legend(fig, model_handles([m for m in MAIN if m in drawn]) + fraction_handles() + reference_handles(),
            ncol=7)
     fig.tight_layout()
     return rf.save(fig, out, "fig_by_rayleigh")
@@ -500,7 +520,7 @@ def nusselt(nu: pd.DataFrame, out: Path) -> list[str]:
     if s.empty:
         return []
     truth = s[s.model == "persistence"].sort_values("rayleigh")
-    models = [m for m in MODEL_NAMES if m in set(s.model)]
+    models = [m for m in MAIN if m in set(s.model)]
     series = [(m, f) for m in models for f in FRACS] + [("released_cnext_unet", None)]
     shift = dict(zip(series, 10 ** (0.045 * (np.arange(len(series)) - (len(series) - 1) / 2))))
     fig, axes = plt.subplots(1, 2, figsize=(FULL, 2.6), sharey=True)
@@ -635,6 +655,8 @@ def uq(summ: pd.DataFrame, shifts: pd.DataFrame, out: Path) -> list[str]:
     s1 = shifts[(shifts["shift"] == "rollout: q-hat of step 1") & (shifts.nominal == 0.9)
                 & (shifts.kind == "seed pair (4 h)") & (shifts.fraction.map(_frac) == 1.0)]
     for (family, scale), g in s1.groupby(["family", "scale"]):
+        if family not in MAIN:
+            continue
         gg = g.groupby("step").coverage.mean()
         b.plot(gg.index, gg.values, color=STYLE[family]["color"], ls="-" if scale == "spread" else "--",
                lw=1.4 if scale == "spread" else 1.1)
@@ -646,7 +668,7 @@ def uq(summ: pd.DataFrame, shifts: pd.DataFrame, out: Path) -> list[str]:
     b.set_ylim(0, 1.02)
     b.set_ylabel("Coverage of 90% intervals")
     b.set_title("(b) Conformal, calibrated at step 1")
-    for family in ("cnext_unet", "tfno", "avit"):
+    for family in MAIN:
         for frac in FRACS:
             g = r[(r.kind == "seed pair (4 h)") & (r.family == family) & (r.fraction.map(_frac) == frac)]
             g = g.sort_values("step")
@@ -664,7 +686,7 @@ def uq(summ: pd.DataFrame, shifts: pd.DataFrame, out: Path) -> list[str]:
     for ax in (a, b, c):
         ax.set_xlabel("Rollout step (from 80, 140)")
         ax.set_xlim(0.5, 30.5)
-    handles = model_handles(("cnext_unet", "tfno", "avit")) + fraction_handles()
+    handles = model_handles(MAIN) + fraction_handles()
     handles += [Line2D([], [], color=MUTED, ls="-", lw=1.4, label="(b) spread-scaled"),
                 Line2D([], [], color=MUTED, ls="--", lw=1.1, label="(b) constant width"),
                 Line2D([], [], color=cn, lw=2.6, alpha=0.4, label="(c) β-NLL ensemble"),
@@ -687,7 +709,7 @@ def uq_reliability(rel: pd.DataFrame, cov_ra: pd.DataFrame, out: Path) -> list[s
     for ax, (window, step, title) in zip((a, b), (("one_step", 1, "(a) One step"),
                                                   ("rollout", 10, "(b) Rollout step 10, from 80, 140"))):
         g = rel[(rel.window == window) & (rel.step == step) & (rel.fraction == 1.0)]
-        for family in ("cnext_unet", "tfno", "avit"):
+        for family in MAIN:
             gg = g[(g.kind == "seed pair (4 h)") & (g.family == family)].sort_values("bin")
             ax.plot(gg.sigma_rms, gg.rmse, color=STYLE[family]["color"], marker=STYLE[family]["marker"], ms=2.8, lw=1.1)
         gg = g[g.kind == "beta-NLL ensemble"].sort_values("bin")
@@ -707,7 +729,7 @@ def uq_reliability(rel: pd.DataFrame, cov_ra: pd.DataFrame, out: Path) -> list[s
         ax.set_title(title)
     g = cov_ra[(cov_ra.window == "one_step") & (cov_ra.field == "mean") & (cov_ra.nominal == 0.9)]
     g = g.assign(fraction=g.fraction.map(lambda x: x if pd.isna(x) else _frac(x)))
-    for family in ("cnext_unet", "tfno", "avit"):
+    for family in MAIN:
         for scale, ls in (("spread", "-"), ("constant", "--")):
             gg = g[(g.kind == "seed pair (4 h)") & (g.family == family) & (g.fraction == 1.0)
                    & (g.scale == scale)].sort_values("rayleigh")
@@ -724,7 +746,7 @@ def uq_reliability(rel: pd.DataFrame, cov_ra: pd.DataFrame, out: Path) -> list[s
     c.set_xlabel("Rayleigh number")
     c.set_ylabel("Coverage of 90% intervals")
     c.set_title("(c) Conformal, one step")
-    handles = model_handles(("cnext_unet", "tfno", "avit"))
+    handles = model_handles(MAIN)
     handles += [Line2D([], [], marker="o", ms=3, label="β-NLL ensemble", **beta),
                 Line2D([], [], color=MUTED, ls="-", lw=1.3, label="(c) spread-scaled"),
                 Line2D([], [], color=MUTED, ls="--", lw=1.0, label="(c) constant width"),
@@ -748,6 +770,8 @@ def correlation(corr: pd.DataFrame, out: Path) -> list[str]:
             ax.axhline(thr, color=MUTED, lw=0.6, ls="-", alpha=0.6)
         g = corr[corr.starts == group]
         for (family, frac), gg in g.groupby(["family", "fraction"], dropna=False):
+            if family not in (*MAIN, "persistence"):
+                continue
             curve = gg.groupby("step").corr_mean.mean()
             if family == "persistence":
                 ax.plot(curve.index, curve.values, **PERSIST_LINE)
@@ -764,7 +788,7 @@ def correlation(corr: pd.DataFrame, out: Path) -> list[str]:
     axes[0].set_ylabel("Correlation with the truth\n(field mean)")
     for thr in (0.8, 0.9, 0.95):
         axes[1].text(30.3, thr, f"{thr:g}", ha="right", va="bottom", fontsize=6.5, color=MUTED)
-    legend(fig, model_handles([m for m in MODEL_NAMES if m in drawn]) + fraction_handles()
+    legend(fig, model_handles([m for m in MAIN if m in drawn]) + fraction_handles()
            + [Line2D([], [], label="persistence", **PERSIST_LINE)])
     fig.tight_layout()
     return rf.save(fig, out, "fig_correlation")
@@ -782,6 +806,8 @@ def noise(noise_t: pd.DataFrame, out: Path) -> list[str]:
             ("rollout", "10", "(b) Rollout step 10, from frames 80, 140", [0.2, 0.3, 0.5, 0.7]))):
         g = noise_t[(noise_t.window == window) & (noise_t.group.astype(str) == group)]
         for (family, frac), gg in g.groupby(["family", "fraction"], dropna=False):
+            if family not in (*MAIN, "persistence"):
+                continue
             gg = gg.sort_values("sigma")
             if family == "persistence":
                 ax.plot(gg.sigma, gg.vrmse, **PERSIST_LINE)
@@ -795,7 +821,7 @@ def noise(noise_t: pd.DataFrame, out: Path) -> list[str]:
         ax.set_xlabel(r"Input noise $\sigma$ (normalised units)")
         ax.set_ylabel("Test VRMSE")
         ax.set_title(title)
-    legend(fig, model_handles(("cnext_unet", "tfno", "avit")) + fraction_handles()
+    legend(fig, model_handles(MAIN) + fraction_handles()
            + [Line2D([], [], label="persistence", **PERSIST_LINE)])
     fig.tight_layout()
     return rf.save(fig, out, "fig_noise")
@@ -807,7 +833,7 @@ def time_breakdown(runs: pd.DataFrame, out: Path) -> list[str]:
     r = runs[runs.manifest == "train"].assign(fraction=lambda d: d.fraction.map(_frac))
     if r.empty:
         return []
-    rows = [row for m in MODEL_NAMES for f in FRACS
+    rows = [row for m in MAIN for f in FRACS
             for _, row in r[(r.model == m) & (r.fraction == f)].sort_values("seed").iterrows()]
     fig, ax = plt.subplots(figsize=(FULL, 3.0))
     other = "#c9c9c9"
@@ -825,8 +851,8 @@ def time_breakdown(runs: pd.DataFrame, out: Path) -> list[str]:
     ax.set_yticks([])
     ax.grid(axis="y", visible=False)
     ax.axvline(4, color=MUTED, lw=0.6, ls="--")
-    ax.set_xlim(0, 14.6)
-    ax.set_xticks(range(0, 15, 2))
+    ax.set_xlim(0, 8.9)
+    ax.set_xticks(range(0, 9, 1))
     ax.set_xlabel("GPU time held per 4-h run (h)")
     handles = [plt.Rectangle((0, 0), 1, 1, color=MUTED, lw=0, label="training (the 4 h budget)"),
                plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor=MUTED, hatch="/////", lw=0,
@@ -865,7 +891,7 @@ def snapshots_by_fraction(outputs: Path, out: Path, field: str = "buoyancy", ste
         truth = data[1.0]["truth"][k, ..., fi]
         if not np.allclose(truth, data[0.1]["truth"][k, ..., fi]):
             raise ValueError(f"{rollout}: the 10% and 100% snapshot files hold different true flows")
-        models = [m for m in MODEL_NAMES if m in data[1.0].files and m in data[0.1].files]
+        models = [m for m in MAIN if m in data[1.0].files and m in data[0.1].files]
         x, y = x_grid(truth.shape[0], LX), gauss_nodes(truth.shape[1], LY)
         interior = data[1.0]["truth"][..., fi][:, :, 8:-8]
         vmin, vmax = (float(v) for v in np.percentile(interior, [1, 99]))
@@ -905,6 +931,100 @@ def snapshots_by_fraction(outputs: Path, out: Path, field: str = "buoyancy", ste
     return written
 
 
+# --- 11. appendix: The Well's AViT as released against the corrected AViT (D32) ---------------------------------------
+
+def avit_fix(outputs: Path, runs: pd.DataFrame, out: Path, label: str = "4h", threshold: float = 1.0,
+             snapshot: str = "rollout_rayleigh_benard_Rayleigh_1e8_Prandtl_1__0__s080__f100_4h_s0.npz",
+             step: int = 30) -> list[str]:
+    """Top: buoyancy after `step` rollout steps (100% data, seed 0): the true flow, AViT as released, the corrected
+    AViT. Bottom: (d) rollout VRMSE from frames 80 and 140 and (e) the fraction of all rollouts below VRMSE 1, both
+    AViTs at both fractions with CNextU-Net and persistence for reference (four-hour checkpoints, seed mean)."""
+    import json
+
+    from matplotlib.gridspec import GridSpec
+
+    from rbbench.evaluate import failure_step, kaplan_meier
+    from rbbench.solver_grid import LX, LY, gauss_nodes, x_grid
+
+    npz = outputs / "visuals" / snapshot
+    if not npz.exists():
+        return []
+    d = np.load(npz)
+    if not {"avit", "avit_fixed"} <= set(d.files):
+        return []
+    meta = json.loads(str(d["meta"]))
+    fi = meta["fields"].index("buoyancy")
+    k = [int(v) for v in d["steps"]].index(step)
+    truth = d["truth"][..., fi]
+    x, y = x_grid(truth.shape[1], LX), gauss_nodes(truth.shape[2], LY)
+    vmin, vmax = (float(v) for v in np.percentile(truth[:, :, 8:-8], [1, 99]))
+
+    fig = plt.figure(figsize=(FULL, 3.9))
+    gs = GridSpec(2, 1, figure=fig, height_ratios=[0.62, 1.0], hspace=0.55)
+    top, bottom = gs[0].subgridspec(1, 3, wspace=0.06), gs[1].subgridspec(1, 3, wspace=0.42)
+    mesh = None
+    for j, (key, title) in enumerate((("truth", f"(a) true flow, step {step}"),
+                                      ("avit", f"(b) AViT as released, step {step}"),
+                                      ("avit_fixed", f"(c) AViT, attention corrected, step {step}"))):
+        ax = fig.add_subplot(top[0, j])
+        img = truth[k] if key == "truth" else d[key][k, ..., fi]
+        mesh = ax.pcolormesh(x, y, img.T, shading="nearest", cmap="inferno", vmin=vmin, vmax=vmax, rasterized=True)
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid(False)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.set_title(title, fontsize=7.5, pad=2)
+    cb = fig.colorbar(mesh, ax=[fig.axes[0], fig.axes[1], fig.axes[2]], orientation="horizontal", fraction=0.06,
+                      pad=0.04, aspect=60, shrink=0.45)
+    cb.set_label("Buoyancy $b$", fontsize=7)
+    cb.ax.tick_params(labelsize=6.5)
+    cb.outline.set_visible(False)
+
+    def curves(ts):
+        dev = pd.concat([rf._clean(t)[rf._clean(t).start.isin(DEV_STARTS)].groupby("step").vrmse_mean.mean()
+                         for t in ts], axis=1).mean(axis=1)
+        km = []
+        for t in ts:
+            piv = rf._clean(t).pivot_table(index=["traj_id", "start"], columns="step", values="vrmse_mean")
+            km.append(kaplan_meier([failure_step(v.values, threshold) for _, v in piv.iterrows()], piv.shape[1]))
+        return dev, np.mean(km, axis=0)
+
+    a = fig.add_subplot(bottom[0, :2])
+    b = fig.add_subplot(bottom[0, 2])
+    for frac in FRACS:
+        tables = ff._load(ff.evaluated_runs(runs, outputs, fraction=frac), "rollout", label)
+        for m in ("cnext_unet", "avit", "avit_fixed"):
+            if m not in tables:
+                continue
+            dev, km = curves(tables[m])
+            st = dict(color=STYLE[m]["color"], ls=FRAC_LS[frac], lw=(0.9 if m == "cnext_unet" else 1.4))
+            a.plot(dev.index, dev.values, marker=STYLE[m]["marker"], ms=3, markevery=5,
+                   mfc=STYLE[m]["color"] if frac == 1.0 else "white", **st)
+            b.step(np.arange(0, len(km) + 1), np.r_[1.0, km], where="post", **st)
+    persist = ff._persistence(outputs, "rollout")
+    if persist is not None:
+        dev, km = curves([persist])
+        a.plot(dev.index, dev.values, **PERSIST_LINE)
+        b.step(np.arange(0, len(km) + 1), np.r_[1.0, km], where="post", **PERSIST_LINE)
+    a.set_title("(d) Rollout error from frames 80 and 140", loc="left")
+    a.set_ylabel("Rollout VRMSE")
+    a.set_ylim(0, 1.0)
+    b.set_title(f"(e) Rollouts below VRMSE {threshold:g}, all starts", loc="left", fontsize=7.5)
+    b.set_ylabel("Fraction of rollouts")
+    b.set_ylim(0, 1.03)
+    for ax in (a, b):
+        ax.set_xlabel("Rollout step")
+        ax.set_xlim(0, 30.5)
+    handles = model_handles(("avit", "avit_fixed", "cnext_unet")) + fraction_handles()
+    handles += [Line2D([], [], label="persistence", **PERSIST_LINE)]
+    fig.legend(handles=row_major(handles, 6), loc="lower center", ncol=6, bbox_to_anchor=(0.5, -0.01),
+               columnspacing=1.1, handlelength=1.9)
+    fig.subplots_adjust(left=0.07, right=0.99, top=0.95, bottom=0.17)
+    return rf.save(fig, out, "fig_avit_fix")
+
+
 def main() -> int:
     outputs, out = REPO / "outputs", REPO / "reports" / "figures" / "final"
     find = outputs / "findings"
@@ -919,6 +1039,8 @@ def main() -> int:
     rel, cov_ra = (csv(find / "uq" / f"{n}.csv") for n in ("uq_reliability", "uq_coverage_by_rayleigh"))
     corr = csv(find / "uq" / "uq_correlation.csv")
     t_on = onset_frames()
+    use_main_style()
+    all_runs, runs = runs, main_runs(runs)
     written = (data_scaling(fc, out) + uq(summ, shifts, out) + uq_reliability(rel, cov_ra, out) + noise(noise_t, out)
                + nusselt(nu, out) + correlation(corr, out))
     if not runs.empty:
@@ -930,6 +1052,8 @@ def main() -> int:
                     + sum((rf.training(outputs, runs, out, fraction=f, name=f"fig_training_f{int(f * 100):03d}")
                            for f in FRACS), []))
     written += snapshots_by_fraction(outputs, out)
+    if not all_runs.empty:
+        written += avit_fix(outputs, all_runs, out)
     for npz, tag in snapshot_files(outputs / "visuals"):    # steps 1, 12, 30 per fraction (old unsuffixed names skipped)
         if "__f010_" in tag or "__f100_" in tag:
             written += rf.snapshots(npz, out, tag)

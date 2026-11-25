@@ -33,7 +33,7 @@ Rules:
 | G Feasibility | 3 core models (and ConvLSTM if the extension runs): real-data step + 30-step rollout at 512×128 without NaN/OOM; throughput table | **profile 2026-11-08; step times from the search 2026-11-09** (GPU s/step: CNextU-Net 1.19, TFNO 0.55, AViT 0.19; batch 64 fp32, D7). Data waits come from `/pub` stalls, not bandwidth (D24). 30-step rollouts on real data run in the first evaluation |
 | H Evaluation | metric tests; deterministic noise; physics self-checks on real data | **passed 2026-11-11** (row 0 and persistence, jobs 59428461/59428462: complete, audit physics check passed, cohort hash matched). Rollout starts frozen 2026-11-10 (D15: `[20, 80, 140]` plus the paper's protocol, owner); cohort `tasks/eval_cohort.json` (175 trajectories, 35 regimes × 5, sha256 0e6dc760…). All 24 core evaluations (12 runs × 1 h / 4 h), the released CNextU-Net and persistence complete by 2026-11-22, every one with the cohort hash and physics audit checked |
 | I Sweep | 12-row core manifest (3 models × 10/100% × 2 seeds, 1 h/4 h budgets), A100-only, restart idempotence proven; extensions only with separate approval | **passed 2026-11-22**: all 12 core runs trained their 4 h and were evaluated at 1 h and 4 h on the paid `gpu` partition, class account (10% rows 2026-11-09 to 11-11, after resumes; 100% rows 2026-11-21/22 with the training split copied to node-local disk, `STAGE_DATA=1`). Rates fixed 2026-11-09 (1e-3 for all, D7). Extensions run with owner approval: noise robustness (WP8), uncertainty (WP9), solver baseline (WP6) |
-| J Aggregation | one command → tables and figures, missing runs listed | **passed 2026-11-23**: `rbbench aggregate` finds all 24 evaluations; `scripts/findings.py` and `scripts/final_figures.py` rebuild every table and figure of the final report (`docs/report_notes.md` sections 11–16) |
+| J Aggregation | one command → tables and figures, missing runs listed | **passed 2026-11-23**: `rbbench aggregate` finds all 24 evaluations (32 with the corrected AViT, 2026-11-25); `scripts/findings.py` and `scripts/final_figures.py` rebuild every table and figure of the final report (`docs/report_notes.md` sections 11–16) |
 
 Nothing is PENDING in `docs/decisions.md`: all three failure thresholds are reported (D16, owner 2026-11-11);
 batch size, learning rate, precision, schedule and rollout starts are fixed. The study design follows the final abstract (2026-10-30). Where the code
@@ -889,3 +889,36 @@ still differs from it, and which items are deferred, is in `docs/abstract_alignm
   `tasks/train.jsonl` regenerates byte for byte. `tests/test_avit_fix.py` (6 tests; random-vector perturbations,
   since a constant shift is removed by LayerNorm). Issue draft for the owner: `docs/upstream_issue_avit_axial.md`.
   Commands: `cluster/README.md` section 12.
+* 2026-11-24: `bbed250` pushed to HPC3 (checked: HPC3 `main` = bbed250, new files equal); the owner submits the jobs of
+  `cluster/README.md` section 12. The owner opened the upstream issue: PolymathicAI/the_well #111. Final report
+  (`reports/final_acl.tex`): new Appendix C on AViT's attention (`tab:avitseams`, the fix, issue #111), abstract finding
+  (7), and mentions in Models, the model-table caption, the snapshot paragraph, the choice table, Limitations (g), the
+  Conclusion and the issues table; the corrected AViT's results go into Appendix C when they arrive. 27 pages, clean.
+  Correction: AViT's x-seam ratio at step 30 is 7.2–12.9 (the issue says 6–13).
+* 2026-11-24 (21:15 PST): fixed-AViT jobs checked (pulled through `hpc3-xfer`). Only training task 2 (100% s0) ran and
+  completed, and so did its evaluation. Tasks 0, 1 and 3 failed at launch (`sacct`: `FAILED 0:53` after 0–2 s, the
+  `/pub` launch failure); the owner resubmitted them as array 60009171. With `afterany`, the evaluations 0, 1, 3 and UQ 11, 12 ran and stopped at once on "has not
+  finished training". The 10% snapshots were drawn without the fixed AViT. First result: with the fix AViT is the best
+  model at 100% / 4 h: developed one-step 0.042 vs CNextU-Net 0.049 and 0.064 as released; step-30 0.33 / 0.26 from
+  frames 80 / 140 vs 0.52 / 0.40; 95% of rollouts below 1. One seed only (`docs/report_notes.md` section 17). The
+  evaluations 0, 1, 3 (`aftercorr`), UQ 11, 12 and the 10% snapshots (`afterok`) wait on 60009171.
+* 2026-11-25: all fixed-AViT jobs complete and pulled (array 60009171 rows 0, 1, 3 with no launch failure; their
+  evaluations; UQ 11, 12 on valid and test; 10% snapshots with `avit_fixed`). Every record checked (cohort, physics
+  audit, rollout and window counts, finite UQ). With the fix AViT is the best model in every cell but one, at both
+  fractions and budgets (4 h developed one-step 0.045 / 0.043 vs CNextU-Net 0.051 / 0.049; step-30 from frame 80
+  0.36 / 0.34 vs 0.53 / 0.52; 92–96% of rollouts below 1). Its data gain is 5%, not AViT-as-released's 16.5%. ~23.4 GPU-h
+  of training; final `sacct` pending. Report, figures and aggregate tables not yet updated (owner decision on how far
+  the fixed AViT enters the main text). `docs/report_notes.md` section 17.
+* 2026-11-25: final `sacct` pulled (owner): 249 jobs, 172.5 GPU-hours (154.1 paid), 6,156 SU; the corrected AViT cost
+  26.1 GPU-h, 1,045 SU. The pull had first overwritten the Mac's 11-23 `sacct` export with HPC3's 11-11 copy;
+  `cluster/pull.sh` now uses `rsync --update`. Owner: the corrected AViT goes into the main text, AViT as released
+  into Appendix C (D32). `findings_figures.CORE_MANIFESTS`, `final_figures.main_runs` / `use_main_style` and the new
+  `fig_avit_fix`; `reports/final_acl.tex` rewritten wherever AViT appears (29 pages, clean build). With the fix AViT
+  leads on accuracy, stability and heat transport; CNextU-Net is second and most robust to noise. 233 tests pass;
+  smoke passes. `docs/report_notes.md` section 17.
+* 2026-11-25: final check of `reports/final_acl.tex` against the abstract, the check-in's revised plan, the professors'
+  five answers and `docs/final_plan.md`: every promised study is run and reported. One gap closed: Limitations (h) now
+  says that of the abstract's extensions only noise robustness was run, and that the third seed, 30% data and ConvLSTM
+  were dropped at the check-in. PDF rebuilt (28 pages, no overfull lines or undefined references). `docs/final_plan.md`
+  status gains the corrected AViT and the final totals (172.5 GPU-h, 6,156 SU). 233 tests pass; smoke passes.
+  Committed and pushed to GitHub (owner).

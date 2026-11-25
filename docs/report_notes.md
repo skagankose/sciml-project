@@ -1850,7 +1850,7 @@ AViT and its use are correct.
 * **Seen in our predictions** (`outputs/visuals/` snapshot files: Ra = 1e8 and 1e10, 10% and 100%, 4 h, seed 0, steps
   1–30 from frame 80; buoyancy, 8 rows next to each wall dropped):
   * Seam ratio (mean |jump| across 16-px patch boundaries over the mean jump elsewhere): AViT 2.4–3.2 across the
-    x-boundaries at step 1, growing to 6.3–12.9 at step 30; across the y-boundaries 0.6–1.1, like the truth (0.7–1.1).
+    x-boundaries at step 1, growing to 7.2–12.9 at step 30 (6.3–10.8 at step 20); across the y-boundaries 0.6–1.1, like the truth (0.7–1.1).
     CNextU-Net and TFNO stay 0.6–1.2 in both directions.
   * One-step error at strip edges (x mod 16 ∈ {0, 15}) over strip centres (6–9): AViT 1.35–1.87, CNextU-Net 1.03–1.11,
     TFNO 0.97–1.00; along y AViT 1.04–1.12.
@@ -1872,3 +1872,169 @@ AViT and its use are correct.
   (`cluster/README.md` section 12). The learning rate stays 1e-3 (not searched again), so the comparison isolates
   the fix. `rbbench aggregate` takes both manifests. The owner reports the bug upstream
   (`docs/upstream_issue_avit_axial.md`; its reproduction prints 4 tokens reached, 11 with the fix).
+* **Upstream issue opened by the owner (2026-11-24):** https://github.com/PolymathicAI/the_well/issues/111 (open). Its
+  text says the seams grow to "6–13 times after 30 rollout steps"; the exact step-30 range is 7.2–12.9.
+* **Final report** (`reports/final_acl.tex`, 2026-11-24, owner): new Appendix C "AViT's Attention in The Well's Code"
+  (`app:avit`: the error, the one-block check, `tab:avitseams` with the seam and edge-error ranges above, the fix,
+  issue #111, and that a corrected AViT is being trained); abstract finding (7); one sentence each in Models (with the
+  issue link), the model-table caption, "What the predictions look like" (strips, not patch artifacts), the choice
+  table, Limitations (g) and the Conclusion; a row in the issues table. The corrected AViT's results are to be added
+  to Appendix C when the runs finish. 27 pages, clean build.
+* **HPC3:** `bbed250` pushed 2026-11-24 (HPC3 `main` and the new files checked equal). Jobs: `cluster/README.md`
+  section 12.
+* **First corrected-AViT result (pulled 2026-11-24, 21:15 PST).** Of the training array 59995682 (`--array=0-3`), only
+  task 2 (`avit_fixed/f100/s0/6c29b7ad-b866532f`) ran: it trained its 4 h in one attempt on hpc3-gpu-l54-04 (73,201
+  steps; 13:28–18:30 PST, ~5.0 h held; copy to local disk 3.6 min; data waits 1,625 s, checkpoint saves 720 s; peak
+  9.0 GB allocated). Its test evaluation (59995686_2, with correlation) passed: cohort 0e6dc760, physics audit passed,
+  525 rollouts, 1,873 s. Tasks 0, 1 and 3 left no log and no run folder: `sacct` (owner) gives `FAILED 0:53` at
+  13:26:54–59, after 0–2 s, on hpc3-gpu-l54-04 and -06, the `/pub` launch failure of 11-22 (third time). Task 2
+  started on l54-04 5 s later and ran, so the failure is momentary, not a node. Resubmitted as array 60009171 (0, 1, 3)
+  with `aftercorr` evaluations and `afterok` UQ and 10% snapshots; pending at submission. The dependent jobs started anyway (`afterany`) and stopped within a minute on
+  "has not finished training": evaluations 0, 1, 3 and UQ ensembles 11, 12. The 10% snapshots (59995688) were
+  drawn without the fixed AViT; the 100% snapshots (59995689) include it.
+  * Test, 100% data, seed 0 (one-step split at each trajectory's onset; rollouts from frames 20 / 80 / 140):
+
+    | Model | Budget | One-step all | Onset | Developed | VRMSE at step 30 (20 / 80 / 140) | Below 1 through step 30 | Correlation at step 30 |
+    |---|---|---|---|---|---|---|---|
+    | CNextU-Net | 4 h | 0.129 | 0.351 | 0.0486 | 1.95 / 0.52 / 0.40 | 0.88 | 0.78 |
+    | TFNO | 4 h | 0.202 | 0.461 | 0.107 | 2.05 / 0.57 / 0.44 | 0.74 | 0.73 |
+    | AViT as released | 4 h | 0.112 | 0.245 | 0.0636 | 5.57 / 0.83 / 0.70 | 0.61 | 0.58 |
+    | **AViT fixed** | 4 h | **0.091** | **0.224** | **0.0423** | **1.59 / 0.33 / 0.26** | **0.95** | **0.84** |
+    | CNextU-Net | 1 h | 0.481 | 1.595 | 0.075 | 2.58 / 0.93 / 0.83 | 0.59 | 0.52 |
+    | TFNO | 1 h | 0.525 | 1.623 | 0.125 | 2.21 / 1.27 / 1.12 | 0.25 | 0.60 |
+    | AViT as released | 1 h | 0.500 | 1.651 | 0.0805 | 5.06 / 0.90 / 0.76 | 0.59 | 0.58 |
+    | **AViT fixed** | 1 h | **0.325** | **1.042** | **0.0636** | **1.58 / 0.58 / 0.49** | **0.73** | **0.75** |
+
+  * Reading (one seed, 100% only, so not yet a ranking): with the fix, AViT is the best of the four on every measure,
+    at both budgets: developed one-step 0.042 vs CNextU-Net's 0.049 (−13%) and 0.064 as released (−33%); from developed
+    flow its step-30 error is 0.33 / 0.26, about two thirds of CNextU-Net's 0.52 / 0.40 and under half of AViT as
+    released. The rollout from frame 20, where AViT as released was the worst model (5.57), is now the best (1.59).
+    Same speed as released (5.6 ms per frame at batch 1) and memory (9.0 GB in training).
+  * Seams (same calculation as `tab:avitseams`, buoyancy, frame 80, 100%, seed 0; Ra = 1e10 / 1e8): across x-strips
+    AViT fixed 1.35 / 1.27 at step 1 and 1.39 / 1.16 at step 30, against 2.93 / 2.44 and 7.17 / 9.68 as released (true
+    flow ~1). A mild seam remains from the per-patch embedding and decoder, but it no longer grows along the rollout.
+* **All corrected-AViT jobs complete (checked 2026-11-25, 08:45 PST; pulled).** Array 60009171 (rows 0, 1, 3) started
+  on the paid partition with no launch failure: rows 0 and 1 on hpc3-gpu-l54-04 side by side, row 3 on l54-05. Each
+  trained its 4 h in one attempt (73,795 / 73,234 / 72,744 steps). Evaluations 60009172_0, 1, 3 (with correlation),
+  UQ 60009173_11, 12 (valid and test) and the 10% snapshots 60009174 (now with `avit_fixed`) completed. Checks: every
+  `EVAL_COMPLETE` has cohort 0e6dc760, physics audit passed, 525 rollouts and 34,300 windows; every `UQ_COMPLETE` has
+  121,625 test / 24,325 valid rows and no non-finite values.
+  * Time held per run (log timestamps): 10% s0 6.6 h, 10% s1 6.5 h, 100% s0 5.1 h, 100% s1 5.3 h; about 23.4 GPU-h of
+    training. Data waits 7,946 / 6,616 / 1,625 / 1,113 s. The two 10% runs waited ~2 h each although they read from
+    local disk; they shared one node (cause not examined; not charged to the budget clock). Evaluations ~0.5 h each,
+    UQ 0.57 / 0.55 h. Final cost from `sacct` (pending).
+  * Test, mean of 2 seeds (one-step split at each trajectory's onset; step-30 VRMSE from frames 20 / 80 / 140; share
+    of rollouts below VRMSE 1 through step 30). Seed spread of the developed one-step error ≤ 0.0035 for every row.
+
+    | Budget, data | Model | One-step all | Onset | Developed | Step 30 (20 / 80 / 140) | Below 1 |
+    |---|---|---|---|---|---|---|
+    | 4 h, 10% | CNextU-Net | 0.136 | 0.370 | 0.0505 | 1.78 / 0.53 / 0.40 | 0.89 |
+    | | TFNO | 0.209 | 0.480 | 0.111 | 1.79 / 0.59 / 0.45 | 0.75 |
+    | | AViT as released | 0.134 | 0.294 | 0.0761 | 5.42 / 0.80 / 0.65 | 0.63 |
+    | | **AViT fixed** | **0.097** | **0.241** | **0.0447** | **1.52 / 0.36 / 0.28** | **0.92** |
+    | 4 h, 100% | CNextU-Net | 0.130 | 0.354 | 0.0489 | 1.78 / 0.52 / 0.40 | 0.88 |
+    | | TFNO | 0.199 | 0.452 | 0.107 | 1.89 / 0.57 / 0.44 | 0.77 |
+    | | AViT as released | 0.112 | 0.245 | 0.0636 | 5.64 / 0.83 / 0.69 | 0.61 |
+    | | **AViT fixed** | **0.091** | **0.223** | **0.0425** | **1.32 / 0.34 / 0.26** | **0.96** |
+    | 1 h, 10% | CNextU-Net | 0.728 | 2.511 | 0.0783 | 3.60 / 1.09 / 1.04 | 0.34 |
+    | | TFNO | 0.473 | 1.442 | 0.120 | 2.67 / 0.90 / 0.78 | 0.60 |
+    | | AViT as released | 0.394 | **1.244** | 0.0846 | 4.68 / 1.11 / 0.98 | 0.34 |
+    | | **AViT fixed** | **0.384** | 1.266 | **0.0623** | **1.63 / 0.61 / 0.49** | **0.76** |
+    | 1 h, 100% | CNextU-Net | 0.456 | 1.503 | 0.0751 | 2.78 / 1.00 / 0.86 | 0.50 |
+    | | TFNO | 0.491 | 1.494 | 0.126 | 3.58 / 1.23 / 1.09 | 0.23 |
+    | | AViT as released | 0.456 | 1.485 | 0.0804 | 5.26 / 0.97 / 0.85 | 0.52 |
+    | | **AViT fixed** | **0.378** | **1.233** | **0.0658** | **1.31 / 0.64 / 0.55** | **0.74** |
+
+  * Reading: with the fix, AViT is the best of the four models in every cell but one (onset at 1 h, 10%, where AViT as
+    released is 2% lower), at both data fractions and both budgets. In developed flow at 4 h it is 11–13% below
+    CNextU-Net and 33–41% below AViT as released. From developed flow its step-30 error is about two thirds of
+    CNextU-Net's, and from onset (frame 20), where AViT as released was by far the worst (5.4–5.6), it is now the best
+    (1.3–1.5). It also leads after 1 h, where its rollouts are the most stable (74–76% below 1 against at most 60%).
+    The large data effect of AViT as released (−16.5% developed, 10% → 100%) mostly disappears: the fixed AViT gains
+    5% (0.0447 → 0.0425), like CNextU-Net (3%). So part of that "gain from data" was compensating for the missing
+    x-mixing. The study's conclusions about AViT (rollouts degrade fastest, patch artifacts, largest data gain) belong
+    to The Well's implementation, not to axial attention.
+  * Seams over the four snapshot cases (same calculation and cases as `tab:avitseams`, whose rows for the true flow,
+    CNextU-Net, TFNO and AViT as released it reproduces exactly): AViT fixed across x-strips 1.27–1.40 at step 1 and
+    1.16–1.39 at step 30 (as released 2.44–3.16 and 7.17–12.87); across y 0.90–1.07 and 0.84–1.02. A mild seam from the
+    per-patch embedding and decoder remains, but it no longer grows along the rollout. The edge/centre error ratio was
+    not recomputed (my quick recomputation did not reproduce the table's AViT values, so the method differs).
+* **Incident (2026-11-25, Mac only):** the full `cluster/pull.sh` replaced the Mac's final `outputs/sacct_skose.txt`
+  (owner's export of 11-23, whole project) with HPC3's older copy of 11-11; rsync replaces any file whose time or size
+  differs. Nothing is lost: `outputs/findings/sacct_jobs.csv` and `sacct_summary.csv` (parsed from the 11-23 export, 228
+  jobs) are backed up in `outputs/archive/sacct_2026-11-23/`, and a new export is needed anyway for the fixed-AViT
+  cost. `pull.sh` now passes `--update`, so a pull never replaces a newer local file. Do not rerun `scripts/findings.py`
+  before the new export is in place, or its `sacct` tables would be rebuilt from the 11-11 copy.
+* **Final `sacct` (owner, pulled 2026-11-25 08:59 PST; `outputs/sacct_skose.txt`, 249 jobs, none running).** The
+  fixed-AViT work (submitted from 2026-11-24 12:00): training 7 jobs, 23.41 GPU-h, 936 SU (three of them the 0:53
+  launch failures, 2 s each); evaluation 7 jobs, 1.41 GPU-h, 56 SU (three stopped in under a minute on "has not
+  finished training"); UQ 4 jobs, 1.23 GPU-h, 49 SU; snapshots 3 jobs, 0.07 GPU-h, 3 SU. In all 26.1 GPU-h, 1,045 SU,
+  within the approved ~26 GPU-h / 1,000–1,100 SU; failed jobs cost 3.5 SU. Project total: 172.5 GPU-hours (154.1
+  paid), 6,156 SU. `findings_figures.training_purpose` now files `train_avit_fixed` as "AViT (fixed) runs".
+* **Report: the corrected AViT in the main text (owner, 2026-11-25).** The owner: the bugged AViT goes to the
+  appendix, the corrected one into the main paper (results tables, figures, choice table, abstract, conclusion).
+  * Pipeline: `rbbench aggregate --tasks tasks/train.jsonl tasks/train_avit_fixed.jsonl --tables outputs/tables
+    --figures outputs/figures` (32 of 32 evaluations); `findings_figures.CORE_MANIFESTS` puts `train_avit_fixed` in
+    every core evaluation (fraction comparison, Nusselt, solver comparison), `report_figures.main` keeps the
+    mid-project figures on the 12 core runs; `final_figures.main_runs` / `use_main_style` draw CNextU-Net, TFNO and
+    the corrected AViT, labelled "AViT" in AViT's colour, and the new appendix figure `fig_avit_fix` (snapshots of
+    the true flow, AViT as released and corrected; rollout error; share below VRMSE 1). Fixed on the way: the
+    UQ-ensemble name parser (`avit_fixed_f010…` read as fraction "ixe"), and the spectra legend, which read
+    "(ours, (c))" in the previous report because a loop variable overwrote `tag`. Tests:
+    `tests/test_avit_fixed_findings.py`.
+  * Every number for the corrected AViT was recomputed with the method that reproduces the report's existing values
+    (one-step, rollouts, fields, paper protocol, Nusselt per Ra, per-Ra error, spectra, onset alignment, noise, seed
+    pairs, conformal widths, shifts, conditional coverage, reliability, correlation). New results worth noting:
+    * paper-protocol rollouts from frame 0: 8 / 19 (10%) and 6 / 13 (100%) over steps 6–12 / 13–30, the only model
+      below the paper's ">10";
+    * Nusselt median |error| 7% / 5% at 4 h (TFNO 20–21%), 30–32% at 1 h; at 1 h and 10% data, a quarter of its
+      Ra = 1e10 rollouts have negative Nu (as TFNO's);
+    * per Ra: best at every Ra after 30 steps; one step ahead better than the released CNextU-Net at Ra 1e6, 1e7,
+      worse from 1e8 on;
+    * noise: degrades a little faster than CNextU-Net (×1.68–1.74 vs ×1.46–1.47 at σ 0.2), so most accurate up to
+      σ 0.1 and level at 0.2;
+    * solver: against AViT 100% / 4 h the match at Ra 1e8 is only 512 × 128 (510 s per rollout; break-even ~1,500
+      forecasts at 206.5 SU training), 128 × 32 at 1e6, none at 1e10;
+    * conformal widths 0.10 one step, 1.2–1.3 at step 30, the narrowest; constant-width coverage more uneven by Ra
+      (0.74 at 1e10, 18% of windows below 0.8 at step 10) because its error varies more with Ra;
+    * correlation 0.93 at step 30 from developed flow, never below 0.9; 91–92% of rollouts end above 0.8.
+  * Edge/centre error ratio for the corrected AViT: 1.06–1.24 (x), 1.07–1.25 (y), from the normalised absolute error
+    of all four fields, a definition that reproduces the table's other rows within 0.03 (the original script was not
+    kept).
+  * Report: abstract findings (2), (3), (5), (7); Models paragraph and model table; headline table (the AViT-vs-
+    CNextU-Net reversal no longer exists; replaced by our AViT against the released CNextU-Net); Tables test, rollout,
+    Nusselt, resources, compute, noise, conformal, uqcond, choice, fields, corr, time; all of Section 4's prose,
+    Sections 5–10 where AViT appears; solver section gains the AViT match. Appendix C now holds AViT as released:
+    the seam table gains a corrected row, `tab:avitfix` (as released → corrected on 13 measures) and `fig_avit_fix`,
+    and a paragraph on what the correction changes (the large data gain and the noise fragility of the version as
+    released came from the error). The data-loader figure became a half-width `figure*` so it shares the last page
+    with the issues table. 29 pages, no overfull boxes or undefined references.
+
+## 18. TFNO audit: no implementation bug (owner question, 2026-11-25; no GPU time)
+
+Question: CNextU-Net and AViT look realistic, TFNO does not; is TFNO buggy, as AViT was? Checked like AViT
+(probe scripts in the session scratchpad: `tfno_probe.py`, `tfno_passband.py`; full-size model, random init, CPU).
+* **Code path.** The Well's wrapper (`the_well/benchmark/models/tfno`, e63dec8) repeats neuraloperator 0.3.0's
+  `FNO.forward` line for line (lifting, optional padding, 4 Fourier blocks, projection), adding only optional
+  gradient checkpointing; the block output is assigned (the paper-era bug, fixed in e4301602, is not in our pin).
+  Each block is the standard σ(Kx + Wx): spectral convolution plus a linear 1 × 1 skip, GELU between blocks.
+  Configuration as released: modes 16 × 16, hidden 128, Tucker with rank 1.0, no domain padding, 19,276,556
+  parameters; the released checkpoint loads bitwise into it (2026-11-07) and our forward equals upstream's
+  (`compare_upstream.py`, max diff 0.0).
+* **Spectral layer.** After `rfftn` and `fftshift` it keeps x indices 248–263 of 512 (n = −8 … 7) and the one-sided
+  y modes 0–8 of 65; the second `fftshift` before `irfftn` (where `ifftshift` is meant) is identical for even
+  sizes. Probed with single Fourier modes: exactly these 144 modes pass (energy gain 0.14 at init), each stays at
+  its own frequency (share 1.0), every other mode is blocked (gain ~1e-16).
+* **Equivariance.** A circular shift of the input along x or y shifts the output identically (max rel diff 1.3e-6):
+  no positional input, and y is treated as periodic, so the hot bottom wall and the cold top wall are neighbours.
+* **Gradients.** All 19.28M parameters receive one.
+* **Where its error is.** One step ahead, its buoyancy error near the walls relative to the interior is like the
+  others' (wall/interior RMSE 0.80; CNextU-Net 0.93, AViT 0.88). After 30 steps from frame 80 (snapshot files, 4 h,
+  seed 0, Ra 1e8 / 1e10, 10% / 100%) it is too warm in the bottom 12 rows (buoyancy bias +0.18 to +0.52, RMSE
+  0.23–0.58) and too cold in the top 12 (−0.05 to −0.10), against biases within ±0.05 for CNextU-Net and AViT: the
+  warm bottom layer of its snapshots. With section 3's scale split (87–95% of the true one-step change in buoyancy
+  and w lies above its mode cutoff; TFNO removes ~50–56% of persistence's fine-scale buoyancy error, CNextU-Net
+  96%), and its plateau after ~1.5 h (dedicated 1 h runs equal the 4 h runs), this points to the configuration:
+  coarse spectral mixing (shortest wave 64 px in x, 16 rows in y) and a periodic treatment of a wall-bounded
+  direction, not to a code error.
+* Not shown: that more modes or y padding would fix it (the 1 h test of section 3, ~50–60 SU, not run).
